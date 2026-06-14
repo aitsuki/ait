@@ -81,7 +81,7 @@ Responsibilities:
 - Create: `src/main.rs`
 - Create: `src/lib.rs`
 
-- [ ] **Step 1: Initialize the Rust package**
+- [x] **Step 1: Initialize the Rust package**
 
 Run:
 
@@ -91,7 +91,7 @@ cargo init --bin --name ait .
 
 Expected: `Cargo.toml` and `src/main.rs` are created.
 
-- [ ] **Step 2: Add dependencies**
+- [x] **Step 2: Add dependencies**
 
 Run:
 
@@ -106,7 +106,7 @@ cargo add --dev tempfile httpmock
 
 Expected: Cargo resolves dependencies and updates `Cargo.toml`.
 
-- [ ] **Step 3: Create library module skeleton**
+- [x] **Step 3: Create library module skeleton**
 
 Modify `src/lib.rs`:
 
@@ -131,7 +131,7 @@ fn main() -> ait::error::Result<()> {
 }
 ```
 
-- [ ] **Step 4: Create empty module files**
+- [x] **Step 4: Create empty module files**
 
 Create:
 
@@ -178,7 +178,7 @@ pub mod translate_window;
 pub mod tray;
 ```
 
-- [ ] **Step 5: Add shared error type**
+- [x] **Step 5: Add shared error type**
 
 Modify `src/error.rs`:
 
@@ -210,7 +210,7 @@ pub enum AppError {
 }
 ```
 
-- [ ] **Step 6: Verify compile**
+- [x] **Step 6: Verify compile**
 
 Run:
 
@@ -220,7 +220,7 @@ cargo test
 
 Expected: build succeeds and reports zero or more tests passing, with no compile errors.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```powershell
 git add Cargo.toml Cargo.lock src
@@ -234,7 +234,7 @@ git commit -m "chore: initialize rust app"
 - Modify: `src/error.rs`
 - Test: `tests/config_tests.rs`
 
-- [ ] **Step 1: Write config tests**
+- [x] **Step 1: Write config tests**
 
 Create `tests/config_tests.rs`:
 
@@ -286,7 +286,7 @@ fn corrupted_config_is_backed_up_and_defaults_are_returned() {
 }
 ```
 
-- [ ] **Step 2: Run tests and confirm they fail**
+- [x] **Step 2: Run tests and confirm they fail**
 
 Run:
 
@@ -296,7 +296,7 @@ cargo test --test config_tests
 
 Expected: compile fails because `ait::config` types are not defined.
 
-- [ ] **Step 3: Implement config types and store**
+- [x] **Step 3: Implement config types and store**
 
 Modify `src/config.rs`:
 
@@ -430,7 +430,7 @@ impl SettingsStore {
 }
 ```
 
-- [ ] **Step 4: Run config tests**
+- [x] **Step 4: Run config tests**
 
 Run:
 
@@ -440,7 +440,7 @@ cargo test --test config_tests
 
 Expected: all 3 tests pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add src/config.rs tests/config_tests.rs
@@ -453,7 +453,7 @@ git commit -m "feat: add settings store"
 - Modify: `src/hotkey.rs`
 - Test: `tests/hotkey_tests.rs`
 
-- [ ] **Step 1: Write parser tests**
+- [x] **Step 1: Write parser tests**
 
 Create `tests/hotkey_tests.rs`:
 
@@ -482,7 +482,7 @@ fn normalizes_display_text() {
 }
 ```
 
-- [ ] **Step 2: Run parser tests and confirm failure**
+- [x] **Step 2: Run parser tests and confirm failure**
 
 Run:
 
@@ -492,7 +492,7 @@ cargo test --test hotkey_tests
 
 Expected: compile fails because hotkey types are missing.
 
-- [ ] **Step 3: Implement hotkey parser**
+- [x] **Step 3: Implement hotkey parser**
 
 Modify `src/hotkey.rs`:
 
@@ -573,7 +573,7 @@ impl fmt::Display for Hotkey {
 }
 ```
 
-- [ ] **Step 4: Add Win32 conversion skeleton behind Windows cfg**
+- [x] **Step 4: Add Win32 conversion skeleton behind Windows cfg**
 
 Append to `src/hotkey.rs`:
 
@@ -601,7 +601,7 @@ impl Hotkey {
 }
 ```
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 Run:
 
@@ -612,7 +612,7 @@ cargo test
 
 Expected: tests pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```powershell
 git add src/hotkey.rs tests/hotkey_tests.rs
@@ -625,7 +625,7 @@ git commit -m "feat: add fixed hotkey parser"
 - Modify: `src/secret.rs`
 - Test: `tests/secret_tests.rs`
 
-- [ ] **Step 1: Write DPAPI round-trip test**
+- [x] **Step 1: Write DPAPI round-trip test**
 
 Create `tests/secret_tests.rs`:
 
@@ -651,7 +651,7 @@ fn secret_store_is_windows_only() {
 }
 ```
 
-- [ ] **Step 2: Run test and confirm failure**
+- [x] **Step 2: Run test and confirm failure**
 
 Run:
 
@@ -661,7 +661,7 @@ cargo test --test secret_tests
 
 Expected: compile fails because `SecretStore` is missing.
 
-- [ ] **Step 3: Implement non-Windows guard**
+- [x] **Step 3: Implement non-Windows guard**
 
 Modify `src/secret.rs`:
 
@@ -689,7 +689,7 @@ impl SecretStore {
 }
 ```
 
-- [ ] **Step 4: Implement Windows DPAPI**
+- [x] **Step 4: Implement Windows DPAPI**
 
 Append to `src/secret.rs`:
 
@@ -795,7 +795,7 @@ fn base64_decode(input: &str) -> Result<Vec<u8>> {
 }
 ```
 
-- [ ] **Step 5: Run secret tests**
+- [x] **Step 5: Run secret tests**
 
 Run:
 
@@ -805,7 +805,7 @@ cargo test --test secret_tests
 
 Expected on Windows: DPAPI round-trip test passes.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```powershell
 git add src/secret.rs tests/secret_tests.rs
