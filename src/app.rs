@@ -51,5 +51,44 @@ where
 }
 
 pub fn run() -> Result<()> {
+    crate::logging::init_logging()?;
+    run_platform()
+}
+
+#[cfg(not(windows))]
+fn run_platform() -> Result<()> {
+    tracing::warn!("ait MVP currently supports Windows only");
+    Ok(())
+}
+
+#[cfg(windows)]
+fn run_platform() -> Result<()> {
+    use crate::config::{AppSettings, SettingsStore};
+    use crate::hotkey::{Hotkey, RegisteredHotkey};
+    use crate::ui::tray::TrayIcon;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        DispatchMessageW, GetMessageW, TranslateMessage, MSG, WM_HOTKEY,
+    };
+
+    let settings_dir = SettingsStore::default_dir()?;
+    let settings = SettingsStore::new(settings_dir)
+        .load()
+        .unwrap_or_else(|_| AppSettings::default());
+    let hotkey = settings.hotkey.parse::<Hotkey>()?;
+    let _tray = TrayIcon::create()?;
+    let _registered = RegisteredHotkey::register(1, hotkey)?;
+
+    tracing::info!("registered hotkey {}", hotkey);
+
+    unsafe {
+        let mut msg = MSG::default();
+        while GetMessageW(&mut msg, None, 0, 0).into() {
+            if msg.message == WM_HOTKEY {
+                tracing::info!("TranslateSelection requested");
+            }
+            let _ = TranslateMessage(&msg);
+            DispatchMessageW(&msg);
+        }
+    }
     Ok(())
 }

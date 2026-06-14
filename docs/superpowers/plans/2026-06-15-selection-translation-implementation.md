@@ -1907,7 +1907,7 @@ git commit -m "feat: add translation workflow"
 - Modify: `src/ui/tray.rs`
 - Manual test: `docs/manual-test-checklists/windows-mvp.md`
 
-- [ ] **Step 1: Add hotkey registration wrapper**
+- [x] **Step 1: Add hotkey registration wrapper**
 
 Append to `src/hotkey.rs`:
 
@@ -1939,7 +1939,7 @@ impl Drop for RegisteredHotkey {
 }
 ```
 
-- [ ] **Step 2: Implement minimal tray placeholder**
+- [x] **Step 2: Implement minimal tray placeholder**
 
 Modify `src/ui/tray.rs` with a Windows-only placeholder that can be improved in the UI task:
 
@@ -1968,7 +1968,7 @@ impl TrayIcon {
 }
 ```
 
-- [ ] **Step 3: Implement Win32 message loop with `WM_HOTKEY`**
+- [x] **Step 3: Implement Win32 message loop with `WM_HOTKEY`**
 
 Modify `src/app.rs` so `run()` calls a Windows implementation:
 
@@ -2013,7 +2013,7 @@ fn run_platform() -> Result<()> {
 }
 ```
 
-- [ ] **Step 4: Compile and run manually**
+- [x] **Step 4: Compile and run manually**
 
 Run:
 
@@ -2024,7 +2024,7 @@ cargo run
 
 Expected: app stays running. Press `Ctrl+Alt+E`; log records `TranslateSelection requested`.
 
-- [ ] **Step 5: Add manual checklist entry**
+- [x] **Step 5: Add manual checklist entry**
 
 Create `docs/manual-test-checklists/windows-mvp.md`:
 
@@ -2039,7 +2039,7 @@ Create `docs/manual-test-checklists/windows-mvp.md`:
 - [ ] 退出进程后快捷键释放。
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```powershell
 git add src/app.rs src/hotkey.rs src/ui/tray.rs docs/manual-test-checklists/windows-mvp.md

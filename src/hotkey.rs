@@ -117,3 +117,29 @@ impl Hotkey {
         }
     }
 }
+
+#[cfg(windows)]
+pub struct RegisteredHotkey {
+    id: i32,
+}
+
+#[cfg(windows)]
+impl RegisteredHotkey {
+    pub fn register(id: i32, hotkey: Hotkey) -> Result<Self> {
+        use windows::Win32::UI::Input::KeyboardAndMouse::RegisterHotKey;
+        unsafe {
+            RegisterHotKey(None, id, hotkey.win32_modifiers(), hotkey.win32_vk())
+                .map_err(|err| AppError::Hotkey(format!("注册快捷键失败: {err}")))?;
+        }
+        Ok(Self { id })
+    }
+}
+
+#[cfg(windows)]
+impl Drop for RegisteredHotkey {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = windows::Win32::UI::Input::KeyboardAndMouse::UnregisterHotKey(None, self.id);
+        }
+    }
+}
