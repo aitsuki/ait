@@ -819,7 +819,7 @@ git commit -m "feat: protect api keys with dpapi"
 - Modify: `src/error.rs`
 - Test: add to `tests/translator_google_tests.rs`
 
-- [ ] **Step 1: Write trait-level test**
+- [x] **Step 1: Write trait-level test**
 
 Create `tests/translator_google_tests.rs`:
 
@@ -851,7 +851,7 @@ fn error_kind_user_messages_are_actionable() {
 }
 ```
 
-- [ ] **Step 2: Run test and confirm failure**
+- [x] **Step 2: Run test and confirm failure**
 
 Run:
 
@@ -861,7 +861,7 @@ cargo test --test translator_google_tests
 
 Expected: compile fails because translator types are missing.
 
-- [ ] **Step 3: Implement translator shared types**
+- [x] **Step 3: Implement translator shared types**
 
 Modify `src/translator/mod.rs`:
 
@@ -949,7 +949,7 @@ pub trait Translator: Send + Sync {
 }
 ```
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run:
 
@@ -959,7 +959,7 @@ cargo test --test translator_google_tests
 
 Expected: all 3 tests pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add src/translator/mod.rs tests/translator_google_tests.rs
@@ -972,7 +972,7 @@ git commit -m "feat: add translator abstractions"
 - Modify: `src/translator/google_free.rs`
 - Modify: `tests/translator_google_tests.rs`
 
-- [ ] **Step 1: Add HTTP mock tests for Google adapter**
+- [x] **Step 1: Add HTTP mock tests for Google adapter**
 
 Append to `tests/translator_google_tests.rs`:
 
@@ -1031,7 +1031,7 @@ async fn google_free_maps_rate_limit() {
 }
 ```
 
-- [ ] **Step 2: Run tests and confirm failure**
+- [x] **Step 2: Run tests and confirm failure**
 
 Run:
 
@@ -1041,7 +1041,7 @@ cargo test --test translator_google_tests
 
 Expected: compile fails because `GoogleFreeTranslator` is missing.
 
-- [ ] **Step 3: Implement Google free adapter**
+- [x] **Step 3: Implement Google free adapter**
 
 Modify `src/translator/google_free.rs`:
 
@@ -1152,7 +1152,7 @@ fn parse_google_response(json: &Value) -> Result<String> {
 }
 ```
 
-- [ ] **Step 4: Run Google translator tests**
+- [x] **Step 4: Run Google translator tests**
 
 Run:
 
@@ -1162,7 +1162,7 @@ cargo test --test translator_google_tests
 
 Expected: all Google translator tests pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add src/translator/google_free.rs tests/translator_google_tests.rs
@@ -1175,7 +1175,7 @@ git commit -m "feat: add built-in google translator"
 - Modify: `src/translator/openai_compatible.rs`
 - Test: `tests/translator_openai_tests.rs`
 
-- [ ] **Step 1: Write OpenAI adapter tests**
+- [x] **Step 1: Write OpenAI adapter tests**
 
 Create `tests/translator_openai_tests.rs`:
 
@@ -1238,7 +1238,7 @@ async fn maps_unauthorized_response() {
 }
 ```
 
-- [ ] **Step 2: Run test and confirm failure**
+- [x] **Step 2: Run test and confirm failure**
 
 Run:
 
@@ -1248,7 +1248,7 @@ cargo test --test translator_openai_tests
 
 Expected: compile fails because OpenAI adapter types are missing.
 
-- [ ] **Step 3: Implement OpenAI adapter**
+- [x] **Step 3: Implement OpenAI adapter**
 
 Modify `src/translator/openai_compatible.rs`:
 
@@ -1375,7 +1375,7 @@ struct ChatChoiceMessage {
 }
 ```
 
-- [ ] **Step 4: Run OpenAI tests**
+- [x] **Step 4: Run OpenAI tests**
 
 Run:
 
@@ -1385,7 +1385,7 @@ cargo test --test translator_openai_tests
 
 Expected: all OpenAI adapter tests pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add src/translator/openai_compatible.rs tests/translator_openai_tests.rs
