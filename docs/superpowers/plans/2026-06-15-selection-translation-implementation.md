@@ -1398,7 +1398,7 @@ git commit -m "feat: add openai compatible translator"
 - Modify: `src/capture.rs`
 - Test: `tests/capture_tests.rs`
 
-- [ ] **Step 1: Write dependency-seam tests**
+- [x] **Step 1: Write dependency-seam tests**
 
 Create `tests/capture_tests.rs`:
 
@@ -1457,7 +1457,7 @@ fn capture_returns_empty_when_copy_produces_no_text() {
 }
 ```
 
-- [ ] **Step 2: Run tests and confirm failure**
+- [x] **Step 2: Run tests and confirm failure**
 
 Run:
 
@@ -1467,7 +1467,7 @@ cargo test --test capture_tests
 
 Expected: compile fails because capture types are missing.
 
-- [ ] **Step 3: Implement capture core with backend trait**
+- [x] **Step 3: Implement capture core with backend trait**
 
 Modify `src/capture.rs`:
 
@@ -1555,7 +1555,7 @@ fn to_capture_error(err: AppError) -> CaptureError {
 }
 ```
 
-- [ ] **Step 4: Add Windows clipboard backend skeleton**
+- [x] **Step 4: Add Windows clipboard backend skeleton**
 
 Append to `src/capture.rs`:
 
@@ -1665,7 +1665,7 @@ impl ClipboardBackend for WindowsClipboardBackend {
 }
 ```
 
-- [ ] **Step 5: Run capture tests and compile check**
+- [x] **Step 5: Run capture tests and compile check**
 
 Run:
 
@@ -1676,7 +1676,7 @@ cargo test
 
 Expected: capture tests pass and project compiles on Windows.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```powershell
 git add src/capture.rs tests/capture_tests.rs
