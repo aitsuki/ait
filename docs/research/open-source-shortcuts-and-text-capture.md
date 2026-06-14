@@ -82,6 +82,24 @@
    - 优先调研 Capture2Text / Text Grab 的可复用边界。
    - 不在首个原型里自研 OCR 框选和识别管线。
 
+## 内置 Google 非官方免 Key 翻译
+
+首版需要内置一个默认翻译提供方，让用户不配置 API Key 也能开箱使用。该提供方命名为 `Google Translate Free` 或类似名称，技术上参考开源项目对 Google Translate 非官方网页端点的使用方式。
+
+必须明确：
+
+- 它不是 Google Cloud Translation 官方 API。
+- 它不需要 API Key，但稳定性不由 Google 官方承诺。
+- 它可能遇到限流、403/429、返回格式变化、网络区域差异或服务策略变化。
+- 失败时应提示用户切换到 OpenAI 兼容接口。
+- 日志只记录 provider、状态码、错误类型和文本长度，不记录完整原文。
+
+必须参考的开源项目：
+
+- `translate-shell`：命令行翻译工具，支持 Google Translate，可参考请求和错误处理行为。
+- `py-googletrans`：Python Google Translate 非官方库，明确使用 Google Translate Ajax/Web API。
+- `deep-translator`：提供 `GoogleTranslator`，可参考免 Key 翻译提供方抽象。
+
 ## 待确认问题
 
 - 项目是否必须保持宽松许可证。如果主程序未来不想被 GPL 传染，不能直接拷贝 GPL 项目代码，只能参考行为或以进程集成方式调用。
@@ -120,3 +138,11 @@
   https://capture2text.sourceforge.net/
 - Text Grab：Windows 本地 OCR 开源工具。
   https://github.com/TheJoeFin/Text-Grab
+- translate-shell：命令行翻译工具，支持 Google Translate。
+  https://github.com/soimort/translate-shell
+- py-googletrans：Google Translate 非官方 Python 库。
+  https://github.com/ssut/py-googletrans
+- deep-translator：提供免 Key GoogleTranslator 的 Python 翻译库。
+  https://github.com/nidhaloff/deep-translator
+- Google Cloud Translation 官方文档：正式 Cloud Translation 需要按官方方式配置项目和凭据。
+  https://cloud.google.com/translate/docs/setup
