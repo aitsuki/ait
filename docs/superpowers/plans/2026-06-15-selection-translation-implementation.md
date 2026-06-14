@@ -1771,7 +1771,7 @@ git commit -m "feat: add app commands and logging"
 - Modify: `src/app.rs`
 - Test: `tests/workflow_tests.rs`
 
-- [ ] **Step 1: Write workflow test with fake capture and translator**
+- [x] **Step 1: Write workflow test with fake capture and translator**
 
 Create `tests/workflow_tests.rs`:
 
@@ -1812,7 +1812,7 @@ fn translate_selection_captures_then_translates() {
 }
 ```
 
-- [ ] **Step 2: Run test and confirm failure**
+- [x] **Step 2: Run test and confirm failure**
 
 Run:
 
@@ -1822,7 +1822,7 @@ cargo test --test workflow_tests
 
 Expected: compile fails because workflow types are missing.
 
-- [ ] **Step 3: Implement workflow seam**
+- [x] **Step 3: Implement workflow seam**
 
 Modify `src/app.rs`:
 
@@ -1881,7 +1881,7 @@ pub fn run() -> Result<()> {
 }
 ```
 
-- [ ] **Step 4: Run workflow tests**
+- [x] **Step 4: Run workflow tests**
 
 Run:
 
@@ -1892,7 +1892,7 @@ cargo test
 
 Expected: tests pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add src/app.rs tests/workflow_tests.rs
