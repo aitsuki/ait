@@ -1690,7 +1690,7 @@ git commit -m "feat: add clipboard selection capture"
 - Modify: `src/command.rs`
 - Test: optional unit tests in `tests/logging_tests.rs`
 
-- [ ] **Step 1: Define commands**
+- [x] **Step 1: Define commands**
 
 Modify `src/command.rs`:
 
@@ -1707,7 +1707,7 @@ pub enum AppCommand {
 }
 ```
 
-- [ ] **Step 2: Implement privacy-safe logging helpers**
+- [x] **Step 2: Implement privacy-safe logging helpers**
 
 Modify `src/logging.rs`:
 
@@ -1736,7 +1736,7 @@ pub fn safe_text_len(text: &str) -> usize {
 }
 ```
 
-- [ ] **Step 3: Add a small logging test**
+- [x] **Step 3: Add a small logging test**
 
 Create `tests/logging_tests.rs`:
 
@@ -1747,7 +1747,7 @@ fn safe_text_len_counts_chars_without_exposing_text() {
 }
 ```
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run:
 
@@ -1758,7 +1758,7 @@ cargo test
 
 Expected: tests pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add src/command.rs src/logging.rs tests/logging_tests.rs
