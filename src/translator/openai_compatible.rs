@@ -68,7 +68,9 @@ impl OpenAiCompatibleTranslator {
         let status = response.status();
         if status == StatusCode::UNAUTHORIZED {
             return Err(AppError::Translate(
-                TranslationErrorKind::Unauthorized.user_message().to_string(),
+                TranslationErrorKind::Unauthorized
+                    .user_message()
+                    .to_string(),
             ));
         }
         if status == StatusCode::TOO_MANY_REQUESTS {
@@ -83,7 +85,11 @@ impl OpenAiCompatibleTranslator {
         }
 
         let body: ChatResponse = response.json().await.map_err(|_| {
-            AppError::Translate(TranslationErrorKind::InvalidResponse.user_message().to_string())
+            AppError::Translate(
+                TranslationErrorKind::InvalidResponse
+                    .user_message()
+                    .to_string(),
+            )
         })?;
         let text = body
             .choices
@@ -92,7 +98,9 @@ impl OpenAiCompatibleTranslator {
             .filter(|text| !text.is_empty())
             .ok_or_else(|| {
                 AppError::Translate(
-                    TranslationErrorKind::InvalidResponse.user_message().to_string(),
+                    TranslationErrorKind::InvalidResponse
+                        .user_message()
+                        .to_string(),
                 )
             })?;
 

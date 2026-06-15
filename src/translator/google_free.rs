@@ -70,7 +70,11 @@ impl GoogleFreeTranslator {
         }
 
         let json: Value = response.json().await.map_err(|_| {
-            AppError::Translate(TranslationErrorKind::InvalidResponse.user_message().to_string())
+            AppError::Translate(
+                TranslationErrorKind::InvalidResponse
+                    .user_message()
+                    .to_string(),
+            )
         })?;
         let translated = parse_google_response(&json)?;
 
@@ -92,20 +96,30 @@ impl Translator for GoogleFreeTranslator {
 
 fn parse_google_response(json: &Value) -> Result<String> {
     let segments = json.get(0).and_then(Value::as_array).ok_or_else(|| {
-        AppError::Translate(TranslationErrorKind::InvalidResponse.user_message().to_string())
+        AppError::Translate(
+            TranslationErrorKind::InvalidResponse
+                .user_message()
+                .to_string(),
+        )
     })?;
 
     let mut out = String::new();
     for segment in segments {
         let text = segment.get(0).and_then(Value::as_str).ok_or_else(|| {
-            AppError::Translate(TranslationErrorKind::InvalidResponse.user_message().to_string())
+            AppError::Translate(
+                TranslationErrorKind::InvalidResponse
+                    .user_message()
+                    .to_string(),
+            )
         })?;
         out.push_str(text);
     }
 
     if out.trim().is_empty() {
         return Err(AppError::Translate(
-            TranslationErrorKind::InvalidResponse.user_message().to_string(),
+            TranslationErrorKind::InvalidResponse
+                .user_message()
+                .to_string(),
         ));
     }
     Ok(out)

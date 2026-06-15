@@ -33,12 +33,12 @@ pub struct TranslationWindow {
 #[cfg(windows)]
 impl TranslationWindow {
     pub fn new() -> Result<Self> {
-        use windows::core::PCWSTR;
         use windows::Win32::Foundation::HWND;
         use windows::Win32::UI::WindowsAndMessaging::{
-            CreateWindowExW, LoadCursorW, RegisterClassW, CW_USEDEFAULT, IDC_ARROW, WNDCLASSW,
-            WINDOW_EX_STYLE, WS_CAPTION, WS_OVERLAPPED, WS_SYSMENU, WS_THICKFRAME,
+            CW_USEDEFAULT, CreateWindowExW, IDC_ARROW, LoadCursorW, RegisterClassW,
+            WINDOW_EX_STYLE, WNDCLASSW, WS_CAPTION, WS_OVERLAPPED, WS_SYSMENU, WS_THICKFRAME,
         };
+        use windows::core::PCWSTR;
 
         let class_name = wide("ait_translation_window");
         unsafe {
@@ -139,7 +139,7 @@ unsafe extern "system" fn default_wnd_proc(
     use crate::capture::ClipboardBackend;
     use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
     use windows::Win32::UI::WindowsAndMessaging::{
-        DefWindowProcW, GetDlgItemTextW, PostMessageW, ShowWindow, SW_HIDE, WM_CLOSE, WM_COMMAND,
+        DefWindowProcW, GetDlgItemTextW, PostMessageW, SW_HIDE, ShowWindow, WM_CLOSE, WM_COMMAND,
     };
 
     if msg == WM_CLOSE {
@@ -157,8 +157,8 @@ unsafe extern "system" fn default_wnd_proc(
             },
             ID_COPY => {
                 let mut buf = [0u16; 8192];
-                let len = unsafe { GetDlgItemTextW(hwnd, ID_TRANSLATED_EDIT as i32, &mut buf) }
-                    as usize;
+                let len =
+                    unsafe { GetDlgItemTextW(hwnd, ID_TRANSLATED_EDIT as i32, &mut buf) } as usize;
                 let text = String::from_utf16_lossy(&buf[..len]);
                 if !text.trim().is_empty() {
                     let backend = crate::capture::WindowsClipboardBackend;
@@ -202,7 +202,17 @@ fn create_static(
     width: i32,
     height: i32,
 ) -> Result<windows::Win32::Foundation::HWND> {
-    create_control(parent, "STATIC", text, x, y, width, height, 0, Default::default())
+    create_control(
+        parent,
+        "STATIC",
+        text,
+        x,
+        y,
+        width,
+        height,
+        0,
+        Default::default(),
+    )
 }
 
 #[cfg(windows)]
@@ -215,7 +225,7 @@ fn create_button(
     height: i32,
     id: isize,
 ) -> Result<windows::Win32::Foundation::HWND> {
-    use windows::Win32::UI::WindowsAndMessaging::{WINDOW_STYLE, BS_PUSHBUTTON};
+    use windows::Win32::UI::WindowsAndMessaging::{BS_PUSHBUTTON, WINDOW_STYLE};
     create_control(
         parent,
         "BUTTON",
@@ -239,24 +249,13 @@ fn create_edit(
     id: isize,
 ) -> Result<windows::Win32::Foundation::HWND> {
     use windows::Win32::UI::WindowsAndMessaging::{
-        ES_AUTOVSCROLL, ES_LEFT, ES_MULTILINE, ES_READONLY, ES_WANTRETURN, WINDOW_STYLE,
-        WS_VSCROLL,
+        ES_AUTOVSCROLL, ES_LEFT, ES_MULTILINE, ES_READONLY, ES_WANTRETURN, WINDOW_STYLE, WS_VSCROLL,
     };
     let style = WINDOW_STYLE(
         (ES_LEFT | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | ES_WANTRETURN) as u32
             | WS_VSCROLL.0,
     );
-    create_control(
-        parent,
-        "EDIT",
-        "",
-        x,
-        y,
-        width,
-        height,
-        id,
-        style,
-    )
+    create_control(parent, "EDIT", "", x, y, width, height, id, style)
 }
 
 #[cfg(windows)]
@@ -271,10 +270,10 @@ fn create_control(
     id: isize,
     extra_style: windows::Win32::UI::WindowsAndMessaging::WINDOW_STYLE,
 ) -> Result<windows::Win32::Foundation::HWND> {
-    use windows::core::PCWSTR;
     use windows::Win32::UI::WindowsAndMessaging::{
         CreateWindowExW, HMENU, WINDOW_EX_STYLE, WS_BORDER, WS_CHILD, WS_VISIBLE,
     };
+    use windows::core::PCWSTR;
 
     unsafe {
         CreateWindowExW(
@@ -297,8 +296,8 @@ fn create_control(
 
 #[cfg(windows)]
 fn set_text(hwnd: windows::Win32::Foundation::HWND, text: &str) -> Result<()> {
-    use windows::core::PCWSTR;
     use windows::Win32::UI::WindowsAndMessaging::SetWindowTextW;
+    use windows::core::PCWSTR;
 
     unsafe {
         SetWindowTextW(hwnd, PCWSTR(wide(text).as_ptr()))
@@ -308,7 +307,7 @@ fn set_text(hwnd: windows::Win32::Foundation::HWND, text: &str) -> Result<()> {
 
 #[cfg(windows)]
 fn show_window(hwnd: windows::Win32::Foundation::HWND) {
-    use windows::Win32::UI::WindowsAndMessaging::{ShowWindow, SW_SHOW};
+    use windows::Win32::UI::WindowsAndMessaging::{SW_SHOW, ShowWindow};
 
     unsafe {
         let _ = ShowWindow(hwnd, SW_SHOW);

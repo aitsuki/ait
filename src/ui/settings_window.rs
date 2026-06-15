@@ -49,13 +49,13 @@ pub struct SettingsWindow;
 #[cfg(windows)]
 impl SettingsWindow {
     pub fn open(settings: &AppSettings) -> Result<()> {
-        use windows::core::PCWSTR;
         use windows::Win32::Foundation::HWND;
         use windows::Win32::UI::WindowsAndMessaging::{
-            CreateWindowExW, LoadCursorW, RegisterClassW, SetWindowLongPtrW, ShowWindow,
-            CW_USEDEFAULT, GWLP_USERDATA, IDC_ARROW, SW_SHOW, WNDCLASSW, WINDOW_EX_STYLE,
-            WS_CAPTION, WS_OVERLAPPED, WS_SYSMENU,
+            CW_USEDEFAULT, CreateWindowExW, GWLP_USERDATA, IDC_ARROW, LoadCursorW, RegisterClassW,
+            SW_SHOW, SetWindowLongPtrW, ShowWindow, WINDOW_EX_STYLE, WNDCLASSW, WS_CAPTION,
+            WS_OVERLAPPED, WS_SYSMENU,
         };
+        use windows::core::PCWSTR;
 
         let view_model = SettingsViewModel::from(settings);
         let class_name = wide("ait_settings_window");
@@ -122,7 +122,11 @@ impl SettingsWindow {
             create_static(hwnd, "API Key", 18, 156, 120, 22)?;
             create_edit(
                 hwnd,
-                if view_model.has_openai_key { "已保存" } else { "" },
+                if view_model.has_openai_key {
+                    "已保存"
+                } else {
+                    ""
+                },
                 150,
                 154,
                 230,
@@ -168,7 +172,7 @@ unsafe extern "system" fn default_wnd_proc(
 ) -> windows::Win32::Foundation::LRESULT {
     use windows::Win32::Foundation::LRESULT;
     use windows::Win32::UI::WindowsAndMessaging::{
-        DefWindowProcW, DestroyWindow, GetWindowLongPtrW, SetWindowLongPtrW, GWLP_USERDATA,
+        DefWindowProcW, DestroyWindow, GWLP_USERDATA, GetWindowLongPtrW, SetWindowLongPtrW,
         WM_CLOSE, WM_COMMAND, WM_NCDESTROY,
     };
 
@@ -211,7 +215,7 @@ unsafe extern "system" fn default_wnd_proc(
 
 #[cfg(windows)]
 unsafe fn save_settings_from_window(hwnd: windows::Win32::Foundation::HWND) -> Result<()> {
-    use windows::Win32::UI::WindowsAndMessaging::{GetWindowLongPtrW, GWLP_USERDATA};
+    use windows::Win32::UI::WindowsAndMessaging::{GWLP_USERDATA, GetWindowLongPtrW};
 
     let ptr = unsafe { GetWindowLongPtrW(hwnd, GWLP_USERDATA) };
     if ptr == 0 {
@@ -263,7 +267,17 @@ fn create_static(
     width: i32,
     height: i32,
 ) -> Result<windows::Win32::Foundation::HWND> {
-    create_control(parent, "STATIC", text, x, y, width, height, 0, Default::default())
+    create_control(
+        parent,
+        "STATIC",
+        text,
+        x,
+        y,
+        width,
+        height,
+        0,
+        Default::default(),
+    )
 }
 
 #[cfg(windows)]
@@ -276,7 +290,7 @@ fn create_button(
     height: i32,
     id: isize,
 ) -> Result<windows::Win32::Foundation::HWND> {
-    use windows::Win32::UI::WindowsAndMessaging::{WINDOW_STYLE, BS_PUSHBUTTON};
+    use windows::Win32::UI::WindowsAndMessaging::{BS_PUSHBUTTON, WINDOW_STYLE};
     create_control(
         parent,
         "BUTTON",
@@ -332,10 +346,10 @@ fn create_control(
     id: isize,
     extra_style: windows::Win32::UI::WindowsAndMessaging::WINDOW_STYLE,
 ) -> Result<windows::Win32::Foundation::HWND> {
-    use windows::core::PCWSTR;
     use windows::Win32::UI::WindowsAndMessaging::{
         CreateWindowExW, HMENU, WINDOW_EX_STYLE, WS_BORDER, WS_CHILD, WS_VISIBLE,
     };
+    use windows::core::PCWSTR;
 
     unsafe {
         CreateWindowExW(

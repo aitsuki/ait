@@ -1,8 +1,7 @@
 use crate::error::{AppError, Result};
 
 #[cfg(windows)]
-pub const WM_TRAY_COMMAND: u32 =
-    windows::Win32::UI::WindowsAndMessaging::WM_APP + 20;
+pub const WM_TRAY_COMMAND: u32 = windows::Win32::UI::WindowsAndMessaging::WM_APP + 20;
 #[cfg(windows)]
 const WM_TRAY_ICON: u32 = windows::Win32::UI::WindowsAndMessaging::WM_APP + 21;
 #[cfg(windows)]
@@ -23,15 +22,15 @@ pub struct TrayIcon {
 #[cfg(windows)]
 impl TrayIcon {
     pub fn create() -> Result<Self> {
-        use windows::core::PCWSTR;
         use windows::Win32::Foundation::HWND;
         use windows::Win32::UI::Shell::{
-            Shell_NotifyIconW, NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NOTIFYICONDATAW,
+            NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NOTIFYICONDATAW, Shell_NotifyIconW,
         };
         use windows::Win32::UI::WindowsAndMessaging::{
-            CreateWindowExW, LoadIconW, RegisterClassW, HICON, IDI_APPLICATION, WNDCLASSW,
-            WINDOW_EX_STYLE, WINDOW_STYLE,
+            CreateWindowExW, HICON, IDI_APPLICATION, LoadIconW, RegisterClassW, WINDOW_EX_STYLE,
+            WINDOW_STYLE, WNDCLASSW,
         };
+        use windows::core::PCWSTR;
 
         let class_name = wide("ait_tray_window");
         unsafe {
@@ -85,7 +84,7 @@ impl TrayIcon {
 #[cfg(windows)]
 impl Drop for TrayIcon {
     fn drop(&mut self) {
-        use windows::Win32::UI::Shell::{Shell_NotifyIconW, NIM_DELETE, NOTIFYICONDATAW};
+        use windows::Win32::UI::Shell::{NIM_DELETE, NOTIFYICONDATAW, Shell_NotifyIconW};
 
         unsafe {
             let data = NOTIFYICONDATAW {
@@ -106,12 +105,12 @@ unsafe extern "system" fn tray_wnd_proc(
     wparam: windows::Win32::Foundation::WPARAM,
     lparam: windows::Win32::Foundation::LPARAM,
 ) -> windows::Win32::Foundation::LRESULT {
-    use windows::core::PCWSTR;
     use windows::Win32::Foundation::{LPARAM, LRESULT, POINT, WPARAM};
     use windows::Win32::UI::WindowsAndMessaging::{
-        AppendMenuW, CreatePopupMenu, DefWindowProcW, DestroyMenu, GetCursorPos, PostMessageW,
-        SetForegroundWindow, TrackPopupMenu, MF_SEPARATOR, MF_STRING, TPM_RETURNCMD, WM_RBUTTONUP,
+        AppendMenuW, CreatePopupMenu, DefWindowProcW, DestroyMenu, GetCursorPos, MF_SEPARATOR,
+        MF_STRING, PostMessageW, SetForegroundWindow, TPM_RETURNCMD, TrackPopupMenu, WM_RBUTTONUP,
     };
+    use windows::core::PCWSTR;
 
     if msg == WM_TRAY_ICON && lparam.0 as u32 == WM_RBUTTONUP {
         let menu = match unsafe { CreatePopupMenu() } {
@@ -125,23 +124,25 @@ unsafe extern "system" fn tray_wnd_proc(
                 MENU_TRANSLATE_SELECTION,
                 PCWSTR(wide("翻译剪贴板/选区").as_ptr()),
             );
-            let _ = AppendMenuW(menu, MF_STRING, MENU_SETTINGS, PCWSTR(wide("设置").as_ptr()));
-            let _ = AppendMenuW(menu, MF_STRING, MENU_OPEN_LOGS, PCWSTR(wide("查看日志").as_ptr()));
+            let _ = AppendMenuW(
+                menu,
+                MF_STRING,
+                MENU_SETTINGS,
+                PCWSTR(wide("设置").as_ptr()),
+            );
+            let _ = AppendMenuW(
+                menu,
+                MF_STRING,
+                MENU_OPEN_LOGS,
+                PCWSTR(wide("查看日志").as_ptr()),
+            );
             let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
             let _ = AppendMenuW(menu, MF_STRING, MENU_EXIT, PCWSTR(wide("退出").as_ptr()));
 
             let mut point = POINT::default();
             let _ = GetCursorPos(&mut point);
             let _ = SetForegroundWindow(hwnd);
-            let selected = TrackPopupMenu(
-                menu,
-                TPM_RETURNCMD,
-                point.x,
-                point.y,
-                None,
-                hwnd,
-                None,
-            );
+            let selected = TrackPopupMenu(menu, TPM_RETURNCMD, point.x, point.y, None, hwnd, None);
             if selected.0 != 0 {
                 let _ = PostMessageW(
                     Some(hwnd),

@@ -28,12 +28,16 @@ fn provider_kind_names_are_stable_for_logs() {
 
 #[test]
 fn error_kind_user_messages_are_actionable() {
-    assert!(TranslationErrorKind::RateLimited
-        .user_message()
-        .contains("稍后重试"));
-    assert!(TranslationErrorKind::ProviderChanged
-        .user_message()
-        .contains("切换"));
+    assert!(
+        TranslationErrorKind::RateLimited
+            .user_message()
+            .contains("稍后重试")
+    );
+    assert!(
+        TranslationErrorKind::ProviderChanged
+            .user_message()
+            .contains("切换")
+    );
 }
 
 #[tokio::test]

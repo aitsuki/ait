@@ -71,10 +71,10 @@ fn run_platform() -> Result<()> {
 fn run_platform() -> Result<()> {
     use crate::config::{AppSettings, SettingsStore};
     use crate::hotkey::{Hotkey, RegisteredHotkey};
-    use crate::ui::tray::TrayIcon;
     use crate::ui::translate_window::TranslationWindow;
+    use crate::ui::tray::TrayIcon;
     use windows::Win32::UI::WindowsAndMessaging::{
-        DispatchMessageW, GetMessageW, PostQuitMessage, TranslateMessage, MSG, WM_HOTKEY,
+        DispatchMessageW, GetMessageW, MSG, PostQuitMessage, TranslateMessage, WM_HOTKEY,
     };
 
     let settings_dir = SettingsStore::default_dir()?;
@@ -216,7 +216,8 @@ fn build_workflow_translator(
                 .encrypted_api_key
                 .as_ref()
                 .ok_or_else(|| crate::error::AppError::Translate("API Key 缺失".to_string()))?;
-            let api_key = crate::secret::SecretStore::new("ait-openai-api-key").unprotect(encrypted)?;
+            let api_key =
+                crate::secret::SecretStore::new("ait-openai-api-key").unprotect(encrypted)?;
             let translator = crate::translator::openai_compatible::OpenAiCompatibleTranslator::new(
                 crate::translator::openai_compatible::OpenAiCompatibleConfig {
                     base_url: settings.openai.base_url.clone(),
