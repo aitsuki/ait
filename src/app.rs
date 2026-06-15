@@ -23,6 +23,20 @@ pub struct TranslationWorkflowResult {
     pub provider: ProviderKind,
 }
 
+pub trait TranslationObserver {
+    fn translation_started(&mut self) -> Result<()> {
+        Ok(())
+    }
+
+    fn source_captured(&mut self, _source_text: &str) -> Result<()> {
+        Ok(())
+    }
+
+    fn translation_succeeded(&mut self, _result: &TranslationWorkflowResult) -> Result<()> {
+        Ok(())
+    }
+}
+
 pub struct TranslationWorkflow<C, T> {
     capture: C,
     translator: T,
@@ -41,18 +55,49 @@ where
     }
 
     pub fn translate_selection(&self, target_lang: &str) -> Result<TranslationWorkflowResult> {
+        self.translate_selection_with_observer(target_lang, &mut ())
+    }
+
+    pub fn translate_selection_with_observer<O>(
+        &self,
+        target_lang: &str,
+        observer: &mut O,
+    ) -> Result<TranslationWorkflowResult>
+    where
+        O: TranslationObserver,
+    {
+        observer.translation_started()?;
         let captured = self.capture.capture()?;
+        observer.source_captured(&captured.text)?;
         let response = self.translator.translate_blocking(TranslationRequest {
             text: captured.text.clone(),
             source_lang: "auto".to_string(),
             target_lang: target_lang.to_string(),
         })?;
 
-        Ok(TranslationWorkflowResult {
+        let result = TranslationWorkflowResult {
             source_text: captured.text,
             translated_text: response.translated_text,
             provider: response.provider,
-        })
+        };
+        observer.translation_succeeded(&result)?;
+        Ok(result)
+    }
+}
+
+impl TranslationObserver for () {}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HotkeyAction {
+    Ignore,
+    TranslateSelection,
+}
+
+pub fn hotkey_action(is_translation_window_foreground: bool) -> HotkeyAction {
+    if is_translation_window_foreground {
+        HotkeyAction::Ignore
+    } else {
+        HotkeyAction::TranslateSelection
     }
 }
 
@@ -98,8 +143,15 @@ fn run_platform() -> Result<()> {
         let mut msg = MSG::default();
         while GetMessageW(&mut msg, None, 0, 0).into() {
             if msg.message == WM_HOTKEY {
-                tracing::info!("TranslateSelection requested");
-                let _ = perform_translation(&workflow, &settings, &mut translation_window);
+                match hotkey_action(translation_window.is_foreground()) {
+                    HotkeyAction::Ignore => {
+                        tracing::info!("ignore hotkey while translation window is foreground");
+                    }
+                    HotkeyAction::TranslateSelection => {
+                        tracing::info!("TranslateSelection requested");
+                        let _ = perform_translation(&workflow, &settings, &mut translation_window);
+                    }
+                }
             } else if msg.message == crate::ui::tray::WM_TRAY_COMMAND {
                 match msg.wParam.0 {
                     crate::ui::tray::MENU_TRANSLATE_SELECTION => {
@@ -137,10 +189,8 @@ where
     C: WorkflowCapture,
     T: WorkflowTranslator,
 {
-    match workflow.translate_selection(&settings.target_language) {
+    match workflow.translate_selection_with_observer(&settings.target_language, window) {
         Ok(result) => {
-            window.show_loading(result.source_text.clone())?;
-            window.show_result(result.translated_text.clone())?;
             tracing::info!(
                 provider = result.provider.as_log_name(),
                 source_len = result.source_text.chars().count(),

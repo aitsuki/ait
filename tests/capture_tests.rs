@@ -187,9 +187,8 @@ fn capture_polls_until_copied_text_arrives() {
 
     let state = Rc::new(DelayedState::default());
     *state.text.borrow_mut() = Some("old clipboard".to_string());
-    let service =
-        CaptureService::new(DelayedClipboard(state.clone()), Duration::from_millis(20))
-            .with_copy(DelayedCopy(state));
+    let service = CaptureService::new(DelayedClipboard(state.clone()), Duration::from_millis(20))
+        .with_copy(DelayedCopy(state));
 
     let captured = service.capture_selected_text().unwrap();
 

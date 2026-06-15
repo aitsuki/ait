@@ -10,8 +10,6 @@ const ID_COPY: usize = 2001;
 const ID_RETRY: usize = 2002;
 #[cfg(windows)]
 const ID_SETTINGS: usize = 2003;
-#[cfg(windows)]
-const ID_CLOSE: usize = 2004;
 
 #[derive(Debug, Clone)]
 pub struct TranslationWindowState {
@@ -19,6 +17,46 @@ pub struct TranslationWindowState {
     pub translated_text: String,
     pub loading: bool,
     pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ShowMode {
+    Starting,
+    Loading,
+    Result,
+    Error,
+}
+
+impl ShowMode {
+    pub fn activates_window(self) -> bool {
+        !matches!(self, Self::Starting)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WindowZOrder {
+    NotTopmost,
+}
+
+pub fn window_z_order() -> WindowZOrder {
+    WindowZOrder::NotTopmost
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ShowAction {
+    PositionAndActivate,
+    ActivateOnly,
+    KeepPosition,
+}
+
+pub fn show_action(is_visible: bool, is_foreground: bool) -> ShowAction {
+    if !is_visible {
+        ShowAction::PositionAndActivate
+    } else if !is_foreground {
+        ShowAction::ActivateOnly
+    } else {
+        ShowAction::KeepPosition
+    }
 }
 
 #[cfg(windows)]
@@ -77,7 +115,6 @@ impl TranslationWindow {
             create_button(hwnd, "复制译文", 388, 322, 82, 28, ID_COPY as isize)?;
             create_button(hwnd, "重试", 476, 322, 52, 28, ID_RETRY as isize)?;
             create_button(hwnd, "设置", 534, 322, 52, 28, ID_SETTINGS as isize)?;
-            create_button(hwnd, "关闭", 534, 354, 52, 28, ID_CLOSE as isize)?;
 
             Ok(Self {
                 hwnd,
@@ -102,8 +139,21 @@ impl TranslationWindow {
         set_text(self.source_edit, &self.state.source_text)?;
         set_text(self.translated_edit, "")?;
         set_text(self.status_text, "正在翻译...")?;
-        show_window_at_cursor_and_raise(self.hwnd);
+        show_window_at_cursor(self.hwnd, ShowMode::Loading);
         tracing::info!("show translation window loading state");
+        Ok(())
+    }
+
+    pub fn show_starting(&mut self) -> Result<()> {
+        self.state.source_text.clear();
+        self.state.translated_text.clear();
+        self.state.loading = true;
+        self.state.error = None;
+        set_text(self.source_edit, "")?;
+        set_text(self.translated_edit, "")?;
+        set_text(self.status_text, "正在取词...")?;
+        show_window_at_cursor(self.hwnd, ShowMode::Starting);
+        tracing::info!("show translation window starting state");
         Ok(())
     }
 
@@ -113,7 +163,7 @@ impl TranslationWindow {
         self.state.error = None;
         set_text(self.translated_edit, &self.state.translated_text)?;
         set_text(self.status_text, "翻译完成")?;
-        show_window_at_cursor_and_raise(self.hwnd);
+        show_window_at_cursor(self.hwnd, ShowMode::Result);
         tracing::info!("show translation window result");
         Ok(())
     }
@@ -123,9 +173,35 @@ impl TranslationWindow {
         self.state.error = Some(message);
         let message = self.state.error.as_deref().unwrap_or("翻译失败");
         set_text(self.status_text, message)?;
-        show_window_at_cursor_and_raise(self.hwnd);
+        show_window_at_cursor(self.hwnd, ShowMode::Error);
         tracing::info!("show translation window error");
         Ok(())
+    }
+
+    pub fn is_foreground(&self) -> bool {
+        is_foreground_window(self.hwnd)
+    }
+
+    pub fn is_visible(&self) -> bool {
+        is_window_visible(self.hwnd)
+    }
+}
+
+#[cfg(windows)]
+impl crate::app::TranslationObserver for TranslationWindow {
+    fn translation_started(&mut self) -> Result<()> {
+        self.show_starting()
+    }
+
+    fn source_captured(&mut self, source_text: &str) -> Result<()> {
+        self.show_loading(source_text.to_string())
+    }
+
+    fn translation_succeeded(
+        &mut self,
+        result: &crate::app::TranslationWorkflowResult,
+    ) -> Result<()> {
+        self.show_result(result.translated_text.clone())
     }
 }
 
@@ -151,10 +227,6 @@ unsafe extern "system" fn default_wnd_proc(
     if msg == WM_COMMAND {
         let command = wparam.0 & 0xffff;
         match command {
-            ID_CLOSE => unsafe {
-                let _ = ShowWindow(hwnd, SW_HIDE);
-                return LRESULT(0);
-            },
             ID_COPY => {
                 let mut buf = [0u16; 8192];
                 let len =
@@ -309,17 +381,35 @@ fn set_text(hwnd: windows::Win32::Foundation::HWND, text: &str) -> Result<()> {
 }
 
 #[cfg(windows)]
-fn show_window_at_cursor_and_raise(hwnd: windows::Win32::Foundation::HWND) {
+fn show_window_at_cursor(hwnd: windows::Win32::Foundation::HWND, mode: ShowMode) {
     use windows::Win32::Foundation::{POINT, RECT};
     use windows::Win32::Graphics::Gdi::{
         GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromPoint,
     };
     use windows::Win32::UI::WindowsAndMessaging::{
-        GetCursorPos, GetWindowRect, HWND_TOPMOST, SET_WINDOW_POS_FLAGS, SW_SHOW, SWP_SHOWWINDOW,
-        SetForegroundWindow, SetWindowPos, ShowWindow,
+        GetCursorPos, GetWindowRect, HWND_NOTOPMOST, SET_WINDOW_POS_FLAGS, SW_SHOW,
+        SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_SHOWWINDOW, SetForegroundWindow, SetWindowPos,
+        ShowWindow,
     };
 
     unsafe {
+        match show_action(is_window_visible(hwnd), is_foreground_window(hwnd)) {
+            ShowAction::PositionAndActivate => {}
+            ShowAction::ActivateOnly => {
+                if mode.activates_window() {
+                    let _ = ShowWindow(hwnd, SW_SHOW);
+                    let _ = SetForegroundWindow(hwnd);
+                } else {
+                    let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+                }
+                return;
+            }
+            ShowAction::KeepPosition => {
+                let _ = ShowWindow(hwnd, SW_SHOW);
+                return;
+            }
+        }
+
         let mut cursor = POINT::default();
         let _ = GetCursorPos(&mut cursor);
         let mut rect = RECT::default();
@@ -335,18 +425,43 @@ fn show_window_at_cursor_and_raise(hwnd: windows::Win32::Foundation::HWND) {
         let work = monitor_info.rcWork;
         let x = (cursor.x + 12).clamp(work.left, work.right - width);
         let y = (cursor.y + 12).clamp(work.top, work.bottom - height);
+        let mut flags = SWP_SHOWWINDOW.0;
+        if !mode.activates_window() {
+            flags |= SWP_NOACTIVATE.0;
+        }
         let _ = SetWindowPos(
             hwnd,
-            Some(HWND_TOPMOST),
+            Some(HWND_NOTOPMOST),
             x,
             y,
             width,
             height,
-            SET_WINDOW_POS_FLAGS(SWP_SHOWWINDOW.0),
+            SET_WINDOW_POS_FLAGS(flags),
         );
-        let _ = ShowWindow(hwnd, SW_SHOW);
-        let _ = SetForegroundWindow(hwnd);
+        if mode.activates_window() {
+            let _ = ShowWindow(hwnd, SW_SHOW);
+            let _ = SetForegroundWindow(hwnd);
+        } else {
+            let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+        }
     }
+}
+
+#[cfg(windows)]
+fn is_foreground_window(hwnd: windows::Win32::Foundation::HWND) -> bool {
+    use windows::Win32::UI::WindowsAndMessaging::{GA_ROOT, GetAncestor, GetForegroundWindow};
+
+    unsafe {
+        let foreground = GetForegroundWindow();
+        foreground == hwnd || GetAncestor(foreground, GA_ROOT) == GetAncestor(hwnd, GA_ROOT)
+    }
+}
+
+#[cfg(windows)]
+fn is_window_visible(hwnd: windows::Win32::Foundation::HWND) -> bool {
+    use windows::Win32::UI::WindowsAndMessaging::IsWindowVisible;
+
+    unsafe { IsWindowVisible(hwnd).as_bool() }
 }
 
 #[cfg(windows)]
