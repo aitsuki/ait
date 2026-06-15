@@ -19,3 +19,10 @@
 - [ ] 浏览器网页中选中文本后按 `Ctrl+Alt+E`，日志显示翻译成功或可理解错误。
 - [ ] 剪贴板原本是文本时，翻译后文本剪贴板被恢复。
 - [ ] 网络不可用时，日志显示网络错误，不记录完整原文。
+
+## 设置
+
+- [ ] 设置窗口显示默认翻译提供方。
+- [ ] Google 非官方免 Key 翻译不显示 API Key 输入框。
+- [ ] OpenAI 兼容接口配置包含 Base URL、Model、API Key、超时。
+- [ ] 设置界面提示 Google 非官方免 Key 翻译不是官方 Google Cloud Translation API。

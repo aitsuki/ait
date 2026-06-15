@@ -113,6 +113,21 @@ fn run_platform() -> Result<()> {
 }
 
 #[cfg(windows)]
+fn handle_app_command(
+    command: crate::command::AppCommand,
+    settings: &crate::config::AppSettings,
+) -> Result<bool> {
+    match command {
+        crate::command::AppCommand::OpenSettings => {
+            crate::ui::settings_window::SettingsWindow::open(settings)?;
+            Ok(false)
+        }
+        crate::command::AppCommand::Exit => Ok(true),
+        _ => Ok(false),
+    }
+}
+
+#[cfg(windows)]
 struct WindowsWorkflowCapture {
     wait_ms: u64,
 }
