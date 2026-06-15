@@ -26,3 +26,11 @@
 - [ ] Google 非官方免 Key 翻译不显示 API Key 输入框。
 - [ ] OpenAI 兼容接口配置包含 Base URL、Model、API Key、超时。
 - [ ] 设置界面提示 Google 非官方免 Key 翻译不是官方 Google Cloud Translation API。
+
+## 原生 UI
+
+- [ ] 托盘图标常驻，右键菜单可用。
+- [ ] 设置窗口可保存默认提供方、OpenAI 配置、快捷键和剪贴板取词选项。
+- [ ] API Key 保存后不明文出现在 `settings.json`。
+- [ ] 翻译窗口可调整大小、可关闭、可复制译文。
+- [ ] 翻译窗口失焦后保持显示。

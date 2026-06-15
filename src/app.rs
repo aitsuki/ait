@@ -72,8 +72,9 @@ fn run_platform() -> Result<()> {
     use crate::config::{AppSettings, SettingsStore};
     use crate::hotkey::{Hotkey, RegisteredHotkey};
     use crate::ui::tray::TrayIcon;
+    use crate::ui::translate_window::TranslationWindow;
     use windows::Win32::UI::WindowsAndMessaging::{
-        DispatchMessageW, GetMessageW, TranslateMessage, MSG, WM_HOTKEY,
+        DispatchMessageW, GetMessageW, PostQuitMessage, TranslateMessage, MSG, WM_HOTKEY,
     };
 
     let settings_dir = SettingsStore::default_dir()?;
@@ -89,6 +90,7 @@ fn run_platform() -> Result<()> {
         },
         build_workflow_translator(&settings)?,
     );
+    let mut translation_window = TranslationWindow::new()?;
 
     tracing::info!("registered hotkey {}", hotkey);
 
@@ -97,22 +99,58 @@ fn run_platform() -> Result<()> {
         while GetMessageW(&mut msg, None, 0, 0).into() {
             if msg.message == WM_HOTKEY {
                 tracing::info!("TranslateSelection requested");
-                match workflow.translate_selection(&settings.target_language) {
-                    Ok(result) => {
-                        tracing::info!(
-                            provider = result.provider.as_log_name(),
-                            source_len = result.source_text.chars().count(),
-                            translated_len = result.translated_text.chars().count(),
-                            "translation completed"
-                        );
+                let _ = perform_translation(&workflow, &settings, &mut translation_window);
+            } else if msg.message == crate::ui::tray::WM_TRAY_COMMAND {
+                match msg.wParam.0 {
+                    crate::ui::tray::MENU_TRANSLATE_SELECTION => {
+                        let _ = perform_translation(&workflow, &settings, &mut translation_window);
                     }
-                    Err(err) => {
-                        tracing::warn!(error = %err, "translation failed");
+                    crate::ui::tray::MENU_SETTINGS => {
+                        let _ =
+                            handle_app_command(crate::command::AppCommand::OpenSettings, &settings);
                     }
+                    crate::ui::tray::MENU_OPEN_LOGS => {
+                        tracing::info!("OpenLogs requested");
+                    }
+                    crate::ui::tray::MENU_EXIT => {
+                        if handle_app_command(crate::command::AppCommand::Exit, &settings)? {
+                            PostQuitMessage(0);
+                        }
+                    }
+                    _ => {}
                 }
             }
             let _ = TranslateMessage(&msg);
             DispatchMessageW(&msg);
+        }
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn perform_translation<C, T>(
+    workflow: &TranslationWorkflow<C, T>,
+    settings: &crate::config::AppSettings,
+    window: &mut crate::ui::translate_window::TranslationWindow,
+) -> Result<()>
+where
+    C: WorkflowCapture,
+    T: WorkflowTranslator,
+{
+    match workflow.translate_selection(&settings.target_language) {
+        Ok(result) => {
+            window.show_loading(result.source_text.clone())?;
+            window.show_result(result.translated_text.clone())?;
+            tracing::info!(
+                provider = result.provider.as_log_name(),
+                source_len = result.source_text.chars().count(),
+                translated_len = result.translated_text.chars().count(),
+                "translation completed"
+            );
+        }
+        Err(err) => {
+            let _ = window.show_error(err.to_string());
+            tracing::warn!(error = %err, "translation failed");
         }
     }
     Ok(())
