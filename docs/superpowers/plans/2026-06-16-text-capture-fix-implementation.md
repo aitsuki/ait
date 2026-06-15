@@ -35,7 +35,7 @@
 - Modify: `tests/capture_tests.rs`
 - Modify: `src/capture.rs`
 
-- [ ] **Step 1: Write failing test-side code that expects new capture traits**
+- [x] **Step 1: Write failing test-side code that expects new capture traits**
 
 In `tests/capture_tests.rs`, change the import and fake clipboard definitions near the top to this complete block:
 
@@ -121,7 +121,7 @@ impl SelectionBackend for FakeSelection {
 }
 ```
 
-- [ ] **Step 2: Run test compile to verify it fails because production traits do not exist**
+- [x] **Step 2: Run test compile to verify it fails because production traits do not exist**
 
 Run:
 
@@ -131,7 +131,7 @@ cargo test --test capture_tests
 
 Expected: compile failure mentioning unresolved imports such as `CopyAction` or `CopyBackend`, or missing `sequence_number` in `ClipboardBackend`.
 
-- [ ] **Step 3: Add minimal trait/type definitions to `src/capture.rs`**
+- [x] **Step 3: Add minimal trait/type definitions to `src/capture.rs`**
 
 In `src/capture.rs`, replace the current `ClipboardBackend` trait with:
 
@@ -177,7 +177,7 @@ impl CopyBackend for KeyboardCopyBackend {
 }
 ```
 
-- [ ] **Step 4: Run compile again and observe remaining errors**
+- [x] **Step 4: Run compile again and observe remaining errors**
 
 Run:
 
@@ -187,7 +187,7 @@ cargo test --test capture_tests
 
 Expected: compile failures in existing tests and Windows implementation because `CaptureService::new` still expects only a clipboard backend and `WindowsClipboardBackend` lacks `sequence_number`.
 
-- [ ] **Step 5: Commit compile-only trait introduction after it builds in later tasks**
+- [x] **Step 5: Commit compile-only trait introduction after it builds in later tasks**
 
 Do not commit yet. This task intentionally leaves the tree failing until Task 2 wires the new constructor.
 
@@ -199,7 +199,7 @@ Do not commit yet. This task intentionally leaves the tree failing until Task 2 
 - Modify: `src/capture.rs`
 - Modify: `tests/capture_tests.rs`
 
-- [ ] **Step 1: Update `CaptureService` generics and constructors**
+- [x] **Step 1: Update `CaptureService` generics and constructors**
 
 In `src/capture.rs`, replace `CaptureService` and its constructor impls with:
 
@@ -266,7 +266,7 @@ where
 
 Keep the existing `capture_selected_text`, `read_clipboard_with_retry`, and `wait_for_copied_text` methods inside this impl for now.
 
-- [ ] **Step 2: Replace old copy call**
+- [x] **Step 2: Replace old copy call**
 
 In `capture_selected_text`, replace:
 
@@ -280,7 +280,7 @@ with:
 self.copy.send_copy().map_err(|err| CaptureError {
 ```
 
-- [ ] **Step 3: Update existing tests to use `FakeCopy`**
+- [x] **Step 3: Update existing tests to use `FakeCopy`**
 
 In every existing test in `tests/capture_tests.rs`, construct services with `.with_copy(FakeCopy::default())`.
 
@@ -298,7 +298,7 @@ let service = CaptureService::new(fake, Duration::from_millis(1))
     .with_copy(FakeCopy::default());
 ```
 
-- [ ] **Step 4: Temporarily adapt fake copy behavior for old tests**
+- [x] **Step 4: Temporarily adapt fake copy behavior for old tests**
 
 For tests that expect copied text to appear, add this helper in `tests/capture_tests.rs`:
 
@@ -315,7 +315,7 @@ fn simulate_copy(fake: &FakeClipboard) {
 
 Then in tests that need copied text, call `simulate_copy(service.backend())` immediately before `capture_selected_text()` is not possible because capture triggers copy internally. Leave this helper unused for now; Task 3 will move copy simulation into a composed fake.
 
-- [ ] **Step 5: Run test compile**
+- [x] **Step 5: Run test compile**
 
 Run:
 
@@ -333,7 +333,7 @@ Expected: compile errors may remain for fake copy not mutating clipboard and Win
 - Modify: `tests/capture_tests.rs`
 - Modify: `src/capture.rs`
 
-- [ ] **Step 1: Replace fake design with shared state**
+- [x] **Step 1: Replace fake design with shared state**
 
 At the top of `tests/capture_tests.rs`, add:
 
@@ -376,7 +376,7 @@ fn fake_pair() -> (FakeClipboard, FakeCopy) {
 }
 ```
 
-- [ ] **Step 2: Update existing tests to use `fake_pair()`**
+- [x] **Step 2: Update existing tests to use `fake_pair()`**
 
 For tests needing clipboard and copy, use:
 
@@ -390,7 +390,7 @@ let service = CaptureService::new(fake, Duration::from_millis(20)).with_copy(cop
 
 Update assertions from `service.backend().current` to `service.backend().0.current`.
 
-- [ ] **Step 3: Add failing test for released keys**
+- [x] **Step 3: Add failing test for released keys**
 
 Append:
 
@@ -426,7 +426,7 @@ fn capture_releases_interfering_keys_before_copy() {
 }
 ```
 
-- [ ] **Step 4: Add failing test for unchanged sequence number**
+- [x] **Step 4: Add failing test for unchanged sequence number**
 
 Append:
 
@@ -449,7 +449,7 @@ fn capture_fails_when_copy_does_not_change_clipboard_sequence() {
 }
 ```
 
-- [ ] **Step 5: Add failing test for UIA error fallback**
+- [x] **Step 5: Add failing test for UIA error fallback**
 
 Append:
 
@@ -474,7 +474,7 @@ fn capture_falls_back_to_clipboard_when_selection_backend_errors() {
 }
 ```
 
-- [ ] **Step 6: Run tests to verify RED**
+- [x] **Step 6: Run tests to verify RED**
 
 Run:
 
@@ -492,7 +492,7 @@ Expected: at least `capture_fails_when_copy_does_not_change_clipboard_sequence` 
 - Modify: `src/capture.rs`
 - Modify: `tests/capture_tests.rs`
 
-- [ ] **Step 1: Make UIA errors fallbackable**
+- [x] **Step 1: Make UIA errors fallbackable**
 
 In `capture_selected_text`, replace the initial selection block with:
 
@@ -522,7 +522,7 @@ match self.selection.read_selected_text() {
 }
 ```
 
-- [ ] **Step 2: Replace old clipboard copy flow**
+- [x] **Step 2: Replace old clipboard copy flow**
 
 Replace the clipboard portion of `capture_selected_text` with:
 
@@ -570,7 +570,7 @@ tracing::debug!(
 Ok(CapturedText { text })
 ```
 
-- [ ] **Step 3: Add sequence wait helper**
+- [x] **Step 3: Add sequence wait helper**
 
 Replace `wait_for_copied_text` with:
 
@@ -599,7 +599,7 @@ fn wait_for_clipboard_sequence_change(
 }
 ```
 
-- [ ] **Step 4: Run capture tests**
+- [x] **Step 4: Run capture tests**
 
 Run:
 
@@ -609,7 +609,7 @@ cargo test --test capture_tests
 
 Expected: tests compile and pass except any tests still using old direct fake fields. Fix field references only, without changing assertions.
 
-- [ ] **Step 5: Commit service behavior**
+- [x] **Step 5: Commit service behavior**
 
 Run:
 
@@ -628,7 +628,7 @@ Expected: commit succeeds.
 - Modify: `src/capture.rs`
 - Modify: `src/app.rs`
 
-- [ ] **Step 1: Add Windows sequence-number support**
+- [x] **Step 1: Add Windows sequence-number support**
 
 In `impl ClipboardBackend for WindowsClipboardBackend`, add:
 
@@ -640,7 +640,7 @@ fn sequence_number(&self) -> Result<u32> {
 }
 ```
 
-- [ ] **Step 2: Rename generic keyboard backend to Windows-specific copy backend**
+- [x] **Step 2: Rename generic keyboard backend to Windows-specific copy backend**
 
 In `src/capture.rs`, replace:
 
@@ -668,7 +668,7 @@ impl CopyBackend for NoCopyBackend {
 
 Update `CaptureService` default generic and constructor from `KeyboardCopyBackend` to `NoCopyBackend`.
 
-- [ ] **Step 3: Add WindowsCopyBackend**
+- [x] **Step 3: Add WindowsCopyBackend**
 
 In `src/capture.rs`, before `WindowsSelectionBackend`, add:
 
@@ -728,11 +728,11 @@ impl CopyBackend for WindowsCopyBackend {
 }
 ```
 
-- [ ] **Step 4: Remove old copy method from WindowsClipboardBackend**
+- [x] **Step 4: Remove old copy method from WindowsClipboardBackend**
 
 Delete the old `fn send_copy(&self) -> Result<()>` method from `impl ClipboardBackend for WindowsClipboardBackend`.
 
-- [ ] **Step 5: Update app assembly**
+- [x] **Step 5: Update app assembly**
 
 In `src/app.rs`, update `WindowsWorkflowCapture::capture`:
 
@@ -745,7 +745,7 @@ let service = crate::capture::CaptureService::new(
 .with_copy(crate::capture::WindowsCopyBackend);
 ```
 
-- [ ] **Step 6: Run focused tests**
+- [x] **Step 6: Run focused tests**
 
 Run:
 
@@ -755,7 +755,7 @@ cargo test --test capture_tests
 
 Expected: all capture tests pass.
 
-- [ ] **Step 7: Run full tests**
+- [x] **Step 7: Run full tests**
 
 Run:
 
@@ -765,7 +765,7 @@ cargo test
 
 Expected: all tests pass.
 
-- [ ] **Step 8: Commit Windows backend**
+- [x] **Step 8: Commit Windows backend**
 
 Run:
 
