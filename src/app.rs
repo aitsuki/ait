@@ -183,7 +183,8 @@ impl WorkflowCapture for WindowsWorkflowCapture {
             crate::capture::WindowsClipboardBackend,
             std::time::Duration::from_millis(self.wait_ms),
         )
-        .with_selection(crate::capture::WindowsSelectionBackend);
+        .with_selection(crate::capture::WindowsSelectionBackend)
+        .with_copy(crate::capture::WindowsCopyBackend);
         service
             .capture_selected_text()
             .map_err(|err| crate::error::AppError::Capture(err.to_string()))

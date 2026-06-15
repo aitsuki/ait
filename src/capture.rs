@@ -31,7 +31,7 @@ impl std::error::Error for CaptureError {}
 pub trait ClipboardBackend {
     fn read_text(&self) -> Result<Option<String>>;
     fn write_text(&self, text: &str) -> Result<()>;
-    fn send_copy(&self) -> Result<()>;
+    fn sequence_number(&self) -> Result<u32>;
 }
 
 pub trait SelectionBackend {
@@ -46,9 +46,36 @@ impl SelectionBackend for NoSelectionBackend {
     }
 }
 
-pub struct CaptureService<B, S = NoSelectionBackend> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CopyAction {
+    ReleaseCtrl,
+    ReleaseAlt,
+    ReleaseShift,
+    ReleaseWin,
+    ReleaseTab,
+    ReleaseEscape,
+    ReleaseCapsLock,
+    ReleaseC,
+    PressCtrl,
+    PressC,
+}
+
+pub trait CopyBackend {
+    fn send_copy(&self) -> Result<()>;
+}
+
+pub struct NoCopyBackend;
+
+impl CopyBackend for NoCopyBackend {
+    fn send_copy(&self) -> Result<()> {
+        Ok(())
+    }
+}
+
+pub struct CaptureService<B, S = NoSelectionBackend, C = NoCopyBackend> {
     backend: B,
     selection: S,
+    copy: C,
     copy_wait: Duration,
 }
 
@@ -57,26 +84,41 @@ impl<B: ClipboardBackend> CaptureService<B> {
         Self {
             backend,
             selection: NoSelectionBackend,
+            copy: NoCopyBackend,
             copy_wait,
         }
     }
 }
 
-impl<B, S> CaptureService<B, S>
+impl<B, S, C> CaptureService<B, S, C>
 where
     B: ClipboardBackend,
     S: SelectionBackend,
+    C: CopyBackend,
 {
     pub fn with_selection<NextSelection>(
         self,
         selection: NextSelection,
-    ) -> CaptureService<B, NextSelection>
+    ) -> CaptureService<B, NextSelection, C>
     where
         NextSelection: SelectionBackend,
     {
         CaptureService {
             backend: self.backend,
             selection,
+            copy: self.copy,
+            copy_wait: self.copy_wait,
+        }
+    }
+
+    pub fn with_copy<NextCopy>(self, copy: NextCopy) -> CaptureService<B, S, NextCopy>
+    where
+        NextCopy: CopyBackend,
+    {
+        CaptureService {
+            backend: self.backend,
+            selection: self.selection,
+            copy,
             copy_wait: self.copy_wait,
         }
     }
@@ -85,28 +127,60 @@ where
         &self.backend
     }
 
+    pub fn copy_backend(&self) -> &C {
+        &self.copy
+    }
+
     pub fn capture_selected_text(&self) -> std::result::Result<CapturedText, CaptureError> {
-        if let Some(text) = self
-            .selection
-            .read_selected_text()
-            .map_err(to_capture_error)?
-            .filter(|text| !text.trim().is_empty())
-        {
-            return Ok(CapturedText { text });
+        match self.selection.read_selected_text() {
+            Ok(Some(text)) if !text.trim().is_empty() => {
+                tracing::debug!(
+                    strategy = "uia_focused_selection",
+                    text_len = text.chars().count(),
+                    "captured selected text"
+                );
+                return Ok(CapturedText { text });
+            }
+            Ok(_) => {
+                tracing::debug!(
+                    strategy = "uia_focused_selection",
+                    "selection backend returned no text"
+                );
+            }
+            Err(err) => {
+                tracing::debug!(
+                    strategy = "uia_focused_selection",
+                    error = %err,
+                    "selection backend failed; falling back to clipboard copy"
+                );
+            }
         }
 
         let previous = self.read_clipboard_with_retry()?;
         if previous.is_some() {
             self.backend.write_text("").map_err(to_capture_error)?;
         }
-        self.backend.send_copy().map_err(|err| CaptureError {
+        let sequence_before = self.backend.sequence_number().map_err(to_capture_error)?;
+        self.copy.send_copy().map_err(|err| CaptureError {
             kind: CaptureErrorKind::CopyFailed,
             message: err.to_string(),
         })?;
 
-        let copied = self.wait_for_copied_text(previous.as_deref())?;
+        let sequence_changed = self.wait_for_clipboard_sequence_change(sequence_before)?;
+        let copied = if sequence_changed {
+            self.read_clipboard_with_retry()?
+        } else {
+            None
+        };
         if let Some(old) = previous {
             let _ = self.backend.write_text(&old);
+        }
+
+        if !sequence_changed {
+            return Err(CaptureError {
+                kind: CaptureErrorKind::CopyFailed,
+                message: "复制后剪贴板没有变化".to_string(),
+            });
         }
 
         let text = copied.unwrap_or_default();
@@ -117,6 +191,11 @@ where
             });
         }
 
+        tracing::debug!(
+            strategy = "clipboard_copy",
+            text_len = text.chars().count(),
+            "captured selected text"
+        );
         Ok(CapturedText { text })
     }
 
@@ -137,29 +216,24 @@ where
         }
     }
 
-    fn wait_for_copied_text(
+    fn wait_for_clipboard_sequence_change(
         &self,
-        previous: Option<&str>,
-    ) -> std::result::Result<Option<String>, CaptureError> {
+        previous_sequence: u32,
+    ) -> std::result::Result<bool, CaptureError> {
         let deadline = Instant::now() + self.copy_wait;
-        let mut last_read = None;
         loop {
-            match self.backend.read_text() {
-                Ok(text) => {
-                    if let Some(value) = text.as_deref() {
-                        let is_new = previous != Some(value);
-                        if is_new && !value.trim().is_empty() {
-                            return Ok(text);
-                        }
-                    }
-                    last_read = text;
-                }
+            match self.backend.sequence_number() {
+                Ok(sequence) if sequence != previous_sequence => return Ok(true),
+                Ok(_) => {}
                 Err(err) => {
-                    tracing::debug!(error = %err, "clipboard read failed while waiting for copied text");
+                    tracing::debug!(
+                        error = %err,
+                        "clipboard sequence read failed while waiting for copied text"
+                    );
                 }
             }
             if Instant::now() >= deadline {
-                return Ok(last_read);
+                return Ok(false);
             }
             thread::sleep(Duration::from_millis(10));
         }
@@ -250,14 +324,34 @@ impl ClipboardBackend for WindowsClipboardBackend {
         }
     }
 
+    fn sequence_number(&self) -> Result<u32> {
+        use windows::Win32::System::DataExchange::GetClipboardSequenceNumber;
+
+        unsafe { Ok(GetClipboardSequenceNumber()) }
+    }
+}
+
+#[cfg(windows)]
+pub struct WindowsCopyBackend;
+
+#[cfg(windows)]
+impl CopyBackend for WindowsCopyBackend {
     fn send_copy(&self) -> Result<()> {
         use windows::Win32::UI::Input::KeyboardAndMouse::{
             INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, SendInput, VIRTUAL_KEY,
-            VK_CONTROL,
+            VK_CONTROL, VK_ESCAPE, VK_LWIN, VK_MENU, VK_SHIFT, VK_TAB,
         };
 
         unsafe {
             let inputs = [
+                key_input(VK_CONTROL, true),
+                key_input(VK_MENU, true),
+                key_input(VK_SHIFT, true),
+                key_input(VK_LWIN, true),
+                key_input(VK_TAB, true),
+                key_input(VK_ESCAPE, true),
+                key_input(VIRTUAL_KEY(0x14), true),
+                key_input(VIRTUAL_KEY(b'C' as u16), true),
                 key_input(VK_CONTROL, false),
                 key_input(VIRTUAL_KEY(b'C' as u16), false),
                 key_input(VIRTUAL_KEY(b'C' as u16), true),
