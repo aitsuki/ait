@@ -70,9 +70,9 @@ impl TranslationWindow {
             .map_err(|err| AppError::Windows(format!("创建翻译窗口失败: {err}")))?;
 
             create_static(hwnd, "原文", 16, 14, 80, 20)?;
-            let source_edit = create_edit(hwnd, 16, 38, 572, 96, ID_SOURCE_EDIT)?;
+            let source_edit = create_edit(hwnd, 16, 38, 572, 96, ID_SOURCE_EDIT, false)?;
             create_static(hwnd, "译文", 16, 146, 80, 20)?;
-            let translated_edit = create_edit(hwnd, 16, 170, 572, 140, ID_TRANSLATED_EDIT)?;
+            let translated_edit = create_edit(hwnd, 16, 170, 572, 140, ID_TRANSLATED_EDIT, true)?;
             let status_text = create_static(hwnd, "", 16, 324, 360, 22)?;
             create_button(hwnd, "复制译文", 388, 322, 82, 28, ID_COPY as isize)?;
             create_button(hwnd, "重试", 476, 322, 52, 28, ID_RETRY as isize)?;
@@ -102,7 +102,7 @@ impl TranslationWindow {
         set_text(self.source_edit, &self.state.source_text)?;
         set_text(self.translated_edit, "")?;
         set_text(self.status_text, "正在翻译...")?;
-        show_window(self.hwnd);
+        show_window_at_cursor_and_raise(self.hwnd);
         tracing::info!("show translation window loading state");
         Ok(())
     }
@@ -113,7 +113,7 @@ impl TranslationWindow {
         self.state.error = None;
         set_text(self.translated_edit, &self.state.translated_text)?;
         set_text(self.status_text, "翻译完成")?;
-        show_window(self.hwnd);
+        show_window_at_cursor_and_raise(self.hwnd);
         tracing::info!("show translation window result");
         Ok(())
     }
@@ -123,7 +123,7 @@ impl TranslationWindow {
         self.state.error = Some(message);
         let message = self.state.error.as_deref().unwrap_or("翻译失败");
         set_text(self.status_text, message)?;
-        show_window(self.hwnd);
+        show_window_at_cursor_and_raise(self.hwnd);
         tracing::info!("show translation window error");
         Ok(())
     }
@@ -247,14 +247,17 @@ fn create_edit(
     width: i32,
     height: i32,
     id: isize,
+    readonly: bool,
 ) -> Result<windows::Win32::Foundation::HWND> {
     use windows::Win32::UI::WindowsAndMessaging::{
         ES_AUTOVSCROLL, ES_LEFT, ES_MULTILINE, ES_READONLY, ES_WANTRETURN, WINDOW_STYLE, WS_VSCROLL,
     };
-    let style = WINDOW_STYLE(
-        (ES_LEFT | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | ES_WANTRETURN) as u32
-            | WS_VSCROLL.0,
-    );
+    let mut style_bits =
+        (ES_LEFT | ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN) as u32 | WS_VSCROLL.0;
+    if readonly {
+        style_bits |= ES_READONLY as u32;
+    }
+    let style = WINDOW_STYLE(style_bits);
     create_control(parent, "EDIT", "", x, y, width, height, id, style)
 }
 
@@ -306,11 +309,43 @@ fn set_text(hwnd: windows::Win32::Foundation::HWND, text: &str) -> Result<()> {
 }
 
 #[cfg(windows)]
-fn show_window(hwnd: windows::Win32::Foundation::HWND) {
-    use windows::Win32::UI::WindowsAndMessaging::{SW_SHOW, ShowWindow};
+fn show_window_at_cursor_and_raise(hwnd: windows::Win32::Foundation::HWND) {
+    use windows::Win32::Foundation::{POINT, RECT};
+    use windows::Win32::Graphics::Gdi::{
+        GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromPoint,
+    };
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetCursorPos, GetWindowRect, HWND_TOPMOST, SET_WINDOW_POS_FLAGS, SW_SHOW, SWP_SHOWWINDOW,
+        SetForegroundWindow, SetWindowPos, ShowWindow,
+    };
 
     unsafe {
+        let mut cursor = POINT::default();
+        let _ = GetCursorPos(&mut cursor);
+        let mut rect = RECT::default();
+        let _ = GetWindowRect(hwnd, &mut rect);
+        let width = rect.right - rect.left;
+        let height = rect.bottom - rect.top;
+        let monitor = MonitorFromPoint(cursor, MONITOR_DEFAULTTONEAREST);
+        let mut monitor_info = MONITORINFO {
+            cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+            ..Default::default()
+        };
+        let _ = GetMonitorInfoW(monitor, &mut monitor_info);
+        let work = monitor_info.rcWork;
+        let x = (cursor.x + 12).clamp(work.left, work.right - width);
+        let y = (cursor.y + 12).clamp(work.top, work.bottom - height);
+        let _ = SetWindowPos(
+            hwnd,
+            Some(HWND_TOPMOST),
+            x,
+            y,
+            width,
+            height,
+            SET_WINDOW_POS_FLAGS(SWP_SHOWWINDOW.0),
+        );
         let _ = ShowWindow(hwnd, SW_SHOW);
+        let _ = SetForegroundWindow(hwnd);
     }
 }
 

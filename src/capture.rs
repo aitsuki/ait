@@ -1,6 +1,6 @@
 use crate::error::{AppError, Result};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CapturedText {
@@ -34,14 +34,51 @@ pub trait ClipboardBackend {
     fn send_copy(&self) -> Result<()>;
 }
 
-pub struct CaptureService<B> {
+pub trait SelectionBackend {
+    fn read_selected_text(&self) -> Result<Option<String>>;
+}
+
+pub struct NoSelectionBackend;
+
+impl SelectionBackend for NoSelectionBackend {
+    fn read_selected_text(&self) -> Result<Option<String>> {
+        Ok(None)
+    }
+}
+
+pub struct CaptureService<B, S = NoSelectionBackend> {
     backend: B,
+    selection: S,
     copy_wait: Duration,
 }
 
 impl<B: ClipboardBackend> CaptureService<B> {
     pub fn new(backend: B, copy_wait: Duration) -> Self {
-        Self { backend, copy_wait }
+        Self {
+            backend,
+            selection: NoSelectionBackend,
+            copy_wait,
+        }
+    }
+}
+
+impl<B, S> CaptureService<B, S>
+where
+    B: ClipboardBackend,
+    S: SelectionBackend,
+{
+    pub fn with_selection<NextSelection>(
+        self,
+        selection: NextSelection,
+    ) -> CaptureService<B, NextSelection>
+    where
+        NextSelection: SelectionBackend,
+    {
+        CaptureService {
+            backend: self.backend,
+            selection,
+            copy_wait: self.copy_wait,
+        }
     }
 
     pub fn backend(&self) -> &B {
@@ -49,7 +86,16 @@ impl<B: ClipboardBackend> CaptureService<B> {
     }
 
     pub fn capture_selected_text(&self) -> std::result::Result<CapturedText, CaptureError> {
-        let previous = self.backend.read_text().map_err(to_capture_error)?;
+        if let Some(text) = self
+            .selection
+            .read_selected_text()
+            .map_err(to_capture_error)?
+            .filter(|text| !text.trim().is_empty())
+        {
+            return Ok(CapturedText { text });
+        }
+
+        let previous = self.read_clipboard_with_retry()?;
         if previous.is_some() {
             self.backend.write_text("").map_err(to_capture_error)?;
         }
@@ -57,9 +103,8 @@ impl<B: ClipboardBackend> CaptureService<B> {
             kind: CaptureErrorKind::CopyFailed,
             message: err.to_string(),
         })?;
-        thread::sleep(self.copy_wait);
 
-        let copied = self.backend.read_text().map_err(to_capture_error)?;
+        let copied = self.wait_for_copied_text(previous.as_deref())?;
         if let Some(old) = previous {
             let _ = self.backend.write_text(&old);
         }
@@ -73,6 +118,51 @@ impl<B: ClipboardBackend> CaptureService<B> {
         }
 
         Ok(CapturedText { text })
+    }
+
+    fn read_clipboard_with_retry(&self) -> std::result::Result<Option<String>, CaptureError> {
+        let deadline = Instant::now() + self.copy_wait;
+        loop {
+            match self.backend.read_text() {
+                Ok(text) => return Ok(text),
+                Err(err) if Instant::now() >= deadline => return Err(to_capture_error(err)),
+                Err(_) => {}
+            }
+            if Instant::now() >= deadline {
+                return Err(to_capture_error(AppError::Capture(
+                    "读取剪贴板失败".to_string(),
+                )));
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    fn wait_for_copied_text(
+        &self,
+        previous: Option<&str>,
+    ) -> std::result::Result<Option<String>, CaptureError> {
+        let deadline = Instant::now() + self.copy_wait;
+        let mut last_read = None;
+        loop {
+            match self.backend.read_text() {
+                Ok(text) => {
+                    if let Some(value) = text.as_deref() {
+                        let is_new = previous != Some(value);
+                        if is_new && !value.trim().is_empty() {
+                            return Ok(text);
+                        }
+                    }
+                    last_read = text;
+                }
+                Err(err) => {
+                    tracing::debug!(error = %err, "clipboard read failed while waiting for copied text");
+                }
+            }
+            if Instant::now() >= deadline {
+                return Ok(last_read);
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
     }
 }
 
@@ -196,6 +286,60 @@ impl ClipboardBackend for WindowsClipboardBackend {
                         dwExtraInfo: 0,
                     },
                 },
+            }
+        }
+    }
+}
+
+#[cfg(windows)]
+pub struct WindowsSelectionBackend;
+
+#[cfg(windows)]
+impl SelectionBackend for WindowsSelectionBackend {
+    fn read_selected_text(&self) -> Result<Option<String>> {
+        use windows::Win32::System::Com::{
+            CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, CoCreateInstance, CoInitializeEx,
+        };
+        use windows::Win32::UI::Accessibility::{
+            CUIAutomation, IUIAutomation, IUIAutomationTextPattern, UIA_TextPatternId,
+        };
+        use windows::core::Interface;
+
+        unsafe {
+            let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+            let automation: IUIAutomation =
+                CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER).map_err(|err| {
+                    AppError::Capture(format!("初始化 UI Automation 失败: {err}"))
+                })?;
+            let element = automation
+                .GetFocusedElement()
+                .map_err(|err| AppError::Capture(format!("读取焦点控件失败: {err}")))?;
+            let pattern = element
+                .GetCurrentPattern(UIA_TextPatternId)
+                .map_err(|_| AppError::Capture("焦点控件不支持 UIA TextPattern".to_string()))?;
+            let text_pattern: IUIAutomationTextPattern = pattern
+                .cast()
+                .map_err(|err| AppError::Capture(format!("转换 UIA TextPattern 失败: {err}")))?;
+            let ranges = text_pattern
+                .GetSelection()
+                .map_err(|err| AppError::Capture(format!("读取 UIA 选区失败: {err}")))?;
+            let length = ranges
+                .Length()
+                .map_err(|err| AppError::Capture(format!("读取 UIA 选区数量失败: {err}")))?;
+            let mut collected = String::new();
+            for index in 0..length {
+                let range = ranges
+                    .GetElement(index)
+                    .map_err(|err| AppError::Capture(format!("读取 UIA 选区范围失败: {err}")))?;
+                let text = range
+                    .GetText(-1)
+                    .map_err(|err| AppError::Capture(format!("读取 UIA 选中文本失败: {err}")))?;
+                collected.push_str(&text.to_string());
+            }
+            if collected.trim().is_empty() {
+                Ok(None)
+            } else {
+                Ok(Some(collected))
             }
         }
     }

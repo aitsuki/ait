@@ -182,7 +182,8 @@ impl WorkflowCapture for WindowsWorkflowCapture {
         let service = crate::capture::CaptureService::new(
             crate::capture::WindowsClipboardBackend,
             std::time::Duration::from_millis(self.wait_ms),
-        );
+        )
+        .with_selection(crate::capture::WindowsSelectionBackend);
         service
             .capture_selected_text()
             .map_err(|err| crate::error::AppError::Capture(err.to_string()))
