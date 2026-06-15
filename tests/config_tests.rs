@@ -48,3 +48,13 @@ fn corrupted_config_is_backed_up_and_defaults_are_returned() {
         .collect();
     assert_eq!(backups.len(), 1);
 }
+
+#[test]
+fn can_select_openai_compatible_provider() {
+    let mut settings = AppSettings::default();
+    settings.default_provider = ProviderKind::OpenAiCompatible;
+    settings.openai.encrypted_api_key = Some("encrypted".to_string());
+
+    assert_eq!(settings.default_provider, ProviderKind::OpenAiCompatible);
+    assert!(settings.openai.encrypted_api_key.is_some());
+}

@@ -10,6 +10,12 @@ pub trait WorkflowTranslator {
     fn translate_blocking(&self, request: TranslationRequest) -> Result<TranslationResponse>;
 }
 
+impl<T: WorkflowTranslator + ?Sized> WorkflowTranslator for Box<T> {
+    fn translate_blocking(&self, request: TranslationRequest) -> Result<TranslationResponse> {
+        (**self).translate_blocking(request)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TranslationWorkflowResult {
     pub source_text: String,
@@ -81,7 +87,7 @@ fn run_platform() -> Result<()> {
         WindowsWorkflowCapture {
             wait_ms: settings.clipboard_capture.copy_wait_ms,
         },
-        BlockingGoogleTranslator(crate::translator::google_free::GoogleFreeTranslator::new()),
+        build_workflow_translator(&settings)?,
     );
 
     tracing::info!("registered hotkey {}", hotkey);
@@ -150,6 +156,47 @@ struct BlockingGoogleTranslator(crate::translator::google_free::GoogleFreeTransl
 
 #[cfg(windows)]
 impl WorkflowTranslator for BlockingGoogleTranslator {
+    fn translate_blocking(
+        &self,
+        request: crate::translator::TranslationRequest,
+    ) -> Result<crate::translator::TranslationResponse> {
+        crate::translator::translate_blocking(&self.0, request)
+    }
+}
+
+#[cfg(windows)]
+fn build_workflow_translator(
+    settings: &crate::config::AppSettings,
+) -> Result<Box<dyn WorkflowTranslator>> {
+    match settings.default_provider {
+        crate::config::ProviderKind::GoogleFree => Ok(Box::new(BlockingGoogleTranslator(
+            crate::translator::google_free::GoogleFreeTranslator::new(),
+        ))),
+        crate::config::ProviderKind::OpenAiCompatible => {
+            let encrypted = settings
+                .openai
+                .encrypted_api_key
+                .as_ref()
+                .ok_or_else(|| crate::error::AppError::Translate("API Key 缺失".to_string()))?;
+            let api_key = crate::secret::SecretStore::new("ait-openai-api-key").unprotect(encrypted)?;
+            let translator = crate::translator::openai_compatible::OpenAiCompatibleTranslator::new(
+                crate::translator::openai_compatible::OpenAiCompatibleConfig {
+                    base_url: settings.openai.base_url.clone(),
+                    api_key,
+                    model: settings.openai.model.clone(),
+                    timeout_secs: settings.openai.timeout_secs,
+                },
+            )?;
+            Ok(Box::new(BlockingOpenAiTranslator(translator)))
+        }
+    }
+}
+
+#[cfg(windows)]
+struct BlockingOpenAiTranslator(crate::translator::openai_compatible::OpenAiCompatibleTranslator);
+
+#[cfg(windows)]
+impl WorkflowTranslator for BlockingOpenAiTranslator {
     fn translate_blocking(
         &self,
         request: crate::translator::TranslationRequest,
