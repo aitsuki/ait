@@ -77,6 +77,12 @@ fn run_platform() -> Result<()> {
     let hotkey = settings.hotkey.parse::<Hotkey>()?;
     let _tray = TrayIcon::create()?;
     let _registered = RegisteredHotkey::register(1, hotkey)?;
+    let workflow = TranslationWorkflow::new(
+        WindowsWorkflowCapture {
+            wait_ms: settings.clipboard_capture.copy_wait_ms,
+        },
+        BlockingGoogleTranslator(crate::translator::google_free::GoogleFreeTranslator::new()),
+    );
 
     tracing::info!("registered hotkey {}", hotkey);
 
@@ -85,10 +91,54 @@ fn run_platform() -> Result<()> {
         while GetMessageW(&mut msg, None, 0, 0).into() {
             if msg.message == WM_HOTKEY {
                 tracing::info!("TranslateSelection requested");
+                match workflow.translate_selection(&settings.target_language) {
+                    Ok(result) => {
+                        tracing::info!(
+                            provider = result.provider.as_log_name(),
+                            source_len = result.source_text.chars().count(),
+                            translated_len = result.translated_text.chars().count(),
+                            "translation completed"
+                        );
+                    }
+                    Err(err) => {
+                        tracing::warn!(error = %err, "translation failed");
+                    }
+                }
             }
             let _ = TranslateMessage(&msg);
             DispatchMessageW(&msg);
         }
     }
     Ok(())
+}
+
+#[cfg(windows)]
+struct WindowsWorkflowCapture {
+    wait_ms: u64,
+}
+
+#[cfg(windows)]
+impl WorkflowCapture for WindowsWorkflowCapture {
+    fn capture(&self) -> Result<crate::capture::CapturedText> {
+        let service = crate::capture::CaptureService::new(
+            crate::capture::WindowsClipboardBackend,
+            std::time::Duration::from_millis(self.wait_ms),
+        );
+        service
+            .capture_selected_text()
+            .map_err(|err| crate::error::AppError::Capture(err.to_string()))
+    }
+}
+
+#[cfg(windows)]
+struct BlockingGoogleTranslator(crate::translator::google_free::GoogleFreeTranslator);
+
+#[cfg(windows)]
+impl WorkflowTranslator for BlockingGoogleTranslator {
+    fn translate_blocking(
+        &self,
+        request: crate::translator::TranslationRequest,
+    ) -> Result<crate::translator::TranslationResponse> {
+        crate::translator::translate_blocking(&self.0, request)
+    }
 }

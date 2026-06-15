@@ -79,3 +79,12 @@ pub trait Translator: Send + Sync {
         request: TranslationRequest,
     ) -> Pin<Box<dyn Future<Output = Result<TranslationResponse>> + Send + 'a>>;
 }
+
+pub fn translate_blocking<T: Translator>(
+    translator: &T,
+    request: TranslationRequest,
+) -> crate::error::Result<TranslationResponse> {
+    let runtime = tokio::runtime::Runtime::new()
+        .map_err(|err| crate::error::AppError::Translate(format!("启动翻译运行时失败: {err}")))?;
+    runtime.block_on(translator.translate(request))
+}
