@@ -7,8 +7,7 @@ const ID_TRANSLATED_EDIT: isize = 2102;
 #[cfg(windows)]
 const ID_TRANSLATE: usize = 2001;
 #[cfg(windows)]
-pub const WM_TRANSLATE_WINDOW_SOURCE: u32 =
-    windows::Win32::UI::WindowsAndMessaging::WM_APP + 30;
+pub const WM_TRANSLATE_WINDOW_SOURCE: u32 = windows::Win32::UI::WindowsAndMessaging::WM_APP + 30;
 
 #[derive(Debug, Clone)]
 pub struct TranslationWindowState {
@@ -264,12 +263,7 @@ unsafe extern "system" fn default_wnd_proc(
         let command = wparam.0 & 0xffff;
         match command {
             ID_TRANSLATE => unsafe {
-                let _ = PostMessageW(
-                    Some(hwnd),
-                    WM_TRANSLATE_WINDOW_SOURCE,
-                    WPARAM(0),
-                    LPARAM(0),
-                );
+                let _ = PostMessageW(Some(hwnd), WM_TRANSLATE_WINDOW_SOURCE, WPARAM(0), LPARAM(0));
                 return LRESULT(0);
             },
             _ => {}
