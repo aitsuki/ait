@@ -4,7 +4,10 @@ use ait::app::{
 };
 use ait::capture::CapturedText;
 use ait::translator::{ProviderKind, TranslationRequest, TranslationResponse};
-use ait::ui::translate_window::{ShowAction, ShowMode, WindowZOrder, show_action, window_z_order};
+use ait::ui::translate_window::{
+    EditShortcutAction, ShowAction, ShowMode, WindowZOrder, edit_shortcut_action, show_action,
+    window_z_order,
+};
 use std::cell::RefCell;
 
 struct FakeCapture;
@@ -189,4 +192,17 @@ fn tray_show_window_menu_id_maps_to_show_window_action() {
         ait::app::tray_action_from_menu_id(ait::ui::tray::MENU_SHOW_TRANSLATION_WINDOW),
         ait::app::TrayAction::ShowTranslationWindow
     );
+}
+
+#[test]
+fn edit_shortcut_action_handles_ctrl_a_and_escape() {
+    assert_eq!(
+        edit_shortcut_action(0x41, true),
+        EditShortcutAction::SelectAll
+    );
+    assert_eq!(
+        edit_shortcut_action(0x1B, false),
+        EditShortcutAction::HideWindow
+    );
+    assert_eq!(edit_shortcut_action(0x42, false), EditShortcutAction::None);
 }

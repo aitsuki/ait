@@ -234,9 +234,40 @@ fn run_platform() -> Result<()> {
                     }
                     TrayAction::Unknown => {}
                 }
+            } else if msg.message == crate::ui::translate_window::WM_TRANSLATE_WINDOW_SOURCE {
+                let _ =
+                    perform_window_text_translation(&workflow, &settings, &mut translation_window);
             }
             let _ = TranslateMessage(&msg);
             DispatchMessageW(&msg);
+        }
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn perform_window_text_translation<C, T>(
+    workflow: &TranslationWorkflow<C, T>,
+    settings: &crate::config::AppSettings,
+    window: &mut crate::ui::translate_window::TranslationWindow,
+) -> Result<()>
+where
+    C: WorkflowCapture,
+    T: WorkflowTranslator,
+{
+    let source_text = window.source_text()?;
+    match workflow.translate_text_with_observer(&source_text, &settings.target_language, window) {
+        Ok(result) => {
+            tracing::info!(
+                provider = result.provider.as_log_name(),
+                source_len = result.source_text.chars().count(),
+                translated_len = result.translated_text.chars().count(),
+                "window text translation completed"
+            );
+        }
+        Err(err) => {
+            let _ = window.show_error(err.to_string());
+            tracing::warn!(error = %err, "window text translation failed");
         }
     }
     Ok(())

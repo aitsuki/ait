@@ -5,11 +5,10 @@ const ID_SOURCE_EDIT: isize = 2101;
 #[cfg(windows)]
 const ID_TRANSLATED_EDIT: isize = 2102;
 #[cfg(windows)]
-const ID_COPY: usize = 2001;
+const ID_TRANSLATE: usize = 2001;
 #[cfg(windows)]
-const ID_RETRY: usize = 2002;
-#[cfg(windows)]
-const ID_SETTINGS: usize = 2003;
+pub const WM_TRANSLATE_WINDOW_SOURCE: u32 =
+    windows::Win32::UI::WindowsAndMessaging::WM_APP + 30;
 
 #[derive(Debug, Clone)]
 pub struct TranslationWindowState {
@@ -56,6 +55,26 @@ pub fn show_action(is_visible: bool, is_foreground: bool) -> ShowAction {
         ShowAction::ActivateOnly
     } else {
         ShowAction::KeepPosition
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EditShortcutAction {
+    None,
+    SelectAll,
+    HideWindow,
+}
+
+pub fn edit_shortcut_action(vk: u32, ctrl_down: bool) -> EditShortcutAction {
+    const VK_A: u32 = 0x41;
+    const VK_ESCAPE: u32 = 0x1B;
+
+    if ctrl_down && vk == VK_A {
+        EditShortcutAction::SelectAll
+    } else if vk == VK_ESCAPE {
+        EditShortcutAction::HideWindow
+    } else {
+        EditShortcutAction::None
     }
 }
 
@@ -112,9 +131,9 @@ impl TranslationWindow {
             create_static(hwnd, "译文", 16, 146, 80, 20)?;
             let translated_edit = create_edit(hwnd, 16, 170, 572, 140, ID_TRANSLATED_EDIT, true)?;
             let status_text = create_static(hwnd, "", 16, 324, 360, 22)?;
-            create_button(hwnd, "复制译文", 388, 322, 82, 28, ID_COPY as isize)?;
-            create_button(hwnd, "重试", 476, 322, 52, 28, ID_RETRY as isize)?;
-            create_button(hwnd, "设置", 534, 322, 52, 28, ID_SETTINGS as isize)?;
+            create_button(hwnd, "翻译", 534, 322, 52, 28, ID_TRANSLATE as isize)?;
+            install_edit_subclass(source_edit)?;
+            install_edit_subclass(translated_edit)?;
 
             Ok(Self {
                 hwnd,
@@ -191,6 +210,10 @@ impl TranslationWindow {
     pub fn is_visible(&self) -> bool {
         is_window_visible(self.hwnd)
     }
+
+    pub fn source_text(&self) -> Result<String> {
+        get_text(self.source_edit)
+    }
 }
 
 #[cfg(windows)]
@@ -218,10 +241,9 @@ unsafe extern "system" fn default_wnd_proc(
     wparam: windows::Win32::Foundation::WPARAM,
     lparam: windows::Win32::Foundation::LPARAM,
 ) -> windows::Win32::Foundation::LRESULT {
-    use crate::capture::ClipboardBackend;
     use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
     use windows::Win32::UI::WindowsAndMessaging::{
-        DefWindowProcW, GetDlgItemTextW, PostMessageW, SW_HIDE, ShowWindow, WM_CLOSE, WM_COMMAND,
+        DefWindowProcW, PostMessageW, SW_HIDE, ShowWindow, WM_CLOSE, WM_COMMAND, WM_KEYDOWN,
     };
 
     if msg == WM_CLOSE {
@@ -230,36 +252,22 @@ unsafe extern "system" fn default_wnd_proc(
         }
         return LRESULT(0);
     }
+    if msg == WM_KEYDOWN
+        && edit_shortcut_action(wparam.0 as u32, false) == EditShortcutAction::HideWindow
+    {
+        unsafe {
+            let _ = ShowWindow(hwnd, SW_HIDE);
+        }
+        return LRESULT(0);
+    }
     if msg == WM_COMMAND {
         let command = wparam.0 & 0xffff;
         match command {
-            ID_COPY => {
-                let mut buf = [0u16; 8192];
-                let len =
-                    unsafe { GetDlgItemTextW(hwnd, ID_TRANSLATED_EDIT as i32, &mut buf) } as usize;
-                let text = String::from_utf16_lossy(&buf[..len]);
-                if !text.trim().is_empty() {
-                    let backend = crate::capture::WindowsClipboardBackend;
-                    if let Err(err) = backend.write_text(&text) {
-                        tracing::warn!(error = %err, "copy translated text failed");
-                    }
-                }
-                return LRESULT(0);
-            }
-            ID_RETRY => unsafe {
+            ID_TRANSLATE => unsafe {
                 let _ = PostMessageW(
                     Some(hwnd),
-                    crate::ui::tray::WM_TRAY_COMMAND,
-                    WPARAM(crate::ui::tray::MENU_SHOW_TRANSLATION_WINDOW),
-                    LPARAM(0),
-                );
-                return LRESULT(0);
-            },
-            ID_SETTINGS => unsafe {
-                let _ = PostMessageW(
-                    Some(hwnd),
-                    crate::ui::tray::WM_TRAY_COMMAND,
-                    WPARAM(crate::ui::tray::MENU_SETTINGS),
+                    WM_TRANSLATE_WINDOW_SOURCE,
+                    WPARAM(0),
                     LPARAM(0),
                 );
                 return LRESULT(0);
@@ -269,6 +277,60 @@ unsafe extern "system" fn default_wnd_proc(
     }
 
     unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
+}
+
+#[cfg(windows)]
+unsafe extern "system" fn edit_subclass_proc(
+    hwnd: windows::Win32::Foundation::HWND,
+    msg: u32,
+    wparam: windows::Win32::Foundation::WPARAM,
+    lparam: windows::Win32::Foundation::LPARAM,
+    _id_subclass: usize,
+    _ref_data: usize,
+) -> windows::Win32::Foundation::LRESULT {
+    use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
+    use windows::Win32::UI::Controls::EM_SETSEL;
+    use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_CONTROL};
+    use windows::Win32::UI::Shell::DefSubclassProc;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetParent, PostMessageW, SendMessageW, WM_CLOSE, WM_KEYDOWN,
+    };
+
+    if msg == WM_KEYDOWN {
+        let ctrl_down = unsafe { GetKeyState(VK_CONTROL.0 as i32) } < 0;
+        match edit_shortcut_action(wparam.0 as u32, ctrl_down) {
+            EditShortcutAction::SelectAll => {
+                unsafe {
+                    let _ = SendMessageW(hwnd, EM_SETSEL, Some(WPARAM(0)), Some(LPARAM(-1)));
+                }
+                return LRESULT(0);
+            }
+            EditShortcutAction::HideWindow => {
+                unsafe {
+                    if let Ok(parent) = GetParent(hwnd) {
+                        let _ = PostMessageW(Some(parent), WM_CLOSE, WPARAM(0), LPARAM(0));
+                    }
+                }
+                return LRESULT(0);
+            }
+            EditShortcutAction::None => {}
+        }
+    }
+
+    unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) }
+}
+
+#[cfg(windows)]
+fn install_edit_subclass(hwnd: windows::Win32::Foundation::HWND) -> Result<()> {
+    use windows::Win32::UI::Shell::SetWindowSubclass;
+
+    unsafe {
+        if SetWindowSubclass(hwnd, Some(edit_subclass_proc), 1, 0).as_bool() {
+            Ok(())
+        } else {
+            Err(AppError::Windows("安装编辑框快捷键处理失败".to_string()))
+        }
+    }
 }
 
 #[cfg(windows)]
@@ -383,6 +445,21 @@ fn set_text(hwnd: windows::Win32::Foundation::HWND, text: &str) -> Result<()> {
     unsafe {
         SetWindowTextW(hwnd, PCWSTR(wide(text).as_ptr()))
             .map_err(|err| AppError::Windows(format!("设置窗口文本失败: {err}")))
+    }
+}
+
+#[cfg(windows)]
+fn get_text(hwnd: windows::Win32::Foundation::HWND) -> Result<String> {
+    use windows::Win32::UI::WindowsAndMessaging::{GetWindowTextLengthW, GetWindowTextW};
+
+    unsafe {
+        let len = GetWindowTextLengthW(hwnd);
+        if len == 0 {
+            return Ok(String::new());
+        }
+        let mut buf = vec![0u16; len as usize + 1];
+        let copied = GetWindowTextW(hwnd, &mut buf);
+        Ok(String::from_utf16_lossy(&buf[..copied as usize]))
     }
 }
 
