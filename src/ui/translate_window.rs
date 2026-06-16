@@ -17,6 +17,13 @@ pub struct TranslationWindowState {
     pub error: Option<String>,
 }
 
+impl TranslationWindowState {
+    pub fn mark_starting(&mut self) {
+        self.loading = true;
+        self.error = None;
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ShowMode {
     Starting,
@@ -251,12 +258,9 @@ impl TranslationWindow {
     }
 
     pub fn show_starting(&mut self) -> Result<()> {
-        self.state.source_text.clear();
-        self.state.translated_text.clear();
-        self.state.loading = true;
-        self.state.error = None;
-        set_text(self.source_edit, "")?;
-        set_text(self.translated_edit, "")?;
+        self.state.mark_starting();
+        set_text(self.source_edit, &self.state.source_text)?;
+        set_text(self.translated_edit, &self.state.translated_text)?;
         set_text(self.status_text, "正在取词...")?;
         show_window_at_cursor(self.hwnd, ShowMode::Starting);
         tracing::info!("show translation window starting state");

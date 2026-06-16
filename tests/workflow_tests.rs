@@ -5,9 +5,10 @@ use ait::app::{
 use ait::capture::CapturedText;
 use ait::translator::{ProviderKind, TranslationRequest, TranslationResponse};
 use ait::ui::translate_window::{
-    EditCharAction, EditShortcutAction, ShowAction, ShowMode, WindowZOrder, edit_char_action,
-    edit_display_text, edit_shortcut_action, is_third_click_after_double_click,
-    paragraph_selection_range_utf16, show_action, window_z_order,
+    EditCharAction, EditShortcutAction, ShowAction, ShowMode, TranslationWindowState,
+    WindowZOrder, edit_char_action, edit_display_text, edit_shortcut_action,
+    is_third_click_after_double_click, paragraph_selection_range_utf16, show_action,
+    window_z_order,
 };
 use std::cell::RefCell;
 
@@ -195,6 +196,23 @@ fn translation_starting_window_does_not_take_focus() {
     assert!(ShowMode::Loading.activates_window());
     assert!(ShowMode::Result.activates_window());
     assert!(ShowMode::Error.activates_window());
+}
+
+#[test]
+fn translation_starting_state_preserves_existing_text() {
+    let mut state = TranslationWindowState {
+        source_text: "previous source".to_string(),
+        translated_text: "previous translation".to_string(),
+        loading: false,
+        error: Some("old error".to_string()),
+    };
+
+    state.mark_starting();
+
+    assert_eq!(state.source_text, "previous source");
+    assert_eq!(state.translated_text, "previous translation");
+    assert!(state.loading);
+    assert_eq!(state.error, None);
 }
 
 #[test]
