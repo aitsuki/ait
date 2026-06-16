@@ -82,7 +82,8 @@ pub fn translation_window_layout(client_width: i32, client_height: i32) -> Trans
     const STATUS_HEIGHT: i32 = 22;
     const BUTTON_WIDTH: i32 = 52;
     const BUTTON_HEIGHT: i32 = 28;
-    const MIN_EDIT_HEIGHT: i32 = 36;
+    const MIN_EDIT_HEIGHT: i32 = 64;
+    const MAX_SOURCE_EDIT_HEIGHT: i32 = 200;
 
     let usable_width = client_width.max(1);
     let usable_height = client_height.max(1);
@@ -103,10 +104,13 @@ pub fn translation_window_layout(client_width: i32, client_height: i32) -> Trans
         height: label_height,
     };
     let source_edit_y = (source_label.y + label_height + 4).min(usable_height - 1);
-    let controls_reserved = label_height + GAP * 3 + status_height;
-    let available_edit_height = (bottom_y - source_edit_y - controls_reserved).max(2);
-    let source_edit_height = (available_edit_height / 3)
-        .clamp(1, MIN_EDIT_HEIGHT.max(1))
+    let edit_area_bottom = (bottom_y - GAP).max(source_edit_y + 1);
+    let fixed_between_edits = GAP + label_height + 4;
+    let available_edit_height = (edit_area_bottom - source_edit_y - fixed_between_edits).max(2);
+    let half_edit_height = available_edit_height / 2;
+    let source_edit_height = half_edit_height
+        .min(MAX_SOURCE_EDIT_HEIGHT)
+        .max(MIN_EDIT_HEIGHT.min(half_edit_height.max(1)))
         .min(usable_height - source_edit_y);
     let translated_label_y = source_edit_y + source_edit_height + GAP;
     let translated_label_y = translated_label_y.min(usable_height - 1);
