@@ -5,10 +5,10 @@ use ait::app::{
 use ait::capture::CapturedText;
 use ait::translator::{ProviderKind, TranslationRequest, TranslationResponse};
 use ait::ui::translate_window::{
-    EditCharAction, EditShortcutAction, ShowAction, ShowMode, TranslationWindowState,
-    WindowZOrder, edit_char_action, edit_display_text, edit_shortcut_action,
-    is_third_click_after_double_click, paragraph_selection_range_utf16, show_action,
-    window_z_order,
+    EditCharAction, EditShortcutAction, ShowAction, ShowMode, TranslationWindowState, WindowZOrder,
+    edit_char_action, edit_display_text, edit_shortcut_action, is_third_click_after_double_click,
+    paragraph_selection_range_utf16, show_action, translation_window_layout,
+    translation_window_min_client_size, window_z_order,
 };
 use std::cell::RefCell;
 
@@ -240,6 +240,42 @@ fn global_hotkey_is_ignored_while_translation_window_is_foreground() {
 #[test]
 fn translation_window_is_not_topmost_without_pin_feature() {
     assert_eq!(window_z_order(), WindowZOrder::NotTopmost);
+}
+
+#[test]
+fn translation_window_layout_resizes_content_with_client_area() {
+    let small = translation_window_layout(620, 420);
+    let large = translation_window_layout(820, 620);
+
+    assert!(large.source_edit.width > small.source_edit.width);
+    assert!(large.translated_edit.width > small.translated_edit.width);
+    assert!(large.translated_edit.height > small.translated_edit.height);
+    assert!(large.status_text.y > small.status_text.y);
+    assert!(large.translate_button.x > small.translate_button.x);
+}
+
+#[test]
+fn translation_window_layout_keeps_controls_inside_small_client_area() {
+    let layout = translation_window_layout(180, 160);
+
+    for rect in [
+        layout.source_label,
+        layout.source_edit,
+        layout.translated_label,
+        layout.translated_edit,
+        layout.status_text,
+        layout.translate_button,
+    ] {
+        assert!(rect.width > 0);
+        assert!(rect.height > 0);
+        assert!(rect.x + rect.width <= 180);
+        assert!(rect.y + rect.height <= 160);
+    }
+}
+
+#[test]
+fn translation_window_has_minimum_resizable_client_area() {
+    assert_eq!(translation_window_min_client_size(), (420, 300));
 }
 
 #[test]

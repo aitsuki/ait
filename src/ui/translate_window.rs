@@ -5,6 +5,12 @@ const ID_SOURCE_EDIT: isize = 2101;
 #[cfg(windows)]
 const ID_TRANSLATED_EDIT: isize = 2102;
 #[cfg(windows)]
+const ID_SOURCE_LABEL: isize = 2103;
+#[cfg(windows)]
+const ID_TRANSLATED_LABEL: isize = 2104;
+#[cfg(windows)]
+const ID_STATUS_TEXT: isize = 2105;
+#[cfg(windows)]
 const ID_TRANSLATE: usize = 2001;
 #[cfg(windows)]
 pub const WM_TRANSLATE_WINDOW_SOURCE: u32 = windows::Win32::UI::WindowsAndMessaging::WM_APP + 30;
@@ -45,6 +51,103 @@ pub enum WindowZOrder {
 
 pub fn window_z_order() -> WindowZOrder {
     WindowZOrder::NotTopmost
+}
+
+pub fn translation_window_min_client_size() -> (i32, i32) {
+    (420, 300)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ControlRect {
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TranslationWindowLayout {
+    pub source_label: ControlRect,
+    pub source_edit: ControlRect,
+    pub translated_label: ControlRect,
+    pub translated_edit: ControlRect,
+    pub status_text: ControlRect,
+    pub translate_button: ControlRect,
+}
+
+pub fn translation_window_layout(client_width: i32, client_height: i32) -> TranslationWindowLayout {
+    const MARGIN: i32 = 16;
+    const GAP: i32 = 10;
+    const LABEL_HEIGHT: i32 = 20;
+    const STATUS_HEIGHT: i32 = 22;
+    const BUTTON_WIDTH: i32 = 52;
+    const BUTTON_HEIGHT: i32 = 28;
+    const MIN_EDIT_HEIGHT: i32 = 36;
+
+    let usable_width = client_width.max(1);
+    let usable_height = client_height.max(1);
+    let content_x = MARGIN.min(usable_width - 1);
+    let content_width = (usable_width - content_x - MARGIN).max(1);
+    let button_width = BUTTON_WIDTH.min(content_width);
+    let button_height = BUTTON_HEIGHT.min(usable_height);
+    let button_x = (usable_width - MARGIN - button_width).clamp(0, usable_width - button_width);
+    let bottom_y = (usable_height - MARGIN - button_height).clamp(0, usable_height - button_height);
+    let status_width = (button_x - MARGIN - GAP).max(1);
+    let label_height = LABEL_HEIGHT.min(usable_height);
+    let status_height = STATUS_HEIGHT.min(usable_height);
+
+    let source_label = ControlRect {
+        x: content_x,
+        y: 14.min(usable_height - label_height),
+        width: 80.min(content_width),
+        height: label_height,
+    };
+    let source_edit_y = (source_label.y + label_height + 4).min(usable_height - 1);
+    let controls_reserved = label_height + GAP * 3 + status_height;
+    let available_edit_height = (bottom_y - source_edit_y - controls_reserved).max(2);
+    let source_edit_height = (available_edit_height / 3)
+        .clamp(1, MIN_EDIT_HEIGHT.max(1))
+        .min(usable_height - source_edit_y);
+    let translated_label_y = source_edit_y + source_edit_height + GAP;
+    let translated_label_y = translated_label_y.min(usable_height - 1);
+    let translated_edit_y = (translated_label_y + label_height + 4).min(usable_height - 1);
+    let translated_edit_height = (bottom_y - translated_edit_y - GAP)
+        .max(1)
+        .min(usable_height - translated_edit_y);
+
+    TranslationWindowLayout {
+        source_label,
+        source_edit: ControlRect {
+            x: content_x,
+            y: source_edit_y,
+            width: content_width,
+            height: source_edit_height,
+        },
+        translated_label: ControlRect {
+            x: content_x,
+            y: translated_label_y,
+            width: 80.min(content_width),
+            height: label_height.min(usable_height - translated_label_y),
+        },
+        translated_edit: ControlRect {
+            x: content_x,
+            y: translated_edit_y,
+            width: content_width,
+            height: translated_edit_height,
+        },
+        status_text: ControlRect {
+            x: content_x,
+            y: (bottom_y + 3).min(usable_height - status_height),
+            width: status_width,
+            height: status_height,
+        },
+        translate_button: ControlRect {
+            x: button_x,
+            y: bottom_y,
+            width: button_width,
+            height: button_height,
+        },
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -175,9 +278,12 @@ pub fn is_third_click_after_double_click(
 #[cfg(windows)]
 pub struct TranslationWindow {
     hwnd: windows::Win32::Foundation::HWND,
+    source_label: windows::Win32::Foundation::HWND,
     source_edit: windows::Win32::Foundation::HWND,
+    translated_label: windows::Win32::Foundation::HWND,
     translated_edit: windows::Win32::Foundation::HWND,
     status_text: windows::Win32::Foundation::HWND,
+    translate_button: windows::Win32::Foundation::HWND,
     state: TranslationWindowState,
 }
 
@@ -185,9 +291,10 @@ pub struct TranslationWindow {
 impl TranslationWindow {
     pub fn new() -> Result<Self> {
         use windows::Win32::Foundation::HWND;
+        use windows::Win32::Graphics::Gdi::{COLOR_WINDOW, GetSysColorBrush};
         use windows::Win32::UI::WindowsAndMessaging::{
             CW_USEDEFAULT, CreateWindowExW, IDC_ARROW, LoadCursorW, RegisterClassW,
-            WINDOW_EX_STYLE, WNDCLASSW, WS_CAPTION, WS_OVERLAPPED, WS_SYSMENU, WS_THICKFRAME,
+            WINDOW_EX_STYLE, WNDCLASSW,
         };
         use windows::core::PCWSTR;
 
@@ -197,6 +304,7 @@ impl TranslationWindow {
                 lpfnWndProc: Some(default_wnd_proc),
                 lpszClassName: PCWSTR(class_name.as_ptr()),
                 hCursor: LoadCursorW(None, IDC_ARROW).unwrap_or_default(),
+                hbrBackground: GetSysColorBrush(COLOR_WINDOW),
                 ..Default::default()
             };
             let atom = RegisterClassW(&class);
@@ -208,7 +316,7 @@ impl TranslationWindow {
                 WINDOW_EX_STYLE::default(),
                 PCWSTR(class_name.as_ptr()),
                 PCWSTR(wide("ait 翻译").as_ptr()),
-                WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME,
+                translation_window_style(),
                 CW_USEDEFAULT,
                 CW_USEDEFAULT,
                 620,
@@ -220,27 +328,35 @@ impl TranslationWindow {
             )
             .map_err(|err| AppError::Windows(format!("创建翻译窗口失败: {err}")))?;
 
-            create_static(hwnd, "原文", 16, 14, 80, 20)?;
+            let source_label = create_static(hwnd, "原文", 16, 14, 80, 20, ID_SOURCE_LABEL)?;
             let source_edit = create_edit(hwnd, 16, 38, 572, 96, ID_SOURCE_EDIT, false)?;
-            create_static(hwnd, "译文", 16, 146, 80, 20)?;
+            let translated_label =
+                create_static(hwnd, "译文", 16, 146, 80, 20, ID_TRANSLATED_LABEL)?;
             let translated_edit = create_edit(hwnd, 16, 170, 572, 140, ID_TRANSLATED_EDIT, true)?;
-            let status_text = create_static(hwnd, "", 16, 324, 360, 22)?;
-            create_button(hwnd, "翻译", 534, 322, 52, 28, ID_TRANSLATE as isize)?;
+            let status_text = create_static(hwnd, "", 16, 324, 360, 22, ID_STATUS_TEXT)?;
+            let translate_button =
+                create_button(hwnd, "翻译", 534, 322, 52, 28, ID_TRANSLATE as isize)?;
             install_edit_subclass(source_edit)?;
             install_edit_subclass(translated_edit)?;
 
-            Ok(Self {
+            let this = Self {
                 hwnd,
+                source_label,
                 source_edit,
+                translated_label,
                 translated_edit,
                 status_text,
+                translate_button,
                 state: TranslationWindowState {
                     source_text: String::new(),
                     translated_text: String::new(),
                     loading: false,
                     error: None,
                 },
-            })
+            };
+            this.apply_layout()?;
+
+            Ok(this)
         }
     }
 
@@ -305,6 +421,24 @@ impl TranslationWindow {
     pub fn source_text(&self) -> Result<String> {
         get_text(self.source_edit)
     }
+
+    fn apply_layout(&self) -> Result<()> {
+        use windows::Win32::Foundation::RECT;
+        use windows::Win32::UI::WindowsAndMessaging::GetClientRect;
+
+        unsafe {
+            let mut rect = RECT::default();
+            let _ = GetClientRect(self.hwnd, &mut rect);
+            let layout = translation_window_layout(rect.right - rect.left, rect.bottom - rect.top);
+            move_window(self.source_label, layout.source_label)?;
+            move_window(self.source_edit, layout.source_edit)?;
+            move_window(self.translated_label, layout.translated_label)?;
+            move_window(self.translated_edit, layout.translated_edit)?;
+            move_window(self.status_text, layout.status_text)?;
+            move_window(self.translate_button, layout.translate_button)?;
+        }
+        Ok(())
+    }
 }
 
 #[cfg(windows)]
@@ -333,8 +467,10 @@ unsafe extern "system" fn default_wnd_proc(
     lparam: windows::Win32::Foundation::LPARAM,
 ) -> windows::Win32::Foundation::LRESULT {
     use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
+    use windows::Win32::Graphics::Gdi::InvalidateRect;
     use windows::Win32::UI::WindowsAndMessaging::{
-        DefWindowProcW, PostMessageW, SW_HIDE, ShowWindow, WM_CLOSE, WM_COMMAND, WM_KEYDOWN,
+        DefWindowProcW, PostMessageW, SW_HIDE, ShowWindow, WM_CLOSE, WM_COMMAND, WM_GETMINMAXINFO,
+        WM_KEYDOWN, WM_SIZE,
     };
 
     if msg == WM_CLOSE {
@@ -360,6 +496,18 @@ unsafe extern "system" fn default_wnd_proc(
             },
             _ => {}
         }
+    }
+    if msg == WM_SIZE {
+        let _ = resize_translation_window(hwnd);
+        unsafe {
+            let _ = InvalidateRect(Some(hwnd), None, true);
+        }
+    }
+    if msg == WM_GETMINMAXINFO {
+        unsafe {
+            apply_min_track_size(lparam);
+        }
+        return LRESULT(0);
     }
 
     unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
@@ -498,6 +646,7 @@ fn create_static(
     y: i32,
     width: i32,
     height: i32,
+    id: isize,
 ) -> Result<windows::Win32::Foundation::HWND> {
     create_control(
         parent,
@@ -507,7 +656,7 @@ fn create_static(
         y,
         width,
         height,
-        0,
+        id,
         Default::default(),
     )
 }
@@ -591,6 +740,102 @@ fn create_control(
             None,
         )
         .map_err(|err| AppError::Windows(format!("创建控件失败: {err}")))
+    }
+}
+
+#[cfg(windows)]
+fn move_window(hwnd: windows::Win32::Foundation::HWND, rect: ControlRect) -> Result<()> {
+    use windows::Win32::UI::WindowsAndMessaging::MoveWindow;
+
+    unsafe {
+        MoveWindow(hwnd, rect.x, rect.y, rect.width, rect.height, true)
+            .map_err(|err| AppError::Windows(format!("调整控件位置失败: {err}")))
+    }
+}
+
+#[cfg(windows)]
+fn translation_window_style() -> windows::Win32::UI::WindowsAndMessaging::WINDOW_STYLE {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        WS_CAPTION, WS_CLIPCHILDREN, WS_OVERLAPPED, WS_SYSMENU, WS_THICKFRAME,
+    };
+
+    WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME | WS_CLIPCHILDREN
+}
+
+#[cfg(windows)]
+unsafe fn apply_min_track_size(lparam: windows::Win32::Foundation::LPARAM) {
+    use windows::Win32::Foundation::RECT;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        AdjustWindowRectEx, MINMAXINFO, WINDOW_EX_STYLE,
+    };
+
+    let info = lparam.0 as *mut MINMAXINFO;
+    if info.is_null() {
+        return;
+    }
+
+    let (min_width, min_height) = translation_window_min_client_size();
+    let mut rect = RECT {
+        left: 0,
+        top: 0,
+        right: min_width,
+        bottom: min_height,
+    };
+    if unsafe {
+        AdjustWindowRectEx(
+            &mut rect,
+            translation_window_style(),
+            false,
+            WINDOW_EX_STYLE::default(),
+        )
+        .is_ok()
+    } {
+        unsafe {
+            (*info).ptMinTrackSize.x = rect.right - rect.left;
+            (*info).ptMinTrackSize.y = rect.bottom - rect.top;
+        }
+    }
+}
+
+#[cfg(windows)]
+fn resize_translation_window(hwnd: windows::Win32::Foundation::HWND) -> Result<()> {
+    use windows::Win32::Foundation::RECT;
+    use windows::Win32::UI::WindowsAndMessaging::GetClientRect;
+
+    unsafe {
+        let mut rect = RECT::default();
+        GetClientRect(hwnd, &mut rect)
+            .map_err(|err| AppError::Windows(format!("获取翻译窗口尺寸失败: {err}")))?;
+        let layout = translation_window_layout(rect.right - rect.left, rect.bottom - rect.top);
+        let source_label =
+            windows::Win32::UI::WindowsAndMessaging::GetDlgItem(Some(hwnd), ID_SOURCE_LABEL as i32)
+                .map_err(|err| AppError::Windows(format!("获取原文标签失败: {err}")))?;
+        let source_edit =
+            windows::Win32::UI::WindowsAndMessaging::GetDlgItem(Some(hwnd), ID_SOURCE_EDIT as i32)
+                .map_err(|err| AppError::Windows(format!("获取原文输入框失败: {err}")))?;
+        let translated_label = windows::Win32::UI::WindowsAndMessaging::GetDlgItem(
+            Some(hwnd),
+            ID_TRANSLATED_LABEL as i32,
+        )
+        .map_err(|err| AppError::Windows(format!("获取译文标签失败: {err}")))?;
+        let translated_edit = windows::Win32::UI::WindowsAndMessaging::GetDlgItem(
+            Some(hwnd),
+            ID_TRANSLATED_EDIT as i32,
+        )
+        .map_err(|err| AppError::Windows(format!("获取译文输入框失败: {err}")))?;
+        let status_text =
+            windows::Win32::UI::WindowsAndMessaging::GetDlgItem(Some(hwnd), ID_STATUS_TEXT as i32)
+                .map_err(|err| AppError::Windows(format!("获取状态文本失败: {err}")))?;
+        let translate_button =
+            windows::Win32::UI::WindowsAndMessaging::GetDlgItem(Some(hwnd), ID_TRANSLATE as i32)
+                .map_err(|err| AppError::Windows(format!("获取翻译按钮失败: {err}")))?;
+        move_window(source_label, layout.source_label)?;
+        move_window(source_edit, layout.source_edit)?;
+        move_window(translated_label, layout.translated_label)?;
+        move_window(translated_edit, layout.translated_edit)?;
+        move_window(status_text, layout.status_text)?;
+        move_window(translate_button, layout.translate_button)?;
+        Ok(())
     }
 }
 
