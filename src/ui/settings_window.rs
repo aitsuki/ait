@@ -1,6 +1,9 @@
 use crate::config::{AppSettings, ProviderKind};
 use crate::error::{AppError, Result};
 
+const SETTINGS_WINDOW_WIDTH: i32 = 520;
+const SETTINGS_WINDOW_HEIGHT: i32 = 360;
+
 #[cfg(windows)]
 const ID_PROVIDER: i32 = 3101;
 #[cfg(windows)]
@@ -49,9 +52,12 @@ pub struct SettingsWindow;
 #[cfg(windows)]
 impl SettingsWindow {
     pub fn open(settings: &AppSettings) -> Result<()> {
-        use windows::Win32::Foundation::HWND;
+        use windows::Win32::Foundation::{GetLastError, HWND};
+        use windows::Win32::Graphics::Gdi::{
+            GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromPoint,
+        };
         use windows::Win32::UI::WindowsAndMessaging::{
-            CW_USEDEFAULT, CreateWindowExW, GWLP_USERDATA, IDC_ARROW, LoadCursorW, RegisterClassW,
+            CreateWindowExW, GWLP_USERDATA, GetCursorPos, IDC_ARROW, LoadCursorW, RegisterClassW,
             SW_SHOW, SetWindowLongPtrW, ShowWindow, WINDOW_EX_STYLE, WNDCLASSW, WS_CAPTION,
             WS_OVERLAPPED, WS_SYSMENU,
         };
@@ -67,19 +73,33 @@ impl SettingsWindow {
                 ..Default::default()
             };
             let atom = RegisterClassW(&class);
-            if atom == 0 {
+            if !can_continue_after_register_class(atom, GetLastError()) {
                 return Err(AppError::Windows("注册设置窗口类失败".to_string()));
             }
+
+            let mut cursor = windows::Win32::Foundation::POINT::default();
+            let _ = GetCursorPos(&mut cursor);
+            let monitor = MonitorFromPoint(cursor, MONITOR_DEFAULTTONEAREST);
+            let mut monitor_info = MONITORINFO {
+                cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+                ..Default::default()
+            };
+            let _ = GetMonitorInfoW(monitor, &mut monitor_info);
+            let work = monitor_info.rcWork;
+            let (x, y) = settings_window_center_position(
+                (work.left, work.top, work.right, work.bottom),
+                (SETTINGS_WINDOW_WIDTH, SETTINGS_WINDOW_HEIGHT),
+            );
 
             let hwnd = CreateWindowExW(
                 WINDOW_EX_STYLE::default(),
                 PCWSTR(class_name.as_ptr()),
                 PCWSTR(wide("ait 设置").as_ptr()),
                 WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU,
-                CW_USEDEFAULT,
-                CW_USEDEFAULT,
-                520,
-                360,
+                x,
+                y,
+                SETTINGS_WINDOW_WIDTH,
+                SETTINGS_WINDOW_HEIGHT,
                 Some(HWND::default()),
                 None,
                 None,
@@ -161,6 +181,27 @@ impl SettingsWindow {
         tracing::info!(?view_model, "open settings window");
         Ok(())
     }
+}
+
+pub fn settings_window_center_position(
+    work_area: (i32, i32, i32, i32),
+    window_size: (i32, i32),
+) -> (i32, i32) {
+    let (left, top, right, bottom) = work_area;
+    let (width, height) = window_size;
+    let x = left + ((right - left - width) / 2).max(0);
+    let y = top + ((bottom - top - height) / 2).max(0);
+    (x, y)
+}
+
+#[cfg(windows)]
+pub fn can_continue_after_register_class(
+    atom: u16,
+    last_error: windows::Win32::Foundation::WIN32_ERROR,
+) -> bool {
+    use windows::Win32::Foundation::ERROR_CLASS_ALREADY_EXISTS;
+
+    atom != 0 || last_error == ERROR_CLASS_ALREADY_EXISTS
 }
 
 #[cfg(windows)]
