@@ -1,5 +1,5 @@
 use crate::capture::CapturedText;
-use crate::error::Result;
+use crate::error::{AppError, Result};
 use crate::translator::{ProviderKind, TranslationRequest, TranslationResponse};
 
 pub trait WorkflowCapture {
@@ -58,6 +58,32 @@ where
         self.translate_selection_with_observer(target_lang, &mut ())
     }
 
+    pub fn translate_text(
+        &self,
+        source_text: &str,
+        target_lang: &str,
+    ) -> Result<TranslationWorkflowResult> {
+        self.translate_text_with_observer(source_text, target_lang, &mut ())
+    }
+
+    pub fn translate_text_with_observer<O>(
+        &self,
+        source_text: &str,
+        target_lang: &str,
+        observer: &mut O,
+    ) -> Result<TranslationWorkflowResult>
+    where
+        O: TranslationObserver,
+    {
+        let source_text = source_text.trim();
+        if source_text.is_empty() {
+            return Err(AppError::Translate("原文为空".to_string()));
+        }
+
+        observer.translation_started()?;
+        self.translate_captured_text_with_observer(source_text, target_lang, observer)
+    }
+
     pub fn translate_selection_with_observer<O>(
         &self,
         target_lang: &str,
@@ -68,15 +94,32 @@ where
     {
         observer.translation_started()?;
         let captured = self.capture.capture()?;
-        observer.source_captured(&captured.text)?;
+        self.translate_captured_text_with_observer(&captured.text, target_lang, observer)
+    }
+
+    fn translate_captured_text_with_observer<O>(
+        &self,
+        source_text: &str,
+        target_lang: &str,
+        observer: &mut O,
+    ) -> Result<TranslationWorkflowResult>
+    where
+        O: TranslationObserver,
+    {
+        let source_text = source_text.trim();
+        if source_text.is_empty() {
+            return Err(AppError::Translate("原文为空".to_string()));
+        }
+
+        observer.source_captured(source_text)?;
         let response = self.translator.translate_blocking(TranslationRequest {
-            text: captured.text.clone(),
+            text: source_text.to_string(),
             source_lang: "auto".to_string(),
             target_lang: target_lang.to_string(),
         })?;
 
         let result = TranslationWorkflowResult {
-            source_text: captured.text,
+            source_text: source_text.to_string(),
             translated_text: response.translated_text,
             provider: response.provider,
         };

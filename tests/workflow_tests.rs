@@ -32,6 +32,14 @@ impl WorkflowTranslator for FakeTranslator {
     }
 }
 
+struct PanicCapture;
+
+impl WorkflowCapture for PanicCapture {
+    fn capture(&self) -> ait::error::Result<CapturedText> {
+        panic!("capture must not run for direct text translation");
+    }
+}
+
 struct RecordingCapture<'a> {
     events: &'a RefCell<Vec<&'static str>>,
 }
@@ -98,6 +106,26 @@ fn translate_selection_captures_then_translates() {
     assert_eq!(result.source_text, "hello");
     assert_eq!(result.translated_text, "你好");
     assert_eq!(result.provider, ProviderKind::GoogleFree);
+}
+
+#[test]
+fn translate_text_translates_without_capture() {
+    let workflow = TranslationWorkflow::new(PanicCapture, FakeTranslator);
+
+    let result = workflow.translate_text("hello", "zh-CN").unwrap();
+
+    assert_eq!(result.source_text, "hello");
+    assert_eq!(result.translated_text, "你好");
+    assert_eq!(result.provider, ProviderKind::GoogleFree);
+}
+
+#[test]
+fn translate_text_rejects_empty_source() {
+    let workflow = TranslationWorkflow::new(PanicCapture, FakeTranslator);
+
+    let err = workflow.translate_text("   ", "zh-CN").unwrap_err();
+
+    assert!(err.to_string().contains("原文为空"));
 }
 
 #[test]
