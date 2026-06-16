@@ -144,6 +144,26 @@ pub fn hotkey_action(is_translation_window_foreground: bool) -> HotkeyAction {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TrayAction {
+    ShowTranslationWindow,
+    OpenSettings,
+    OpenLogs,
+    Exit,
+    Unknown,
+}
+
+#[cfg(windows)]
+pub fn tray_action_from_menu_id(menu_id: usize) -> TrayAction {
+    match menu_id {
+        crate::ui::tray::MENU_SHOW_TRANSLATION_WINDOW => TrayAction::ShowTranslationWindow,
+        crate::ui::tray::MENU_SETTINGS => TrayAction::OpenSettings,
+        crate::ui::tray::MENU_OPEN_LOGS => TrayAction::OpenLogs,
+        crate::ui::tray::MENU_EXIT => TrayAction::Exit,
+        _ => TrayAction::Unknown,
+    }
+}
+
 pub fn run() -> Result<()> {
     crate::logging::init_logging()?;
     run_platform()
@@ -196,23 +216,23 @@ fn run_platform() -> Result<()> {
                     }
                 }
             } else if msg.message == crate::ui::tray::WM_TRAY_COMMAND {
-                match msg.wParam.0 {
-                    crate::ui::tray::MENU_TRANSLATE_SELECTION => {
-                        let _ = perform_translation(&workflow, &settings, &mut translation_window);
+                match tray_action_from_menu_id(msg.wParam.0) {
+                    TrayAction::ShowTranslationWindow => {
+                        let _ = translation_window.show_window();
                     }
-                    crate::ui::tray::MENU_SETTINGS => {
+                    TrayAction::OpenSettings => {
                         let _ =
                             handle_app_command(crate::command::AppCommand::OpenSettings, &settings);
                     }
-                    crate::ui::tray::MENU_OPEN_LOGS => {
+                    TrayAction::OpenLogs => {
                         tracing::info!("OpenLogs requested");
                     }
-                    crate::ui::tray::MENU_EXIT => {
+                    TrayAction::Exit => {
                         if handle_app_command(crate::command::AppCommand::Exit, &settings)? {
                             PostQuitMessage(0);
                         }
                     }
-                    _ => {}
+                    TrayAction::Unknown => {}
                 }
             }
             let _ = TranslateMessage(&msg);

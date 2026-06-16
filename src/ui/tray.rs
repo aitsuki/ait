@@ -5,7 +5,7 @@ pub const WM_TRAY_COMMAND: u32 = windows::Win32::UI::WindowsAndMessaging::WM_APP
 #[cfg(windows)]
 const WM_TRAY_ICON: u32 = windows::Win32::UI::WindowsAndMessaging::WM_APP + 21;
 #[cfg(windows)]
-pub const MENU_TRANSLATE_SELECTION: usize = 1001;
+pub const MENU_SHOW_TRANSLATION_WINDOW: usize = 1001;
 #[cfg(windows)]
 pub const MENU_SETTINGS: usize = 1002;
 #[cfg(windows)]
@@ -121,8 +121,8 @@ unsafe extern "system" fn tray_wnd_proc(
             let _ = AppendMenuW(
                 menu,
                 MF_STRING,
-                MENU_TRANSLATE_SELECTION,
-                PCWSTR(wide("翻译剪贴板/选区").as_ptr()),
+                MENU_SHOW_TRANSLATION_WINDOW,
+                PCWSTR(wide("显示翻译窗口").as_ptr()),
             );
             let _ = AppendMenuW(
                 menu,

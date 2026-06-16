@@ -182,3 +182,11 @@ fn global_hotkey_is_ignored_while_translation_window_is_foreground() {
 fn translation_window_is_not_topmost_without_pin_feature() {
     assert_eq!(window_z_order(), WindowZOrder::NotTopmost);
 }
+
+#[test]
+fn tray_show_window_menu_id_maps_to_show_window_action() {
+    assert_eq!(
+        ait::app::tray_action_from_menu_id(ait::ui::tray::MENU_SHOW_TRANSLATION_WINDOW),
+        ait::app::TrayAction::ShowTranslationWindow
+    );
+}

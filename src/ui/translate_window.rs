@@ -178,6 +178,12 @@ impl TranslationWindow {
         Ok(())
     }
 
+    pub fn show_window(&mut self) -> Result<()> {
+        show_window_at_cursor(self.hwnd, ShowMode::Result);
+        tracing::info!("show translation window");
+        Ok(())
+    }
+
     pub fn is_foreground(&self) -> bool {
         is_foreground_window(self.hwnd)
     }
@@ -244,7 +250,7 @@ unsafe extern "system" fn default_wnd_proc(
                 let _ = PostMessageW(
                     Some(hwnd),
                     crate::ui::tray::WM_TRAY_COMMAND,
-                    WPARAM(crate::ui::tray::MENU_TRANSLATE_SELECTION),
+                    WPARAM(crate::ui::tray::MENU_SHOW_TRANSLATION_WINDOW),
                     LPARAM(0),
                 );
                 return LRESULT(0);
