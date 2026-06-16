@@ -5,8 +5,8 @@ use ait::app::{
 use ait::capture::CapturedText;
 use ait::translator::{ProviderKind, TranslationRequest, TranslationResponse};
 use ait::ui::translate_window::{
-    EditShortcutAction, ShowAction, ShowMode, WindowZOrder, edit_shortcut_action, show_action,
-    window_z_order,
+    EditCharAction, EditShortcutAction, ShowAction, ShowMode, WindowZOrder, edit_char_action,
+    edit_shortcut_action, show_action, window_z_order,
 };
 use std::cell::RefCell;
 
@@ -205,4 +205,10 @@ fn edit_shortcut_action_handles_ctrl_a_and_escape() {
         EditShortcutAction::HideWindow
     );
     assert_eq!(edit_shortcut_action(0x42, false), EditShortcutAction::None);
+}
+
+#[test]
+fn edit_char_action_swallows_ctrl_a_control_character() {
+    assert_eq!(edit_char_action(0x01), EditCharAction::Swallow);
+    assert_eq!(edit_char_action('a' as u32), EditCharAction::Default);
 }

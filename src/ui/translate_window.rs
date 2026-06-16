@@ -64,6 +64,12 @@ pub enum EditShortcutAction {
     HideWindow,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EditCharAction {
+    Default,
+    Swallow,
+}
+
 pub fn edit_shortcut_action(vk: u32, ctrl_down: bool) -> EditShortcutAction {
     const VK_A: u32 = 0x41;
     const VK_ESCAPE: u32 = 0x1B;
@@ -74,6 +80,16 @@ pub fn edit_shortcut_action(vk: u32, ctrl_down: bool) -> EditShortcutAction {
         EditShortcutAction::HideWindow
     } else {
         EditShortcutAction::None
+    }
+}
+
+pub fn edit_char_action(ch: u32) -> EditCharAction {
+    const CTRL_A: u32 = 0x01;
+
+    if ch == CTRL_A {
+        EditCharAction::Swallow
+    } else {
+        EditCharAction::Default
     }
 }
 
@@ -287,7 +303,7 @@ unsafe extern "system" fn edit_subclass_proc(
     use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_CONTROL};
     use windows::Win32::UI::Shell::DefSubclassProc;
     use windows::Win32::UI::WindowsAndMessaging::{
-        GetParent, PostMessageW, SendMessageW, WM_CLOSE, WM_KEYDOWN,
+        GetParent, PostMessageW, SendMessageW, WM_CHAR, WM_CLOSE, WM_KEYDOWN,
     };
 
     if msg == WM_KEYDOWN {
@@ -309,6 +325,9 @@ unsafe extern "system" fn edit_subclass_proc(
             }
             EditShortcutAction::None => {}
         }
+    }
+    if msg == WM_CHAR && edit_char_action(wparam.0 as u32) == EditCharAction::Swallow {
+        return LRESULT(0);
     }
 
     unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) }
