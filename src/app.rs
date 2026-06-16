@@ -75,8 +75,7 @@ where
     where
         O: TranslationObserver,
     {
-        let source_text = source_text.trim();
-        if source_text.is_empty() {
+        if source_text.trim().is_empty() {
             return Err(AppError::Translate("原文为空".to_string()));
         }
 
@@ -106,8 +105,7 @@ where
     where
         O: TranslationObserver,
     {
-        let source_text = source_text.trim();
-        if source_text.is_empty() {
+        if source_text.trim().is_empty() {
             return Err(AppError::Translate("原文为空".to_string()));
         }
 

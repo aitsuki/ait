@@ -6,8 +6,8 @@ use ait::capture::CapturedText;
 use ait::translator::{ProviderKind, TranslationRequest, TranslationResponse};
 use ait::ui::translate_window::{
     EditCharAction, EditShortcutAction, ShowAction, ShowMode, WindowZOrder, edit_char_action,
-    edit_shortcut_action, is_third_click_after_double_click, paragraph_selection_range_utf16,
-    show_action, window_z_order,
+    edit_display_text, edit_shortcut_action, is_third_click_after_double_click,
+    paragraph_selection_range_utf16, show_action, window_z_order,
 };
 use std::cell::RefCell;
 
@@ -31,6 +31,31 @@ impl WorkflowTranslator for FakeTranslator {
         assert_eq!(request.text, "hello");
         Ok(TranslationResponse {
             translated_text: "你好".to_string(),
+            provider: ProviderKind::GoogleFree,
+        })
+    }
+}
+
+struct FormattingCapture;
+
+impl WorkflowCapture for FormattingCapture {
+    fn capture(&self) -> ait::error::Result<CapturedText> {
+        Ok(CapturedText {
+            text: "\nfirst paragraph\n\n\nsecond paragraph\n".to_string(),
+        })
+    }
+}
+
+struct FormattingTranslator;
+
+impl WorkflowTranslator for FormattingTranslator {
+    fn translate_blocking(
+        &self,
+        request: TranslationRequest,
+    ) -> ait::error::Result<TranslationResponse> {
+        assert_eq!(request.text, "\nfirst paragraph\n\n\nsecond paragraph\n");
+        Ok(TranslationResponse {
+            translated_text: "translated".to_string(),
             provider: ProviderKind::GoogleFree,
         })
     }
@@ -133,6 +158,18 @@ fn translate_text_rejects_empty_source() {
 }
 
 #[test]
+fn translate_selection_preserves_captured_paragraph_spacing() {
+    let workflow = TranslationWorkflow::new(FormattingCapture, FormattingTranslator);
+
+    let result = workflow.translate_selection("zh-CN").unwrap();
+
+    assert_eq!(
+        result.source_text,
+        "\nfirst paragraph\n\n\nsecond paragraph\n"
+    );
+}
+
+#[test]
 fn translate_selection_notifies_started_before_capture() {
     let events = RefCell::new(Vec::new());
     let workflow = TranslationWorkflow::new(
@@ -212,6 +249,21 @@ fn edit_shortcut_action_handles_ctrl_a_and_escape() {
 fn edit_char_action_swallows_ctrl_a_control_character() {
     assert_eq!(edit_char_action(0x01), EditCharAction::Swallow);
     assert_eq!(edit_char_action('a' as u32), EditCharAction::Default);
+}
+
+#[test]
+fn edit_display_text_normalizes_newlines_for_windows_multiline_edit() {
+    assert_eq!(edit_display_text("one\ntwo"), "one\r\ntwo");
+    assert_eq!(edit_display_text("one\r\ntwo"), "one\r\ntwo");
+    assert_eq!(
+        edit_display_text("one\r\ntwo\n\nthree"),
+        "one\r\ntwo\r\n\r\nthree"
+    );
+    assert_eq!(edit_display_text("one\u{2028}two"), "one\r\ntwo");
+    assert_eq!(edit_display_text("one\u{2029}two"), "one\r\n\r\ntwo");
+    assert_eq!(edit_display_text("one\u{000B}two"), "one\r\ntwo");
+    assert_eq!(edit_display_text("one\u{000C}two"), "one\r\ntwo");
+    assert_eq!(edit_display_text("one\u{0085}two"), "one\r\ntwo");
 }
 
 #[test]

@@ -145,6 +145,24 @@ fn capture_prefers_selection_backend_without_touching_clipboard() {
 }
 
 #[test]
+fn capture_normalizes_known_uia_text_artifacts() {
+    let (fake, copy) = fake_pair();
+    *fake.0.current.borrow_mut() = Some("old clipboard".to_string());
+    *fake.0.copied.borrow_mut() = Some("clipboard copy".to_string());
+    let selection = FakeSelection::default();
+    *selection.selected.borrow_mut() =
+        Some("left；right\u{fffc}\u{fffd}“quoted”‘single’".to_string());
+    let service = CaptureService::new(fake, Duration::from_millis(1))
+        .with_selection(selection)
+        .with_copy(copy.clone());
+
+    let captured = service.capture_selected_text().unwrap();
+
+    assert_eq!(captured.text, "left;right\"quoted\"'single'");
+    assert!(copy.0.actions.borrow().is_empty());
+}
+
+#[test]
 fn capture_polls_until_copied_text_arrives() {
     #[derive(Default)]
     struct DelayedState {

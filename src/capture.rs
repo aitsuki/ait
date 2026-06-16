@@ -134,12 +134,20 @@ where
     pub fn capture_selected_text(&self) -> std::result::Result<CapturedText, CaptureError> {
         match self.selection.read_selected_text() {
             Ok(Some(text)) if !text.trim().is_empty() => {
-                tracing::debug!(
-                    strategy = "uia_focused_selection",
-                    text_len = text.chars().count(),
-                    "captured selected text"
-                );
-                return Ok(CapturedText { text });
+                let text = normalize_captured_text(&text);
+                if text.trim().is_empty() {
+                    tracing::debug!(
+                        strategy = "uia_focused_selection",
+                        "selection backend returned only ignored characters"
+                    );
+                } else {
+                    tracing::debug!(
+                        strategy = "uia_focused_selection",
+                        text_len = text.chars().count(),
+                        "captured selected text"
+                    );
+                    return Ok(CapturedText { text });
+                }
             }
             Ok(_) => {
                 tracing::debug!(
@@ -183,7 +191,7 @@ where
             });
         }
 
-        let text = copied.unwrap_or_default();
+        let text = normalize_captured_text(&copied.unwrap_or_default());
         if text.trim().is_empty() {
             return Err(CaptureError {
                 kind: CaptureErrorKind::NoText,
@@ -238,6 +246,18 @@ where
             thread::sleep(Duration::from_millis(10));
         }
     }
+}
+
+fn normalize_captured_text(text: &str) -> String {
+    text.chars()
+        .filter_map(|ch| match ch {
+            '；' => Some(';'),
+            '“' | '”' => Some('"'),
+            '‘' | '’' => Some('\''),
+            '\u{fffc}' | '\u{fffd}' => None,
+            _ => Some(ch),
+        })
+        .collect()
 }
 
 fn to_capture_error(err: AppError) -> CaptureError {

@@ -93,6 +93,38 @@ pub fn edit_char_action(ch: u32) -> EditCharAction {
     }
 }
 
+pub fn edit_display_text(text: &str) -> String {
+    let mut normalized = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    while let Some(ch) = chars.next() {
+        match ch {
+            '\r' => {
+                normalized.push('\r');
+                normalized.push('\n');
+                if chars.peek() == Some(&'\n') {
+                    chars.next();
+                }
+            }
+            '\n' => {
+                normalized.push('\r');
+                normalized.push('\n');
+            }
+            '\u{000B}' | '\u{000C}' | '\u{0085}' | '\u{2028}' => {
+                normalized.push('\r');
+                normalized.push('\n');
+            }
+            '\u{2029}' => {
+                normalized.push('\r');
+                normalized.push('\n');
+                normalized.push('\r');
+                normalized.push('\n');
+            }
+            _ => normalized.push(ch),
+        }
+    }
+    normalized
+}
+
 pub fn paragraph_selection_range_utf16(text: &[u16], char_index: usize) -> (usize, usize) {
     if text.is_empty() {
         return (0, 0);
@@ -563,8 +595,9 @@ fn set_text(hwnd: windows::Win32::Foundation::HWND, text: &str) -> Result<()> {
     use windows::Win32::UI::WindowsAndMessaging::SetWindowTextW;
     use windows::core::PCWSTR;
 
+    let text = edit_display_text(text);
     unsafe {
-        SetWindowTextW(hwnd, PCWSTR(wide(text).as_ptr()))
+        SetWindowTextW(hwnd, PCWSTR(wide(&text).as_ptr()))
             .map_err(|err| AppError::Windows(format!("设置窗口文本失败: {err}")))
     }
 }
