@@ -245,11 +245,14 @@ fn translation_window_is_not_topmost_without_pin_feature() {
 #[test]
 fn translation_window_layout_resizes_content_with_client_area() {
     let small = translation_window_layout(620, 420);
-    let large = translation_window_layout(820, 620);
+    let large = translation_window_layout(820, 900);
 
+    assert_eq!(small.source_edit.height, small.translated_edit.height);
     assert!(large.source_edit.width > small.source_edit.width);
     assert!(large.translated_edit.width > small.translated_edit.width);
+    assert!(large.source_edit.height > small.source_edit.height);
     assert!(large.translated_edit.height > small.translated_edit.height);
+    assert!(large.source_edit.height < large.translated_edit.height);
     assert!(large.status_text.y > small.status_text.y);
     assert!(large.translate_button.x > small.translate_button.x);
 }
