@@ -93,6 +93,46 @@ pub fn edit_char_action(ch: u32) -> EditCharAction {
     }
 }
 
+pub fn paragraph_selection_range_utf16(text: &[u16], char_index: usize) -> (usize, usize) {
+    if text.is_empty() {
+        return (0, 0);
+    }
+
+    let index = char_index.min(text.len().saturating_sub(1));
+    let mut start = index;
+    while start > 0 && !is_newline_utf16(text[start - 1]) {
+        start -= 1;
+    }
+    while start < text.len() && is_newline_utf16(text[start]) {
+        start += 1;
+    }
+
+    let mut end = index;
+    while end < text.len() && !is_newline_utf16(text[end]) {
+        end += 1;
+    }
+
+    if end < start {
+        (start, start)
+    } else {
+        (start, end)
+    }
+}
+
+fn is_newline_utf16(value: u16) -> bool {
+    value == b'\r' as u16 || value == b'\n' as u16
+}
+
+pub fn is_third_click_after_double_click(
+    last_double_click_time: Option<u32>,
+    current_time: u32,
+    double_click_time: u32,
+) -> bool {
+    last_double_click_time
+        .map(|last| current_time.wrapping_sub(last) <= double_click_time)
+        .unwrap_or(false)
+}
+
 #[cfg(windows)]
 pub struct TranslationWindow {
     hwnd: windows::Win32::Foundation::HWND,
@@ -296,15 +336,20 @@ unsafe extern "system" fn edit_subclass_proc(
     wparam: windows::Win32::Foundation::WPARAM,
     lparam: windows::Win32::Foundation::LPARAM,
     _id_subclass: usize,
-    _ref_data: usize,
+    ref_data: usize,
 ) -> windows::Win32::Foundation::LRESULT {
     use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
     use windows::Win32::UI::Controls::EM_SETSEL;
-    use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_CONTROL};
-    use windows::Win32::UI::Shell::DefSubclassProc;
-    use windows::Win32::UI::WindowsAndMessaging::{
-        GetParent, PostMessageW, SendMessageW, WM_CHAR, WM_CLOSE, WM_KEYDOWN,
+    use windows::Win32::UI::Input::KeyboardAndMouse::{
+        GetDoubleClickTime, GetKeyState, VK_CONTROL,
     };
+    use windows::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetMessageTime, GetParent, PostMessageW, SendMessageW, WM_CHAR, WM_CLOSE, WM_KEYDOWN,
+        WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_NCDESTROY,
+    };
+
+    let state_ptr = ref_data as *mut EditSubclassState;
 
     if msg == WM_KEYDOWN {
         let ctrl_down = unsafe { GetKeyState(VK_CONTROL.0 as i32) } < 0;
@@ -329,18 +374,81 @@ unsafe extern "system" fn edit_subclass_proc(
     if msg == WM_CHAR && edit_char_action(wparam.0 as u32) == EditCharAction::Swallow {
         return LRESULT(0);
     }
+    if msg == WM_LBUTTONDBLCLK {
+        if !state_ptr.is_null() {
+            let state = unsafe { &mut *state_ptr };
+            state.last_double_click_time = Some(unsafe { GetMessageTime() } as u32);
+        }
+    }
+    if msg == WM_LBUTTONDOWN {
+        if !state_ptr.is_null() {
+            let state = unsafe { &mut *state_ptr };
+            let current_time = unsafe { GetMessageTime() } as u32;
+            if is_third_click_after_double_click(
+                state.last_double_click_time,
+                current_time,
+                unsafe { GetDoubleClickTime() },
+            ) {
+                state.last_double_click_time = None;
+                unsafe {
+                    select_paragraph_at_point(hwnd, lparam);
+                }
+                return LRESULT(0);
+            }
+        }
+    }
+    if msg == WM_NCDESTROY && ref_data != 0 {
+        unsafe {
+            let _ = RemoveWindowSubclass(hwnd, Some(edit_subclass_proc), EDIT_SUBCLASS_ID);
+            drop(Box::from_raw(ref_data as *mut EditSubclassState));
+        }
+    }
 
     unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) }
+}
+
+#[cfg(windows)]
+#[derive(Default)]
+struct EditSubclassState {
+    last_double_click_time: Option<u32>,
+}
+
+#[cfg(windows)]
+const EDIT_SUBCLASS_ID: usize = 1;
+
+#[cfg(windows)]
+unsafe fn select_paragraph_at_point(
+    hwnd: windows::Win32::Foundation::HWND,
+    point: windows::Win32::Foundation::LPARAM,
+) {
+    use windows::Win32::Foundation::{LPARAM, WPARAM};
+    use windows::Win32::UI::Controls::{EM_CHARFROMPOS, EM_SETSEL};
+    use windows::Win32::UI::WindowsAndMessaging::SendMessageW;
+
+    let char_from_pos = unsafe { SendMessageW(hwnd, EM_CHARFROMPOS, None, Some(point)) }.0 as usize;
+    let char_index = char_from_pos & 0xffff;
+    let text = unsafe { get_text_utf16(hwnd) };
+    let (start, end) = paragraph_selection_range_utf16(&text, char_index);
+    let _ = unsafe {
+        SendMessageW(
+            hwnd,
+            EM_SETSEL,
+            Some(WPARAM(start)),
+            Some(LPARAM(end as isize)),
+        )
+    };
 }
 
 #[cfg(windows)]
 fn install_edit_subclass(hwnd: windows::Win32::Foundation::HWND) -> Result<()> {
     use windows::Win32::UI::Shell::SetWindowSubclass;
 
+    let state = Box::into_raw(Box::new(EditSubclassState::default())) as usize;
     unsafe {
-        if SetWindowSubclass(hwnd, Some(edit_subclass_proc), 1, 0).as_bool() {
+        if SetWindowSubclass(hwnd, Some(edit_subclass_proc), EDIT_SUBCLASS_ID, state).as_bool() {
             Ok(())
         } else {
+            drop(Box::from_raw(state as *mut EditSubclassState));
             Err(AppError::Windows("安装编辑框快捷键处理失败".to_string()))
         }
     }
@@ -474,6 +582,20 @@ fn get_text(hwnd: windows::Win32::Foundation::HWND) -> Result<String> {
         let copied = GetWindowTextW(hwnd, &mut buf);
         Ok(String::from_utf16_lossy(&buf[..copied as usize]))
     }
+}
+
+#[cfg(windows)]
+unsafe fn get_text_utf16(hwnd: windows::Win32::Foundation::HWND) -> Vec<u16> {
+    use windows::Win32::UI::WindowsAndMessaging::{GetWindowTextLengthW, GetWindowTextW};
+
+    let len = unsafe { GetWindowTextLengthW(hwnd) };
+    if len == 0 {
+        return Vec::new();
+    }
+    let mut buf = vec![0u16; len as usize + 1];
+    let copied = unsafe { GetWindowTextW(hwnd, &mut buf) };
+    buf.truncate(copied as usize);
+    buf
 }
 
 #[cfg(windows)]

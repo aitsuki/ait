@@ -6,7 +6,8 @@ use ait::capture::CapturedText;
 use ait::translator::{ProviderKind, TranslationRequest, TranslationResponse};
 use ait::ui::translate_window::{
     EditCharAction, EditShortcutAction, ShowAction, ShowMode, WindowZOrder, edit_char_action,
-    edit_shortcut_action, show_action, window_z_order,
+    edit_shortcut_action, is_third_click_after_double_click, paragraph_selection_range_utf16,
+    show_action, window_z_order,
 };
 use std::cell::RefCell;
 
@@ -211,4 +212,31 @@ fn edit_shortcut_action_handles_ctrl_a_and_escape() {
 fn edit_char_action_swallows_ctrl_a_control_character() {
     assert_eq!(edit_char_action(0x01), EditCharAction::Swallow);
     assert_eq!(edit_char_action('a' as u32), EditCharAction::Default);
+}
+
+#[test]
+fn paragraph_selection_range_selects_current_paragraph() {
+    let text: Vec<u16> = "first paragraph\r\nsecond paragraph\nthird"
+        .encode_utf16()
+        .collect();
+
+    assert_eq!(paragraph_selection_range_utf16(&text, 2), (0, 15));
+    assert_eq!(paragraph_selection_range_utf16(&text, 18), (17, 33));
+    assert_eq!(paragraph_selection_range_utf16(&text, 35), (34, 39));
+}
+
+#[test]
+fn paragraph_selection_range_handles_empty_and_out_of_bounds() {
+    let empty: Vec<u16> = Vec::new();
+    assert_eq!(paragraph_selection_range_utf16(&empty, 12), (0, 0));
+
+    let text: Vec<u16> = "alpha\nbeta".encode_utf16().collect();
+    assert_eq!(paragraph_selection_range_utf16(&text, 200), (6, 10));
+}
+
+#[test]
+fn third_click_is_detected_after_recent_double_click() {
+    assert!(is_third_click_after_double_click(Some(100), 250, 500));
+    assert!(!is_third_click_after_double_click(Some(100), 700, 500));
+    assert!(!is_third_click_after_double_click(None, 250, 500));
 }
