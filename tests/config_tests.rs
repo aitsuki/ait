@@ -173,3 +173,50 @@ fn old_openai_default_with_key_migrates_default_to_openai_profile() {
         Some("encrypted-work-key")
     );
 }
+
+#[test]
+fn google_profile_cannot_be_deleted() {
+    let mut settings = AppSettings::default();
+
+    let err = settings.delete_profile("google").unwrap_err();
+
+    assert!(err.to_string().contains("内置翻译配置不能删除"));
+    assert!(settings.profile_by_id("google").is_some());
+}
+
+#[test]
+fn deleting_default_profile_selects_first_remaining_profile() {
+    let mut settings = AppSettings::default();
+    settings
+        .translator_profiles
+        .push(ait::config::TranslatorProfile {
+            id: "custom-work".to_string(),
+            name: "Work".to_string(),
+            provider: TranslatorProvider::Custom,
+            built_in: false,
+            base_url: "https://example.test/v1".to_string(),
+            model: "work-model".to_string(),
+            encrypted_api_key: Some("encrypted".to_string()),
+            timeout_secs: 20,
+        });
+    settings.default_profile_id = "custom-work".to_string();
+
+    settings.delete_profile("custom-work").unwrap();
+
+    assert_eq!(settings.default_profile_id, "google");
+    assert!(settings.profile_by_id("custom-work").is_none());
+}
+
+#[test]
+fn new_custom_profile_uses_unique_id_and_defaults() {
+    let mut settings = AppSettings::default();
+
+    let created = settings.add_custom_profile();
+
+    assert_eq!(created.provider, TranslatorProvider::Custom);
+    assert_eq!(created.name, "自定义配置");
+    assert_eq!(created.base_url, "https://api.openai.com/v1");
+    assert_eq!(created.model, "gpt-4o-mini");
+    assert_eq!(created.timeout_secs, 30);
+    assert!(settings.profile_by_id(&created.id).is_some());
+}
