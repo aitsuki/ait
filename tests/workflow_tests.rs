@@ -1,6 +1,7 @@
 use ait::app::{
-    HotkeyAction, TranslationObserver, TranslationWorkflow, TranslationWorkflowResult,
-    WorkflowCapture, WorkflowTranslator, hotkey_action,
+    HotkeyAction, TranslationObserver, TranslationRequestKind, TranslationWorkflow,
+    TranslationWorkflowResult, WorkflowCapture, WorkflowTranslator, hotkey_action,
+    translation_task_action,
 };
 use ait::capture::CapturedText;
 use ait::config::AppSettings;
@@ -238,6 +239,24 @@ fn global_hotkey_retranslates_visible_background_translation_window() {
 fn global_hotkey_is_ignored_while_translation_window_is_foreground() {
     assert_eq!(hotkey_action(true), HotkeyAction::Ignore);
     assert_eq!(hotkey_action(false), HotkeyAction::TranslateSelection);
+}
+
+#[test]
+fn hotkey_translation_runs_as_selection_task() {
+    assert_eq!(
+        translation_task_action(true, ""),
+        TranslationRequestKind::Selection
+    );
+}
+
+#[test]
+fn window_translation_runs_as_text_task() {
+    assert_eq!(
+        translation_task_action(false, "hello"),
+        TranslationRequestKind::WindowText {
+            source_text: "hello".to_string()
+        }
+    );
 }
 
 #[test]

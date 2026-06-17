@@ -195,6 +195,25 @@ pub enum HotkeyAction {
     TranslateSelection,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TranslationRequestKind {
+    Selection,
+    WindowText { source_text: String },
+}
+
+pub fn translation_task_action(
+    selection_requested: bool,
+    source_text: &str,
+) -> TranslationRequestKind {
+    if selection_requested {
+        TranslationRequestKind::Selection
+    } else {
+        TranslationRequestKind::WindowText {
+            source_text: source_text.to_string(),
+        }
+    }
+}
+
 pub fn hotkey_action(is_translation_window_foreground: bool) -> HotkeyAction {
     if is_translation_window_foreground {
         HotkeyAction::Ignore
