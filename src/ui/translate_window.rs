@@ -480,6 +480,24 @@ impl TranslationWindow {
         Ok(())
     }
 
+    pub fn begin_selection_translation(&mut self) -> Result<()> {
+        self.show_starting()
+    }
+
+    pub fn begin_window_text_translation(&mut self, source_text: String) -> Result<()> {
+        self.show_loading(source_text)
+    }
+
+    pub fn finish_translation_result(
+        &mut self,
+        result: crate::error::Result<crate::app::TranslationWorkflowResult>,
+    ) -> Result<()> {
+        match result {
+            Ok(result) => self.show_result(result.translated_text),
+            Err(err) => self.show_error(err.to_string()),
+        }
+    }
+
     pub fn show_window(&mut self) -> Result<()> {
         show_window_at_cursor(self.hwnd, ShowMode::Result);
         tracing::info!("show translation window");

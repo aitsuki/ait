@@ -240,6 +240,14 @@ pub fn tray_action_from_menu_id(menu_id: usize) -> TrayAction {
     }
 }
 
+#[cfg(windows)]
+const WM_TRANSLATION_TASK_FINISHED: u32 = windows::Win32::UI::WindowsAndMessaging::WM_APP + 60;
+
+#[cfg(windows)]
+struct TranslationTaskMessage {
+    result: Result<TranslationWorkflowResult>,
+}
+
 pub fn run() -> Result<()> {
     crate::logging::init_logging()?;
     run_platform()
@@ -284,7 +292,12 @@ fn run_platform() -> Result<()> {
                     }
                     HotkeyAction::TranslateSelection => {
                         tracing::info!("TranslateSelection requested");
-                        let _ = perform_translation(&runtime_state, &mut translation_window);
+                        let _ = translation_window.begin_selection_translation();
+                        spawn_translation_task(
+                            runtime_state.clone(),
+                            TranslationRequestKind::Selection,
+                            translation_window.hwnd(),
+                        );
                     }
                 }
             } else if msg.message == crate::ui::tray::WM_TRAY_COMMAND {
@@ -311,7 +324,19 @@ fn run_platform() -> Result<()> {
                     TrayAction::Unknown => {}
                 }
             } else if msg.message == crate::ui::translate_window::WM_TRANSLATE_WINDOW_SOURCE {
-                let _ = perform_window_text_translation(&runtime_state, &mut translation_window);
+                match translation_window.source_text() {
+                    Ok(source_text) => {
+                        let _ = translation_window.begin_window_text_translation(source_text.clone());
+                        spawn_translation_task(
+                            runtime_state.clone(),
+                            TranslationRequestKind::WindowText { source_text },
+                            translation_window.hwnd(),
+                        );
+                    }
+                    Err(err) => {
+                        let _ = translation_window.show_error(err.to_string());
+                    }
+                }
             } else if msg.message == crate::ui::settings_window::WM_SETTINGS_SAVED {
                 match SettingsStore::new(settings_dir.clone()).load() {
                     Ok(settings) => {
@@ -354,15 +379,41 @@ fn run_platform() -> Result<()> {
                                 &mut translation_window,
                             ) {
                                 Ok(()) => {
-                                    let _ = perform_window_text_translation(
-                                        &runtime_state,
-                                        &mut translation_window,
+                                    let source_text =
+                                        translation_window.source_text().unwrap_or_default();
+                                    let _ = translation_window
+                                        .begin_window_text_translation(source_text.clone());
+                                    spawn_translation_task(
+                                        runtime_state.clone(),
+                                        TranslationRequestKind::WindowText { source_text },
+                                        translation_window.hwnd(),
                                     );
                                 }
                                 Err(err) => {
                                     let _ = translation_window.show_error(err.to_string());
                                 }
                             }
+                        }
+                    }
+                }
+            } else if msg.message == WM_TRANSLATION_TASK_FINISHED {
+                let ptr = msg.lParam.0 as *mut TranslationTaskMessage;
+                if !ptr.is_null() {
+                    let message = Box::from_raw(ptr);
+                    match message.result {
+                        Ok(result) => {
+                            tracing::info!(
+                                provider = result.provider.as_log_name(),
+                                profile_id = runtime_state.active_profile_id(),
+                                source_len = result.source_text.chars().count(),
+                                translated_len = result.translated_text.chars().count(),
+                                "translation completed"
+                            );
+                            let _ = translation_window.finish_translation_result(Ok(result));
+                        }
+                        Err(err) => {
+                            tracing::warn!(error = %err, profile_id = runtime_state.active_profile_id(), "translation failed");
+                            let _ = translation_window.finish_translation_result(Err(err));
                         }
                     }
                 }
@@ -387,56 +438,44 @@ fn build_workflow(
 }
 
 #[cfg(windows)]
-fn perform_window_text_translation(
-    state: &AppRuntimeState,
-    window: &mut crate::ui::translate_window::TranslationWindow,
-) -> Result<()> {
-    let source_text = window.source_text()?;
-    let workflow = build_workflow(state)?;
-    match workflow.translate_text_with_observer(
-        &source_text,
-        &state.settings().target_language,
-        window,
-    ) {
-        Ok(result) => {
-            tracing::info!(
-                provider = result.provider.as_log_name(),
-                profile_id = state.active_profile_id(),
-                source_len = result.source_text.chars().count(),
-                translated_len = result.translated_text.chars().count(),
-                "window text translation completed"
+fn spawn_translation_task(
+    state: AppRuntimeState,
+    request: TranslationRequestKind,
+    notify_hwnd: windows::Win32::Foundation::HWND,
+) {
+    let notify_hwnd = notify_hwnd.0 as isize;
+    std::thread::spawn(move || {
+        let result = run_translation_task(&state, request);
+        let message = Box::into_raw(Box::new(TranslationTaskMessage { result }));
+        let notify_hwnd = windows::Win32::Foundation::HWND(notify_hwnd as *mut core::ffi::c_void);
+        unsafe {
+            let posted = windows::Win32::UI::WindowsAndMessaging::PostMessageW(
+                Some(notify_hwnd),
+                WM_TRANSLATION_TASK_FINISHED,
+                windows::Win32::Foundation::WPARAM(0),
+                windows::Win32::Foundation::LPARAM(message as isize),
             );
+            if posted.is_err() {
+                drop(Box::from_raw(message));
+            }
         }
-        Err(err) => {
-            let _ = window.show_error(err.to_string());
-            tracing::warn!(error = %err, profile_id = state.active_profile_id(), "window text translation failed");
-        }
-    }
-    Ok(())
+    });
 }
 
 #[cfg(windows)]
-fn perform_translation(
+fn run_translation_task(
     state: &AppRuntimeState,
-    window: &mut crate::ui::translate_window::TranslationWindow,
-) -> Result<()> {
+    request: TranslationRequestKind,
+) -> Result<TranslationWorkflowResult> {
     let workflow = build_workflow(state)?;
-    match workflow.translate_selection_with_observer(&state.settings().target_language, window) {
-        Ok(result) => {
-            tracing::info!(
-                provider = result.provider.as_log_name(),
-                profile_id = state.active_profile_id(),
-                source_len = result.source_text.chars().count(),
-                translated_len = result.translated_text.chars().count(),
-                "translation completed"
-            );
+    match request {
+        TranslationRequestKind::Selection => {
+            workflow.translate_selection(&state.settings().target_language)
         }
-        Err(err) => {
-            let _ = window.show_error(err.to_string());
-            tracing::warn!(error = %err, profile_id = state.active_profile_id(), "translation failed");
+        TranslationRequestKind::WindowText { source_text } => {
+            workflow.translate_text(&source_text, &state.settings().target_language)
         }
     }
-    Ok(())
 }
 
 #[cfg(windows)]
