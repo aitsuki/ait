@@ -9,8 +9,6 @@ pub const MENU_SHOW_TRANSLATION_WINDOW: usize = 1001;
 #[cfg(windows)]
 pub const MENU_SETTINGS: usize = 1002;
 #[cfg(windows)]
-pub const MENU_OPEN_LOGS: usize = 1003;
-#[cfg(windows)]
 pub const MENU_EXIT: usize = 1004;
 
 #[cfg(windows)]
@@ -129,12 +127,6 @@ unsafe extern "system" fn tray_wnd_proc(
                 MF_STRING,
                 MENU_SETTINGS,
                 PCWSTR(wide("设置").as_ptr()),
-            );
-            let _ = AppendMenuW(
-                menu,
-                MF_STRING,
-                MENU_OPEN_LOGS,
-                PCWSTR(wide("查看日志").as_ptr()),
             );
             let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
             let _ = AppendMenuW(menu, MF_STRING, MENU_EXIT, PCWSTR(wide("退出").as_ptr()));

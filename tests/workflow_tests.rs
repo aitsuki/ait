@@ -290,6 +290,14 @@ fn tray_show_window_menu_id_maps_to_show_window_action() {
 }
 
 #[test]
+fn removed_logs_menu_id_is_not_actionable() {
+    assert_eq!(
+        ait::app::tray_action_from_menu_id(1003),
+        ait::app::TrayAction::Unknown
+    );
+}
+
+#[test]
 fn edit_shortcut_action_handles_ctrl_a_and_escape() {
     assert_eq!(
         edit_shortcut_action(0x41, true),

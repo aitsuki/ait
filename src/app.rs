@@ -146,7 +146,6 @@ pub fn hotkey_action(is_translation_window_foreground: bool) -> HotkeyAction {
 pub enum TrayAction {
     ShowTranslationWindow,
     OpenSettings,
-    OpenLogs,
     Exit,
     Unknown,
 }
@@ -156,7 +155,6 @@ pub fn tray_action_from_menu_id(menu_id: usize) -> TrayAction {
     match menu_id {
         crate::ui::tray::MENU_SHOW_TRANSLATION_WINDOW => TrayAction::ShowTranslationWindow,
         crate::ui::tray::MENU_SETTINGS => TrayAction::OpenSettings,
-        crate::ui::tray::MENU_OPEN_LOGS => TrayAction::OpenLogs,
         crate::ui::tray::MENU_EXIT => TrayAction::Exit,
         _ => TrayAction::Unknown,
     }
@@ -221,9 +219,6 @@ fn run_platform() -> Result<()> {
                     TrayAction::OpenSettings => {
                         let _ =
                             handle_app_command(crate::command::AppCommand::OpenSettings, &settings);
-                    }
-                    TrayAction::OpenLogs => {
-                        tracing::info!("OpenLogs requested");
                     }
                     TrayAction::Exit => {
                         if handle_app_command(crate::command::AppCommand::Exit, &settings)? {
