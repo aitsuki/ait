@@ -88,3 +88,88 @@ fn corrupted_config_is_backed_up_and_defaults_are_returned() {
         .collect();
     assert_eq!(backups.len(), 1);
 }
+
+#[test]
+fn old_google_default_settings_migrate_to_google_profile() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = SettingsStore::new(dir.path().to_path_buf());
+    std::fs::create_dir_all(dir.path()).unwrap();
+    std::fs::write(
+        dir.path().join("settings.json"),
+        r#"{
+          "default_provider": "google_free",
+          "hotkey": "Ctrl+Alt+X",
+          "target_language": "ja",
+          "openai": {
+            "name": "Existing OpenAI",
+            "base_url": "https://example.test/v1",
+            "encrypted_api_key": "encrypted-old-key",
+            "model": "old-model",
+            "timeout_secs": 45
+          },
+          "clipboard_capture": {
+            "enabled": true,
+            "open_manual_input_on_failure": false,
+            "copy_wait_ms": 500
+          },
+          "window": { "width": 700, "height": 500 },
+          "markdown": { "render_enabled": true }
+        }"#,
+    )
+    .unwrap();
+
+    let loaded = store.load().unwrap();
+
+    assert_eq!(loaded.default_profile_id, "google");
+    let openai = loaded.profile_by_id("openai").unwrap();
+    assert_eq!(openai.name, "Existing OpenAI");
+    assert_eq!(openai.base_url, "https://example.test/v1");
+    assert_eq!(openai.encrypted_api_key.as_deref(), Some("encrypted-old-key"));
+    assert_eq!(openai.model, "old-model");
+    assert_eq!(openai.timeout_secs, 45);
+    assert_eq!(loaded.hotkey, "Ctrl+Alt+X");
+    assert_eq!(loaded.target_language, "ja");
+    assert!(loaded.markdown.render_enabled);
+}
+
+#[test]
+fn old_openai_default_with_key_migrates_default_to_openai_profile() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = SettingsStore::new(dir.path().to_path_buf());
+    std::fs::create_dir_all(dir.path()).unwrap();
+    std::fs::write(
+        dir.path().join("settings.json"),
+        r#"{
+          "default_provider": "open_ai_compatible",
+          "hotkey": "Ctrl+Alt+E",
+          "target_language": "zh-CN",
+          "openai": {
+            "name": "Work Key",
+            "base_url": "https://api.openai.com/v1",
+            "encrypted_api_key": "encrypted-work-key",
+            "model": "gpt-4o-mini",
+            "timeout_secs": 30
+          },
+          "clipboard_capture": {
+            "enabled": true,
+            "open_manual_input_on_failure": true,
+            "copy_wait_ms": 300
+          },
+          "window": { "width": 620, "height": 420 },
+          "markdown": { "render_enabled": false }
+        }"#,
+    )
+    .unwrap();
+
+    let loaded = store.load().unwrap();
+
+    assert_eq!(loaded.default_profile_id, "openai");
+    assert_eq!(
+        loaded
+            .profile_by_id("openai")
+            .unwrap()
+            .encrypted_api_key
+            .as_deref(),
+        Some("encrypted-work-key")
+    );
+}

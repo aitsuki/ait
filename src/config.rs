@@ -87,6 +87,33 @@ pub struct AppSettings {
     pub markdown: MarkdownSettings,
 }
 
+#[derive(Debug, Deserialize)]
+struct LegacyAppSettings {
+    default_provider: LegacyProviderKind,
+    hotkey: String,
+    target_language: String,
+    openai: LegacyOpenAiSettings,
+    clipboard_capture: ClipboardCaptureSettings,
+    window: WindowSettings,
+    markdown: MarkdownSettings,
+}
+
+#[derive(Debug, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+enum LegacyProviderKind {
+    GoogleFree,
+    OpenAiCompatible,
+}
+
+#[derive(Debug, Deserialize)]
+struct LegacyOpenAiSettings {
+    name: String,
+    base_url: String,
+    encrypted_api_key: Option<String>,
+    model: String,
+    timeout_secs: u64,
+}
+
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
@@ -258,6 +285,39 @@ impl AppSettings {
     }
 }
 
+impl From<LegacyAppSettings> for AppSettings {
+    fn from(legacy: LegacyAppSettings) -> Self {
+        let mut settings = AppSettings {
+            default_profile_id: "google".to_string(),
+            translator_profiles: builtin_translator_profiles(),
+            hotkey: legacy.hotkey,
+            target_language: legacy.target_language,
+            clipboard_capture: legacy.clipboard_capture,
+            window: legacy.window,
+            markdown: legacy.markdown,
+        };
+
+        if let Some(openai) = settings.profile_by_id_mut("openai") {
+            openai.name = legacy.openai.name;
+            openai.base_url = legacy.openai.base_url;
+            openai.encrypted_api_key = legacy.openai.encrypted_api_key;
+            openai.model = legacy.openai.model;
+            openai.timeout_secs = legacy.openai.timeout_secs;
+        }
+
+        let openai_has_key = settings
+            .profile_by_id("openai")
+            .and_then(|profile| profile.encrypted_api_key.as_ref())
+            .map(|key| !key.trim().is_empty())
+            .unwrap_or(false);
+        if legacy.default_provider == LegacyProviderKind::OpenAiCompatible && openai_has_key {
+            settings.default_profile_id = "openai".to_string();
+        }
+
+        settings.normalized()
+    }
+}
+
 pub struct SettingsStore {
     dir: PathBuf,
 }
@@ -284,13 +344,16 @@ impl SettingsStore {
         }
 
         let raw = fs::read_to_string(&path)?;
-        match serde_json::from_str::<AppSettings>(&raw) {
-            Ok(settings) => Ok(settings),
-            Err(_) => {
-                self.backup_corrupt_file(&path)?;
-                Ok(AppSettings::default())
-            }
+        if let Ok(settings) = serde_json::from_str::<AppSettings>(&raw) {
+            return Ok(settings.normalized());
         }
+        if let Ok(legacy) = serde_json::from_str::<LegacyAppSettings>(&raw) {
+            let migrated = AppSettings::from(legacy);
+            self.save(&migrated)?;
+            return Ok(migrated);
+        }
+        self.backup_corrupt_file(&path)?;
+        Ok(AppSettings::default())
     }
 
     pub fn save(&self, settings: &AppSettings) -> Result<()> {
