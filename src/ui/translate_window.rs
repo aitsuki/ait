@@ -84,6 +84,10 @@ pub fn show_window_needs_topmost_reset(mode: ShowMode, action: ShowAction) -> bo
         && matches!(action, ShowAction::ActivateOnly | ShowAction::KeepPosition)
 }
 
+pub fn show_window_needs_topmost_raise(mode: ShowMode, action: ShowAction) -> bool {
+    matches!(mode, ShowMode::Starting) && matches!(action, ShowAction::ActivateOnly)
+}
+
 pub fn translation_window_min_client_size() -> (i32, i32) {
     (420, 300)
 }
@@ -1142,6 +1146,19 @@ fn show_window_at_cursor(hwnd: windows::Win32::Foundation::HWND, mode: ShowMode)
                     let _ = SetWindowPos(
                         hwnd,
                         Some(HWND_NOTOPMOST),
+                        0,
+                        0,
+                        0,
+                        0,
+                        SET_WINDOW_POS_FLAGS(
+                            SWP_NOMOVE.0 | SWP_NOSIZE.0 | SWP_NOACTIVATE.0 | SWP_SHOWWINDOW.0,
+                        ),
+                    );
+                }
+                if show_window_needs_topmost_raise(mode, action) {
+                    let _ = SetWindowPos(
+                        hwnd,
+                        Some(HWND_TOPMOST),
                         0,
                         0,
                         0,

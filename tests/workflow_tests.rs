@@ -11,7 +11,8 @@ use ait::ui::translate_window::{
     TranslationProfileOption, TranslationWindowState, WindowZOrder, edit_char_action,
     edit_display_text, edit_shortcut_action, is_third_click_after_double_click,
     paragraph_selection_range_utf16, profile_selection_action, show_action,
-    show_window_needs_topmost_reset, show_window_z_order, translation_profile_combo_dropdown_height,
+    show_window_needs_topmost_raise, show_window_needs_topmost_reset, show_window_z_order,
+    translation_profile_combo_dropdown_height,
     translation_window_layout, translation_window_min_client_size, window_z_order,
 };
 use std::cell::RefCell;
@@ -227,6 +228,22 @@ fn visible_translation_window_clears_temporary_topmost_after_starting_state() {
     ));
     assert!(show_window_needs_topmost_reset(
         ShowMode::Error,
+        ShowAction::ActivateOnly
+    ));
+}
+
+#[test]
+fn starting_window_is_raised_without_activation_when_already_visible() {
+    assert!(show_window_needs_topmost_raise(
+        ShowMode::Starting,
+        ShowAction::ActivateOnly
+    ));
+    assert!(!show_window_needs_topmost_raise(
+        ShowMode::Starting,
+        ShowAction::KeepPosition
+    ));
+    assert!(!show_window_needs_topmost_raise(
+        ShowMode::Loading,
         ShowAction::ActivateOnly
     ));
 }
