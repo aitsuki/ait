@@ -132,7 +132,6 @@ pub fn apply_settings_detail_update(
     let profile = settings
         .profile_by_id_mut(&update.id)
         .ok_or_else(|| AppError::Config("翻译配置不存在".to_string()))?;
-    profile.provider = update.provider;
     profile.name = update.name.trim().to_string();
     if profile.name.is_empty() {
         profile.name = profile.provider.display_name().to_string();

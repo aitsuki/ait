@@ -113,6 +113,7 @@ fn settings_edit_action_rejects_missing_profile_selection() {
 fn settings_detail_update_saves_selected_profile_fields() {
     let mut settings = AppSettings::default();
     let id = settings.add_custom_profile().id;
+    settings.profile_by_id_mut(&id).unwrap().provider = TranslatorProvider::OpenAi;
 
     apply_settings_detail_update(
         &mut settings,
@@ -139,6 +140,34 @@ fn settings_detail_update_saves_selected_profile_fields() {
     assert_eq!(profile.timeout_secs, 45);
     assert_eq!(settings.hotkey, "Ctrl+Alt+T");
     assert_eq!(settings.clipboard_capture.copy_wait_ms, 250);
+}
+
+#[test]
+fn settings_detail_update_preserves_existing_provider() {
+    let mut settings = AppSettings::default();
+    let id = settings.add_custom_profile().id;
+    settings.profile_by_id_mut(&id).unwrap().provider = TranslatorProvider::DeepSeek;
+
+    apply_settings_detail_update(
+        &mut settings,
+        SettingsProfileDetailUpdate {
+            id: id.clone(),
+            name: "DeepSeek Work".to_string(),
+            provider: TranslatorProvider::Google,
+            base_url: "https://api.deepseek.com/v1".to_string(),
+            model: "deepseek-chat".to_string(),
+            api_key: None,
+            timeout_secs: 30,
+            hotkey: "Ctrl+Alt+E".to_string(),
+            copy_wait_ms: 300,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(
+        settings.profile_by_id(&id).unwrap().provider,
+        TranslatorProvider::DeepSeek
+    );
 }
 
 #[test]
