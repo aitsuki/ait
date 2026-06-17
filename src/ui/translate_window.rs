@@ -28,6 +28,12 @@ impl TranslationWindowState {
         self.loading = true;
         self.error = None;
     }
+
+    pub fn with_profile_switch_error(mut self, message: String) -> Self {
+        self.loading = false;
+        self.error = Some(message);
+        self
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -57,6 +63,48 @@ pub fn translation_window_min_client_size() -> (i32, i32) {
     (420, 300)
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TranslationProfileOption {
+    pub id: String,
+    pub label: String,
+    pub active: bool,
+}
+
+impl TranslationProfileOption {
+    pub fn from_settings(
+        settings: &crate::config::AppSettings,
+        active_profile_id: &str,
+    ) -> Vec<Self> {
+        settings
+            .translator_profiles
+            .iter()
+            .map(|profile| Self {
+                id: profile.id.clone(),
+                label: profile.name.clone(),
+                active: profile.id == active_profile_id,
+            })
+            .collect()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProfileSelectionAction {
+    SaveDefaultOnly { profile_id: String },
+    SaveDefaultAndRetranslate { profile_id: String },
+}
+
+pub fn profile_selection_action(profile_id: &str, source_text: &str) -> ProfileSelectionAction {
+    if source_text.trim().is_empty() {
+        ProfileSelectionAction::SaveDefaultOnly {
+            profile_id: profile_id.to_string(),
+        }
+    } else {
+        ProfileSelectionAction::SaveDefaultAndRetranslate {
+            profile_id: profile_id.to_string(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ControlRect {
     pub x: i32,
@@ -67,6 +115,7 @@ pub struct ControlRect {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TranslationWindowLayout {
+    pub profile_combo: ControlRect,
     pub source_label: ControlRect,
     pub source_edit: ControlRect,
     pub translated_label: ControlRect,
@@ -89,6 +138,8 @@ pub fn translation_window_layout(client_width: i32, client_height: i32) -> Trans
     let usable_height = client_height.max(1);
     let content_x = MARGIN.min(usable_width - 1);
     let content_width = (usable_width - content_x - MARGIN).max(1);
+    let combo_width = 180.min(content_width);
+    let combo_height = 26.min(usable_height);
     let button_width = BUTTON_WIDTH.min(content_width);
     let button_height = BUTTON_HEIGHT.min(usable_height);
     let button_x = (usable_width - MARGIN - button_width).clamp(0, usable_width - button_width);
@@ -96,6 +147,12 @@ pub fn translation_window_layout(client_width: i32, client_height: i32) -> Trans
     let status_width = (button_x - MARGIN - GAP).max(1);
     let label_height = LABEL_HEIGHT.min(usable_height);
     let status_height = STATUS_HEIGHT.min(usable_height);
+    let profile_combo = ControlRect {
+        x: (usable_width - MARGIN - combo_width).clamp(0, usable_width - combo_width),
+        y: 12.min(usable_height - combo_height),
+        width: combo_width,
+        height: combo_height,
+    };
 
     let source_label = ControlRect {
         x: content_x,
@@ -120,6 +177,7 @@ pub fn translation_window_layout(client_width: i32, client_height: i32) -> Trans
         .min(usable_height - translated_edit_y);
 
     TranslationWindowLayout {
+        profile_combo,
         source_label,
         source_edit: ControlRect {
             x: content_x,

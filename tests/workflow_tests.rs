@@ -3,12 +3,14 @@ use ait::app::{
     WorkflowCapture, WorkflowTranslator, hotkey_action,
 };
 use ait::capture::CapturedText;
+use ait::config::AppSettings;
 use ait::translator::{ProviderKind, TranslationRequest, TranslationResponse};
 use ait::ui::translate_window::{
-    EditCharAction, EditShortcutAction, ShowAction, ShowMode, TranslationWindowState, WindowZOrder,
-    edit_char_action, edit_display_text, edit_shortcut_action, is_third_click_after_double_click,
-    paragraph_selection_range_utf16, show_action, translation_window_layout,
-    translation_window_min_client_size, window_z_order,
+    EditCharAction, EditShortcutAction, ProfileSelectionAction, ShowAction, ShowMode,
+    TranslationProfileOption, TranslationWindowState, WindowZOrder, edit_char_action,
+    edit_display_text, edit_shortcut_action, is_third_click_after_double_click,
+    paragraph_selection_range_utf16, profile_selection_action, show_action,
+    translation_window_layout, translation_window_min_client_size, window_z_order,
 };
 use std::cell::RefCell;
 
@@ -262,6 +264,7 @@ fn translation_window_layout_keeps_controls_inside_small_client_area() {
     let layout = translation_window_layout(180, 160);
 
     for rect in [
+        layout.profile_combo,
         layout.source_label,
         layout.source_edit,
         layout.translated_label,
@@ -274,6 +277,37 @@ fn translation_window_layout_keeps_controls_inside_small_client_area() {
         assert!(rect.x + rect.width <= 180);
         assert!(rect.y + rect.height <= 160);
     }
+}
+
+#[test]
+fn selecting_profile_with_source_requests_save_and_retranslate() {
+    assert_eq!(
+        profile_selection_action("openai", "hello"),
+        ProfileSelectionAction::SaveDefaultAndRetranslate {
+            profile_id: "openai".to_string()
+        }
+    );
+}
+
+#[test]
+fn selecting_profile_with_empty_source_only_saves_default() {
+    assert_eq!(
+        profile_selection_action("deepseek", "  "),
+        ProfileSelectionAction::SaveDefaultOnly {
+            profile_id: "deepseek".to_string()
+        }
+    );
+}
+
+#[test]
+fn profile_options_mark_active_profile() {
+    let settings = AppSettings::default();
+    let options = TranslationProfileOption::from_settings(&settings, "google");
+
+    assert_eq!(options[0].id, "google");
+    assert_eq!(options[0].label, "Google");
+    assert!(options[0].active);
+    assert!(options.iter().any(|option| option.label == "DeepSeek"));
 }
 
 #[test]
