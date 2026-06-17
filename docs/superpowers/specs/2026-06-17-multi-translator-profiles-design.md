@@ -10,6 +10,7 @@
 
 - 设置面板支持新增、编辑、删除、保存和设为默认多个翻译配置。
 - 默认初始配置包含 Google、OpenAI、Claude、Gemini、DeepSeek。
+- Google 是内置配置，不可删除。
 - 用户可以创建自定义配置，并自定义名称、Base URL、模型、API Key 和超时时间。
 - 翻译面板显示配置下拉框，可选择任意配置。
 - 翻译面板切换配置后保存为默认配置，并立即用当前原文重新翻译。
@@ -32,7 +33,7 @@
 
 设置面板改为配置列表式管理。
 
-左侧是翻译配置列表，显示配置名称和默认标记。右侧是当前配置详情。
+左侧是翻译配置列表，显示配置名称、默认标记和内置标记。右侧是当前配置详情。
 
 详情字段：
 
@@ -46,11 +47,11 @@
 操作：
 
 - 新增：创建一个自定义配置，并选中它。
-- 删除：删除当前配置。默认配置被删除时，自动选择列表中的第一个可用配置为默认。
+- 删除：删除当前配置。Google 配置不可删除，选中 Google 时删除按钮禁用。默认配置被删除时，自动选择列表中的第一个可用配置为默认。
 - 保存：校验并保存当前配置。
 - 设为默认：将当前配置保存为默认配置。
 
-供应商字段用于填充模板默认值和日志分类，不强制限制 Base URL 或模型。用户把供应商选为 Claude、Gemini 或 DeepSeek 时，界面只显示这些名称，不显示协议细节。Google 使用现有免 Key 翻译路径，不要求 Base URL、模型或 API Key。
+供应商字段用于填充模板默认值和日志分类，不强制限制 Base URL 或模型。用户把供应商选为 Claude、Gemini 或 DeepSeek 时，界面只显示这些名称，不显示协议细节。Google 使用现有免 Key 翻译路径，不要求 Base URL、模型或 API Key。选中 Google 时，Base URL、模型、API Key 和超时时间字段不参与编辑和保存。
 
 ### 翻译面板
 
@@ -78,6 +79,7 @@ pub struct TranslatorProfile {
     pub id: String,
     pub name: String,
     pub provider: TranslatorProvider,
+    pub built_in: bool,
     pub base_url: String,
     pub model: String,
     pub encrypted_api_key: Option<String>,
@@ -122,6 +124,7 @@ pub struct AppSettings {
 
 如果旧配置包含 `openai` 字段：
 
+- 始终创建或补齐一个内置 `Google` profile。
 - 将旧 `openai` 配置迁移成一个 `OpenAI` profile。
 - 如果旧默认提供方是 OpenAI，并且存在 API Key，则默认配置指向这个 profile。
 - 如果旧默认提供方是 Google 免费翻译，则默认配置指向 `Google` profile，保持升级前的默认行为。
@@ -167,6 +170,7 @@ struct AppRuntimeState {
 - 无配置：设置面板允许创建配置；翻译时提示需要先添加配置。
 - API Key 缺失：提示当前配置缺少 API Key。
 - 配置被删除：翻译窗口刷新列表并选择默认配置。
+- 尝试删除 Google：UI 禁用删除动作；底层删除逻辑也拒绝删除内置配置。
 - 保存失败：设置窗口显示保存失败，不关闭窗口。
 - 切换配置重译失败：翻译窗口保留原文并显示错误。
 - 当前原文为空：切换配置只保存默认，不显示错误。
@@ -176,6 +180,8 @@ struct AppRuntimeState {
 单元测试：
 
 - 默认设置包含 Google、OpenAI、Claude、Gemini、DeepSeek 配置。
+- Google 配置不可删除。
+- Google 配置不要求 API Key、Base URL 或模型。
 - 旧配置能迁移为新 profile 列表。
 - 默认 profile id 能解析到 profile。
 - 删除默认配置后能选择新的默认配置。
@@ -192,6 +198,7 @@ struct AppRuntimeState {
 ## 验收
 
 - 用户可以在设置面板新增、编辑、删除多个翻译配置。
+- Google 作为内置配置存在，不能被删除。
 - 用户可以将任意配置设为默认。
 - 翻译面板可以选择配置。
 - 翻译面板切换配置后，默认配置被更新，并在当前原文非空时立即重新翻译。
