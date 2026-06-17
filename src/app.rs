@@ -91,8 +91,8 @@ where
     where
         O: TranslationObserver,
     {
-        observer.translation_started()?;
         let captured = self.capture.capture()?;
+        observer.translation_started()?;
         self.translate_captured_text_with_observer(&captured.text, target_lang, observer)
     }
 

@@ -79,6 +79,11 @@ pub fn show_window_z_order(mode: ShowMode) -> WindowZOrder {
     }
 }
 
+pub fn show_window_needs_topmost_reset(mode: ShowMode, action: ShowAction) -> bool {
+    !matches!(mode, ShowMode::Starting)
+        && matches!(action, ShowAction::ActivateOnly | ShowAction::KeepPosition)
+}
+
 pub fn translation_window_min_client_size() -> (i32, i32) {
     (420, 300)
 }
@@ -1124,23 +1129,48 @@ fn show_window_at_cursor(hwnd: windows::Win32::Foundation::HWND, mode: ShowMode)
     };
     use windows::Win32::UI::WindowsAndMessaging::{
         GetCursorPos, GetWindowRect, HWND_NOTOPMOST, HWND_TOPMOST, SET_WINDOW_POS_FLAGS, SW_SHOW,
-        SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_SHOWWINDOW, SetForegroundWindow, SetWindowPos,
-        ShowWindow,
+        SW_SHOWNOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOACTIVATE, SWP_SHOWWINDOW,
+        SetForegroundWindow, SetWindowPos, ShowWindow,
     };
 
     unsafe {
-        match show_action(is_window_visible(hwnd), is_foreground_window(hwnd)) {
+        let action = show_action(is_window_visible(hwnd), is_foreground_window(hwnd));
+        match action {
             ShowAction::PositionAndActivate => {}
             ShowAction::ActivateOnly => {
+                if show_window_needs_topmost_reset(mode, action) {
+                    let _ = SetWindowPos(
+                        hwnd,
+                        Some(HWND_NOTOPMOST),
+                        0,
+                        0,
+                        0,
+                        0,
+                        SET_WINDOW_POS_FLAGS(
+                            SWP_NOMOVE.0 | SWP_NOSIZE.0 | SWP_NOACTIVATE.0 | SWP_SHOWWINDOW.0,
+                        ),
+                    );
+                }
                 if mode.activates_window() {
                     let _ = ShowWindow(hwnd, SW_SHOW);
                     let _ = SetForegroundWindow(hwnd);
-                } else {
-                    let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
                 }
                 return;
             }
             ShowAction::KeepPosition => {
+                if show_window_needs_topmost_reset(mode, action) {
+                    let _ = SetWindowPos(
+                        hwnd,
+                        Some(HWND_NOTOPMOST),
+                        0,
+                        0,
+                        0,
+                        0,
+                        SET_WINDOW_POS_FLAGS(
+                            SWP_NOMOVE.0 | SWP_NOSIZE.0 | SWP_NOACTIVATE.0 | SWP_SHOWWINDOW.0,
+                        ),
+                    );
+                }
                 let _ = ShowWindow(hwnd, SW_SHOW);
                 return;
             }

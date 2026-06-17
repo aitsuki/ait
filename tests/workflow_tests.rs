@@ -10,9 +10,9 @@ use ait::ui::translate_window::{
     EditCharAction, EditShortcutAction, ProfileSelectionAction, ShowAction, ShowMode,
     TranslationProfileOption, TranslationWindowState, WindowZOrder, edit_char_action,
     edit_display_text, edit_shortcut_action, is_third_click_after_double_click,
-    paragraph_selection_range_utf16, profile_selection_action, show_action, show_window_z_order,
-    translation_profile_combo_dropdown_height, translation_window_layout,
-    translation_window_min_client_size, window_z_order,
+    paragraph_selection_range_utf16, profile_selection_action, show_action,
+    show_window_needs_topmost_reset, show_window_z_order, translation_profile_combo_dropdown_height,
+    translation_window_layout, translation_window_min_client_size, window_z_order,
 };
 use std::cell::RefCell;
 
@@ -175,7 +175,7 @@ fn translate_selection_preserves_captured_paragraph_spacing() {
 }
 
 #[test]
-fn translate_selection_notifies_started_before_capture() {
+fn translate_selection_captures_before_notifying_started() {
     let events = RefCell::new(Vec::new());
     let workflow = TranslationWorkflow::new(
         RecordingCapture { events: &events },
@@ -190,7 +190,7 @@ fn translate_selection_notifies_started_before_capture() {
     assert_eq!(result.translated_text, "你好");
     assert_eq!(
         events.into_inner(),
-        vec!["started", "capture", "source", "translate", "result"]
+        vec!["capture", "started", "source", "translate", "result"]
     );
 }
 
@@ -209,6 +209,26 @@ fn translation_starting_window_is_temporarily_shown_above_foreground_app() {
         WindowZOrder::TopmostNoActivate
     );
     assert_eq!(show_window_z_order(ShowMode::Result), WindowZOrder::NotTopmost);
+}
+
+#[test]
+fn visible_translation_window_clears_temporary_topmost_after_starting_state() {
+    assert!(!show_window_needs_topmost_reset(
+        ShowMode::Starting,
+        ShowAction::KeepPosition
+    ));
+    assert!(show_window_needs_topmost_reset(
+        ShowMode::Loading,
+        ShowAction::KeepPosition
+    ));
+    assert!(show_window_needs_topmost_reset(
+        ShowMode::Result,
+        ShowAction::ActivateOnly
+    ));
+    assert!(show_window_needs_topmost_reset(
+        ShowMode::Error,
+        ShowAction::ActivateOnly
+    ));
 }
 
 #[test]
