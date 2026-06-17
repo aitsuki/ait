@@ -124,7 +124,10 @@ fn old_google_default_settings_migrate_to_google_profile() {
     let openai = loaded.profile_by_id("openai").unwrap();
     assert_eq!(openai.name, "Existing OpenAI");
     assert_eq!(openai.base_url, "https://example.test/v1");
-    assert_eq!(openai.encrypted_api_key.as_deref(), Some("encrypted-old-key"));
+    assert_eq!(
+        openai.encrypted_api_key.as_deref(),
+        Some("encrypted-old-key")
+    );
     assert_eq!(openai.model, "old-model");
     assert_eq!(openai.timeout_secs, 45);
     assert_eq!(loaded.hotkey, "Ctrl+Alt+X");

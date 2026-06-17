@@ -412,8 +412,8 @@ unsafe fn save_settings_from_window(hwnd: windows::Win32::Foundation::HWND) -> R
 unsafe fn get_owner_hwnd(
     hwnd: windows::Win32::Foundation::HWND,
 ) -> Option<windows::Win32::Foundation::HWND> {
-    use windows::Win32::UI::WindowsAndMessaging::GetWindow;
     use windows::Win32::UI::WindowsAndMessaging::GW_OWNER;
+    use windows::Win32::UI::WindowsAndMessaging::GetWindow;
 
     unsafe { GetWindow(hwnd, GW_OWNER).ok() }
 }

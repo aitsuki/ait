@@ -19,11 +19,12 @@ fn translation_request_reports_text_length_without_text() {
 
 #[test]
 fn provider_kind_names_are_stable_for_logs() {
-    assert_eq!(ProviderKind::GoogleFree.as_log_name(), "google_free");
-    assert_eq!(
-        ProviderKind::OpenAiCompatible.as_log_name(),
-        "openai_compatible"
-    );
+    assert_eq!(ProviderKind::Google.as_log_name(), "google");
+    assert_eq!(ProviderKind::OpenAi.as_log_name(), "openai");
+    assert_eq!(ProviderKind::Claude.as_log_name(), "claude");
+    assert_eq!(ProviderKind::Gemini.as_log_name(), "gemini");
+    assert_eq!(ProviderKind::DeepSeek.as_log_name(), "deepseek");
+    assert_eq!(ProviderKind::Custom.as_log_name(), "custom");
 }
 
 #[test]

@@ -157,7 +157,10 @@ impl AppRuntimeState {
     pub fn active_profile(&self) -> Result<&crate::config::TranslatorProfile> {
         self.settings
             .profile_by_id(&self.active_profile_id)
-            .or_else(|| self.settings.profile_by_id(&self.settings.default_profile_id))
+            .or_else(|| {
+                self.settings
+                    .profile_by_id(&self.settings.default_profile_id)
+            })
             .or_else(|| self.settings.translator_profiles.first())
             .ok_or_else(|| AppError::Config("没有可用的翻译配置".to_string()))
     }
@@ -241,9 +244,7 @@ fn run_platform() -> Result<()> {
 
     let settings_dir = SettingsStore::default_dir()?;
     let store = SettingsStore::new(settings_dir.clone());
-    let settings = store
-        .load()
-        .unwrap_or_else(|_| AppSettings::default());
+    let settings = store.load().unwrap_or_else(|_| AppSettings::default());
     let hotkey = settings.hotkey.parse::<Hotkey>()?;
     let mut runtime_state = AppRuntimeState::new(settings);
     let _tray = TrayIcon::create()?;
@@ -303,7 +304,9 @@ fn run_platform() -> Result<()> {
                     }
                     Err(err) => tracing::warn!(error = %err, "reload settings failed"),
                 }
-            } else if msg.message == crate::ui::translate_window::WM_TRANSLATE_WINDOW_PROFILE_CHANGED {
+            } else if msg.message
+                == crate::ui::translate_window::WM_TRANSLATE_WINDOW_PROFILE_CHANGED
+            {
                 if let Some(profile_id) = translation_window.selected_profile_id() {
                     let source_text = translation_window.source_text().unwrap_or_default();
                     match crate::ui::translate_window::profile_selection_action(
@@ -368,8 +371,7 @@ fn build_workflow(
 fn perform_window_text_translation(
     state: &AppRuntimeState,
     window: &mut crate::ui::translate_window::TranslationWindow,
-) -> Result<()>
-{
+) -> Result<()> {
     let source_text = window.source_text()?;
     let workflow = build_workflow(state)?;
     match workflow.translate_text_with_observer(

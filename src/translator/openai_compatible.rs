@@ -81,7 +81,8 @@ impl OpenAiCompatibleTranslator {
         }
         if !status.is_success() {
             return Err(AppError::Translate(format!(
-                "OpenAI 兼容接口失败，状态码: {status}"
+                "{} 翻译失败，状态码: {status}",
+                self.config.provider.display_name()
             )));
         }
 

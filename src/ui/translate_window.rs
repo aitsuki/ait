@@ -509,8 +509,11 @@ impl TranslationWindow {
     }
 
     pub fn selected_profile_id(&self) -> Option<String> {
-        selected_combo_index(self.profile_combo)
-            .and_then(|index| self.profile_options.get(index).map(|option| option.id.clone()))
+        selected_combo_index(self.profile_combo).and_then(|index| {
+            self.profile_options
+                .get(index)
+                .map(|option| option.id.clone())
+        })
     }
 
     fn apply_layout(&self) -> Result<()> {
@@ -588,9 +591,7 @@ unsafe extern "system" fn default_wnd_proc(
                 return LRESULT(0);
             },
             command if command == ID_PROFILE_COMBO as usize => {
-                if notification
-                    == windows::Win32::UI::WindowsAndMessaging::CBN_SELCHANGE as usize
-                {
+                if notification == windows::Win32::UI::WindowsAndMessaging::CBN_SELCHANGE as usize {
                     unsafe {
                         let _ = PostMessageW(
                             Some(hwnd),
@@ -914,7 +915,7 @@ fn reset_combo_items(
 #[cfg(windows)]
 fn selected_combo_index(hwnd: windows::Win32::Foundation::HWND) -> Option<usize> {
     use windows::Win32::Foundation::{LPARAM, WPARAM};
-    use windows::Win32::UI::WindowsAndMessaging::{CB_GETCURSEL, CB_ERR, SendMessageW};
+    use windows::Win32::UI::WindowsAndMessaging::{CB_ERR, CB_GETCURSEL, SendMessageW};
 
     let index = unsafe { SendMessageW(hwnd, CB_GETCURSEL, Some(WPARAM(0)), Some(LPARAM(0))).0 };
     if index == CB_ERR as isize {

@@ -15,6 +15,7 @@ async fn sends_chat_completions_request() {
             .body(r#"{"choices":[{"message":{"content":"你好"}}]}"#);
     });
     let translator = OpenAiCompatibleTranslator::new(OpenAiCompatibleConfig {
+        provider: ProviderKind::OpenAi,
         base_url: server.url("/v1"),
         api_key: "sk-test".to_string(),
         model: "test-model".to_string(),
@@ -32,7 +33,7 @@ async fn sends_chat_completions_request() {
         .unwrap();
 
     mock.assert();
-    assert_eq!(response.provider, ProviderKind::OpenAiCompatible);
+    assert_eq!(response.provider, ProviderKind::OpenAi);
     assert_eq!(response.translated_text, "你好");
 }
 
@@ -44,6 +45,7 @@ async fn maps_unauthorized_response() {
         then.status(401).body("unauthorized");
     });
     let translator = OpenAiCompatibleTranslator::new(OpenAiCompatibleConfig {
+        provider: ProviderKind::OpenAi,
         base_url: server.url("/v1"),
         api_key: "bad-key".to_string(),
         model: "test-model".to_string(),
