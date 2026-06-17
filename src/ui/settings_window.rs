@@ -72,7 +72,10 @@ pub struct SettingsProfileDetail {
     pub timeout_secs: u64,
     pub built_in: bool,
     pub can_delete: bool,
+    pub name_editable: bool,
+    pub network_fields_visible: bool,
     pub network_fields_enabled: bool,
+    pub google_notice_visible: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -157,6 +160,7 @@ impl SettingsViewModel {
             .or_else(|| settings.profile_by_id(&settings.default_profile_id))
             .or_else(|| settings.translator_profiles.first())
             .expect("settings always contain profiles after normalization");
+        let is_google = selected.provider == TranslatorProvider::Google;
         Self {
             profiles: settings
                 .translator_profiles
@@ -178,7 +182,10 @@ impl SettingsViewModel {
                 timeout_secs: selected.timeout_secs,
                 built_in: selected.built_in,
                 can_delete: !selected.built_in,
-                network_fields_enabled: selected.provider != TranslatorProvider::Google,
+                name_editable: !is_google,
+                network_fields_visible: !is_google,
+                network_fields_enabled: !is_google,
+                google_notice_visible: is_google,
             },
             hotkey: settings.hotkey.clone(),
             clipboard_capture_enabled: settings.clipboard_capture.enabled,
@@ -188,17 +195,10 @@ impl SettingsViewModel {
 }
 
 fn profile_list_label(profile: &crate::config::TranslatorProfile, is_default: bool) -> String {
-    let mut flags = Vec::new();
     if is_default {
-        flags.push("默认");
-    }
-    if profile.built_in {
-        flags.push("内置");
-    }
-    if flags.is_empty() {
-        profile.name.clone()
+        format!("{}（默认）", profile.name)
     } else {
-        format!("{}（{}）", profile.name, flags.join("，"))
+        profile.name.clone()
     }
 }
 

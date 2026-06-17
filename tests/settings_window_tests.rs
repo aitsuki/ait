@@ -27,8 +27,8 @@ fn settings_view_model_lists_profiles_and_selected_detail() {
 
     let vm = SettingsViewModel::from_settings_with_selected(&settings, "deepseek");
 
-    assert!(vm.profiles.iter().any(|item| item.label == "Google（默认，内置）"));
-    assert!(vm.profiles.iter().any(|item| item.label == "DeepSeek（内置）"));
+    assert!(vm.profiles.iter().any(|item| item.label == "Google（默认）"));
+    assert!(vm.profiles.iter().any(|item| item.label == "DeepSeek"));
     assert_eq!(vm.selected_profile.id, "deepseek");
     assert_eq!(vm.selected_profile.provider, TranslatorProvider::DeepSeek);
     assert!(vm.selected_profile.network_fields_enabled);
@@ -41,9 +41,48 @@ fn settings_view_model_marks_default_and_builtin_profiles() {
     let vm = SettingsViewModel::from(&settings);
 
     let google = vm.profiles.iter().find(|item| item.id == "google").unwrap();
-    assert_eq!(google.label, "Google（默认，内置）");
+    assert_eq!(google.label, "Google（默认）");
     let openai = vm.profiles.iter().find(|item| item.id == "openai").unwrap();
-    assert_eq!(openai.label, "OpenAI（内置）");
+    assert_eq!(openai.label, "OpenAI");
+}
+
+#[test]
+fn settings_view_model_does_not_show_builtin_label() {
+    let settings = AppSettings::default();
+
+    let vm = SettingsViewModel::from(&settings);
+
+    let google = vm.profiles.iter().find(|item| item.id == "google").unwrap();
+    assert_eq!(google.label, "Google（默认）");
+    let openai = vm.profiles.iter().find(|item| item.id == "openai").unwrap();
+    assert_eq!(openai.label, "OpenAI");
+    assert!(!vm.profiles.iter().any(|item| item.label.contains("内置")));
+}
+
+#[test]
+fn google_profile_detail_is_readonly_and_hides_network_fields() {
+    let settings = AppSettings::default();
+
+    let vm = SettingsViewModel::from_settings_with_selected(&settings, "google");
+
+    assert_eq!(vm.selected_profile.id, "google");
+    assert!(!vm.selected_profile.can_delete);
+    assert!(!vm.selected_profile.name_editable);
+    assert!(!vm.selected_profile.network_fields_visible);
+    assert!(vm.selected_profile.google_notice_visible);
+}
+
+#[test]
+fn non_google_profile_detail_is_editable_and_shows_network_fields() {
+    let settings = AppSettings::default();
+
+    let vm = SettingsViewModel::from_settings_with_selected(&settings, "openai");
+
+    assert_eq!(vm.selected_profile.id, "openai");
+    assert!(!vm.selected_profile.can_delete);
+    assert!(vm.selected_profile.name_editable);
+    assert!(vm.selected_profile.network_fields_visible);
+    assert!(!vm.selected_profile.google_notice_visible);
 }
 
 #[test]
