@@ -337,6 +337,67 @@ pub fn settings_window_center_position(
     (x, y)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SettingsSaveOutcome {
+    KeepOpen,
+}
+
+pub fn settings_save_outcome_after_success() -> SettingsSaveOutcome {
+    SettingsSaveOutcome::KeepOpen
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SettingsControlRect {
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SettingsWindowLayout {
+    pub hotkey: SettingsControlRect,
+    pub copy_wait: SettingsControlRect,
+    pub separator: SettingsControlRect,
+    pub profile_list: SettingsControlRect,
+    pub name: SettingsControlRect,
+}
+
+pub fn settings_window_layout() -> SettingsWindowLayout {
+    SettingsWindowLayout {
+        hotkey: SettingsControlRect {
+            x: 118,
+            y: 18,
+            width: 180,
+            height: 24,
+        },
+        copy_wait: SettingsControlRect {
+            x: 430,
+            y: 18,
+            width: 90,
+            height: 24,
+        },
+        separator: SettingsControlRect {
+            x: 18,
+            y: 62,
+            width: 668,
+            height: 1,
+        },
+        profile_list: SettingsControlRect {
+            x: 18,
+            y: 100,
+            width: 220,
+            height: 228,
+        },
+        name: SettingsControlRect {
+            x: 370,
+            y: 100,
+            width: 240,
+            height: 24,
+        },
+    }
+}
+
 #[cfg(windows)]
 pub fn can_continue_after_register_class(
     atom: u16,

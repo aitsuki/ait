@@ -1,7 +1,8 @@
 use ait::config::{AppSettings, TranslatorProvider};
 use ait::ui::settings_window::{
-    SettingsEditAction, SettingsProfileDetailUpdate, SettingsViewModel, apply_settings_detail_update,
-    apply_settings_edit_action,
+    SettingsEditAction, SettingsProfileDetailUpdate, SettingsSaveOutcome, SettingsViewModel,
+    apply_settings_detail_update, apply_settings_edit_action, settings_save_outcome_after_success,
+    settings_window_layout,
     settings_window_center_position,
 };
 
@@ -208,6 +209,24 @@ fn settings_window_center_position_uses_work_area_center() {
         settings_window_center_position((100, 50, 2020, 1130), (520, 360)),
         (800, 410)
     );
+}
+
+#[test]
+fn successful_settings_save_keeps_window_open() {
+    assert_eq!(
+        settings_save_outcome_after_success(),
+        SettingsSaveOutcome::KeepOpen
+    );
+}
+
+#[test]
+fn settings_window_layout_places_global_settings_above_profiles() {
+    let layout = settings_window_layout();
+
+    assert!(layout.hotkey.y < layout.separator.y);
+    assert!(layout.copy_wait.y < layout.separator.y);
+    assert!(layout.profile_list.y > layout.separator.y);
+    assert!(layout.name.y > layout.separator.y);
 }
 
 #[cfg(windows)]
