@@ -240,20 +240,17 @@ fn run_platform() -> Result<()> {
     };
 
     let settings_dir = SettingsStore::default_dir()?;
-    let settings = SettingsStore::new(settings_dir)
+    let store = SettingsStore::new(settings_dir.clone());
+    let settings = store
         .load()
         .unwrap_or_else(|_| AppSettings::default());
     let hotkey = settings.hotkey.parse::<Hotkey>()?;
-    let runtime_state = AppRuntimeState::new(settings);
+    let mut runtime_state = AppRuntimeState::new(settings);
     let _tray = TrayIcon::create()?;
     let _registered = RegisteredHotkey::register(1, hotkey)?;
-    let workflow = TranslationWorkflow::new(
-        WindowsWorkflowCapture {
-            wait_ms: runtime_state.settings().clipboard_capture.copy_wait_ms,
-        },
-        build_workflow_translator_for_profile(runtime_state.active_profile()?)?,
-    );
     let mut translation_window = TranslationWindow::new()?;
+    translation_window
+        .refresh_profiles(runtime_state.settings(), runtime_state.active_profile_id())?;
 
     tracing::info!("registered hotkey {}", hotkey);
 
@@ -267,11 +264,7 @@ fn run_platform() -> Result<()> {
                     }
                     HotkeyAction::TranslateSelection => {
                         tracing::info!("TranslateSelection requested");
-                        let _ = perform_translation(
-                            &workflow,
-                            runtime_state.settings(),
-                            &mut translation_window,
-                        );
+                        let _ = perform_translation(&runtime_state, &mut translation_window);
                     }
                 }
             } else if msg.message == crate::ui::tray::WM_TRAY_COMMAND {
@@ -283,12 +276,14 @@ fn run_platform() -> Result<()> {
                         let _ = handle_app_command(
                             crate::command::AppCommand::OpenSettings,
                             runtime_state.settings(),
+                            translation_window.hwnd(),
                         );
                     }
                     TrayAction::Exit => {
                         if handle_app_command(
                             crate::command::AppCommand::Exit,
                             runtime_state.settings(),
+                            translation_window.hwnd(),
                         )? {
                             PostQuitMessage(0);
                         }
@@ -296,11 +291,59 @@ fn run_platform() -> Result<()> {
                     TrayAction::Unknown => {}
                 }
             } else if msg.message == crate::ui::translate_window::WM_TRANSLATE_WINDOW_SOURCE {
-                let _ = perform_window_text_translation(
-                    &workflow,
-                    runtime_state.settings(),
-                    &mut translation_window,
-                );
+                let _ = perform_window_text_translation(&runtime_state, &mut translation_window);
+            } else if msg.message == crate::ui::settings_window::WM_SETTINGS_SAVED {
+                match SettingsStore::new(settings_dir.clone()).load() {
+                    Ok(settings) => {
+                        runtime_state.replace_settings(settings);
+                        let _ = translation_window.refresh_profiles(
+                            runtime_state.settings(),
+                            runtime_state.active_profile_id(),
+                        );
+                    }
+                    Err(err) => tracing::warn!(error = %err, "reload settings failed"),
+                }
+            } else if msg.message == crate::ui::translate_window::WM_TRANSLATE_WINDOW_PROFILE_CHANGED {
+                if let Some(profile_id) = translation_window.selected_profile_id() {
+                    let source_text = translation_window.source_text().unwrap_or_default();
+                    match crate::ui::translate_window::profile_selection_action(
+                        &profile_id,
+                        &source_text,
+                    ) {
+                        crate::ui::translate_window::ProfileSelectionAction::SaveDefaultOnly {
+                            profile_id,
+                        } => {
+                            if let Err(err) = save_default_profile_selection(
+                                &settings_dir,
+                                &mut runtime_state,
+                                &profile_id,
+                                &mut translation_window,
+                            ) {
+                                let _ = translation_window.show_error(err.to_string());
+                            }
+                        }
+                        crate::ui::translate_window::ProfileSelectionAction::SaveDefaultAndRetranslate {
+                            profile_id,
+                        } => {
+                            match save_default_profile_selection(
+                                &settings_dir,
+                                &mut runtime_state,
+                                &profile_id,
+                                &mut translation_window,
+                            ) {
+                                Ok(()) => {
+                                    let _ = perform_window_text_translation(
+                                        &runtime_state,
+                                        &mut translation_window,
+                                    );
+                                }
+                                Err(err) => {
+                                    let _ = translation_window.show_error(err.to_string());
+                                }
+                            }
+                        }
+                    }
+                }
             }
             let _ = TranslateMessage(&msg);
             DispatchMessageW(&msg);
@@ -310,20 +353,34 @@ fn run_platform() -> Result<()> {
 }
 
 #[cfg(windows)]
-fn perform_window_text_translation<C, T>(
-    workflow: &TranslationWorkflow<C, T>,
-    settings: &crate::config::AppSettings,
+fn build_workflow(
+    state: &AppRuntimeState,
+) -> Result<TranslationWorkflow<WindowsWorkflowCapture, Box<dyn WorkflowTranslator>>> {
+    Ok(TranslationWorkflow::new(
+        WindowsWorkflowCapture {
+            wait_ms: state.settings().clipboard_capture.copy_wait_ms,
+        },
+        build_workflow_translator_for_profile(state.active_profile()?)?,
+    ))
+}
+
+#[cfg(windows)]
+fn perform_window_text_translation(
+    state: &AppRuntimeState,
     window: &mut crate::ui::translate_window::TranslationWindow,
 ) -> Result<()>
-where
-    C: WorkflowCapture,
-    T: WorkflowTranslator,
 {
     let source_text = window.source_text()?;
-    match workflow.translate_text_with_observer(&source_text, &settings.target_language, window) {
+    let workflow = build_workflow(state)?;
+    match workflow.translate_text_with_observer(
+        &source_text,
+        &state.settings().target_language,
+        window,
+    ) {
         Ok(result) => {
             tracing::info!(
                 provider = result.provider.as_log_name(),
+                profile_id = state.active_profile_id(),
                 source_len = result.source_text.chars().count(),
                 translated_len = result.translated_text.chars().count(),
                 "window text translation completed"
@@ -331,26 +388,23 @@ where
         }
         Err(err) => {
             let _ = window.show_error(err.to_string());
-            tracing::warn!(error = %err, "window text translation failed");
+            tracing::warn!(error = %err, profile_id = state.active_profile_id(), "window text translation failed");
         }
     }
     Ok(())
 }
 
 #[cfg(windows)]
-fn perform_translation<C, T>(
-    workflow: &TranslationWorkflow<C, T>,
-    settings: &crate::config::AppSettings,
+fn perform_translation(
+    state: &AppRuntimeState,
     window: &mut crate::ui::translate_window::TranslationWindow,
-) -> Result<()>
-where
-    C: WorkflowCapture,
-    T: WorkflowTranslator,
-{
-    match workflow.translate_selection_with_observer(&settings.target_language, window) {
+) -> Result<()> {
+    let workflow = build_workflow(state)?;
+    match workflow.translate_selection_with_observer(&state.settings().target_language, window) {
         Ok(result) => {
             tracing::info!(
                 provider = result.provider.as_log_name(),
+                profile_id = state.active_profile_id(),
                 source_len = result.source_text.chars().count(),
                 translated_len = result.translated_text.chars().count(),
                 "translation completed"
@@ -358,9 +412,22 @@ where
         }
         Err(err) => {
             let _ = window.show_error(err.to_string());
-            tracing::warn!(error = %err, "translation failed");
+            tracing::warn!(error = %err, profile_id = state.active_profile_id(), "translation failed");
         }
     }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn save_default_profile_selection(
+    settings_dir: &std::path::Path,
+    state: &mut AppRuntimeState,
+    profile_id: &str,
+    window: &mut crate::ui::translate_window::TranslationWindow,
+) -> Result<()> {
+    state.select_profile(profile_id)?;
+    crate::config::SettingsStore::new(settings_dir.to_path_buf()).save(state.settings())?;
+    window.refresh_profiles(state.settings(), state.active_profile_id())?;
     Ok(())
 }
 
@@ -368,10 +435,11 @@ where
 fn handle_app_command(
     command: crate::command::AppCommand,
     settings: &crate::config::AppSettings,
+    owner_hwnd: windows::Win32::Foundation::HWND,
 ) -> Result<bool> {
     match command {
         crate::command::AppCommand::OpenSettings => {
-            crate::ui::settings_window::SettingsWindow::open(settings)?;
+            crate::ui::settings_window::SettingsWindow::open(settings, owner_hwnd)?;
             Ok(false)
         }
         crate::command::AppCommand::Exit => Ok(true),

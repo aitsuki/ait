@@ -20,6 +20,8 @@ const ID_COPY_WAIT: i32 = 3106;
 const ID_SAVE: isize = 3001;
 #[cfg(windows)]
 const ID_CANCEL: isize = 3002;
+#[cfg(windows)]
+pub const WM_SETTINGS_SAVED: u32 = windows::Win32::UI::WindowsAndMessaging::WM_APP + 40;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SettingsViewModel {
@@ -131,8 +133,11 @@ pub struct SettingsWindow;
 
 #[cfg(windows)]
 impl SettingsWindow {
-    pub fn open(settings: &AppSettings) -> Result<()> {
-        use windows::Win32::Foundation::{GetLastError, HWND};
+    pub fn open(
+        settings: &AppSettings,
+        owner_hwnd: windows::Win32::Foundation::HWND,
+    ) -> Result<()> {
+        use windows::Win32::Foundation::GetLastError;
         use windows::Win32::Graphics::Gdi::{
             GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromPoint,
         };
@@ -180,7 +185,7 @@ impl SettingsWindow {
                 y,
                 SETTINGS_WINDOW_WIDTH,
                 SETTINGS_WINDOW_HEIGHT,
-                Some(HWND::default()),
+                Some(owner_hwnd),
                 None,
                 None,
                 None,
@@ -311,11 +316,31 @@ unsafe extern "system" fn default_wnd_proc(
     if msg == WM_COMMAND {
         let command = wparam.0 & 0xffff;
         if command == ID_SAVE as usize {
-            if let Err(err) = unsafe { save_settings_from_window(hwnd) } {
-                tracing::warn!(error = %err, "save settings failed");
-            }
-            unsafe {
-                let _ = DestroyWindow(hwnd);
+            match unsafe { save_settings_from_window(hwnd) } {
+                Ok(_) => unsafe {
+                    if let Some(owner) = get_owner_hwnd(hwnd) {
+                        let _ = windows::Win32::UI::WindowsAndMessaging::PostMessageW(
+                            Some(owner),
+                            WM_SETTINGS_SAVED,
+                            windows::Win32::Foundation::WPARAM(0),
+                            windows::Win32::Foundation::LPARAM(0),
+                        );
+                    }
+                    let _ = DestroyWindow(hwnd);
+                },
+                Err(err) => {
+                    tracing::warn!(error = %err, "save settings failed");
+                    unsafe {
+                        let text = wide(&err.to_string());
+                        let caption = wide("保存失败");
+                        let _ = windows::Win32::UI::WindowsAndMessaging::MessageBoxW(
+                            Some(hwnd),
+                            windows::core::PCWSTR(text.as_ptr()),
+                            windows::core::PCWSTR(caption.as_ptr()),
+                            windows::Win32::UI::WindowsAndMessaging::MB_OK,
+                        );
+                    }
+                }
             }
             return LRESULT(0);
         }
@@ -381,6 +406,16 @@ unsafe fn save_settings_from_window(hwnd: windows::Win32::Foundation::HWND) -> R
         "settings saved"
     );
     Ok(())
+}
+
+#[cfg(windows)]
+unsafe fn get_owner_hwnd(
+    hwnd: windows::Win32::Foundation::HWND,
+) -> Option<windows::Win32::Foundation::HWND> {
+    use windows::Win32::UI::WindowsAndMessaging::GetWindow;
+    use windows::Win32::UI::WindowsAndMessaging::GW_OWNER;
+
+    unsafe { GetWindow(hwnd, GW_OWNER).ok() }
 }
 
 #[cfg(windows)]

@@ -311,6 +311,35 @@ fn profile_options_mark_active_profile() {
 }
 
 #[test]
+fn runtime_select_profile_updates_default_profile() {
+    let mut state = ait::app::AppRuntimeState::new(AppSettings::default());
+
+    state.select_profile("deepseek").unwrap();
+
+    assert_eq!(state.active_profile_id(), "deepseek");
+    assert_eq!(state.settings().default_profile_id, "deepseek");
+}
+
+#[test]
+fn profile_switch_action_preserves_source_on_error() {
+    let state = TranslationWindowState {
+        source_text: "hello".to_string(),
+        translated_text: "old translation".to_string(),
+        loading: false,
+        error: None,
+    };
+
+    let next = state
+        .clone()
+        .with_profile_switch_error("API Key 缺失".to_string());
+
+    assert_eq!(next.source_text, "hello");
+    assert_eq!(next.translated_text, "old translation");
+    assert_eq!(next.error.as_deref(), Some("API Key 缺失"));
+    assert!(!next.loading);
+}
+
+#[test]
 fn translation_window_has_minimum_resizable_client_area() {
     assert_eq!(translation_window_min_client_size(), (420, 300));
 }

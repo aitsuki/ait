@@ -11,9 +11,14 @@ const ID_TRANSLATED_LABEL: isize = 2104;
 #[cfg(windows)]
 const ID_STATUS_TEXT: isize = 2105;
 #[cfg(windows)]
+const ID_PROFILE_COMBO: isize = 2106;
+#[cfg(windows)]
 const ID_TRANSLATE: usize = 2001;
 #[cfg(windows)]
 pub const WM_TRANSLATE_WINDOW_SOURCE: u32 = windows::Win32::UI::WindowsAndMessaging::WM_APP + 30;
+#[cfg(windows)]
+pub const WM_TRANSLATE_WINDOW_PROFILE_CHANGED: u32 =
+    windows::Win32::UI::WindowsAndMessaging::WM_APP + 31;
 
 #[derive(Debug, Clone)]
 pub struct TranslationWindowState {
@@ -346,6 +351,8 @@ pub struct TranslationWindow {
     translated_edit: windows::Win32::Foundation::HWND,
     status_text: windows::Win32::Foundation::HWND,
     translate_button: windows::Win32::Foundation::HWND,
+    profile_combo: windows::Win32::Foundation::HWND,
+    profile_options: Vec<TranslationProfileOption>,
     state: TranslationWindowState,
 }
 
@@ -398,6 +405,7 @@ impl TranslationWindow {
             let status_text = create_static(hwnd, "", 16, 324, 360, 22, ID_STATUS_TEXT)?;
             let translate_button =
                 create_button(hwnd, "翻译", 534, 322, 52, 28, ID_TRANSLATE as isize)?;
+            let profile_combo = create_combo(hwnd, 408, 12, 180, 220, ID_PROFILE_COMBO)?;
             install_edit_subclass(source_edit)?;
             install_edit_subclass(translated_edit)?;
 
@@ -409,6 +417,8 @@ impl TranslationWindow {
                 translated_edit,
                 status_text,
                 translate_button,
+                profile_combo,
+                profile_options: Vec::new(),
                 state: TranslationWindowState {
                     source_text: String::new(),
                     translated_text: String::new(),
@@ -484,6 +494,25 @@ impl TranslationWindow {
         get_text(self.source_edit)
     }
 
+    pub fn hwnd(&self) -> windows::Win32::Foundation::HWND {
+        self.hwnd
+    }
+
+    pub fn refresh_profiles(
+        &mut self,
+        settings: &crate::config::AppSettings,
+        active_profile_id: &str,
+    ) -> Result<()> {
+        self.profile_options = TranslationProfileOption::from_settings(settings, active_profile_id);
+        reset_combo_items(self.profile_combo, &self.profile_options)?;
+        Ok(())
+    }
+
+    pub fn selected_profile_id(&self) -> Option<String> {
+        selected_combo_index(self.profile_combo)
+            .and_then(|index| self.profile_options.get(index).map(|option| option.id.clone()))
+    }
+
     fn apply_layout(&self) -> Result<()> {
         use windows::Win32::Foundation::RECT;
         use windows::Win32::UI::WindowsAndMessaging::GetClientRect;
@@ -492,6 +521,7 @@ impl TranslationWindow {
             let mut rect = RECT::default();
             let _ = GetClientRect(self.hwnd, &mut rect);
             let layout = translation_window_layout(rect.right - rect.left, rect.bottom - rect.top);
+            move_window(self.profile_combo, layout.profile_combo)?;
             move_window(self.source_label, layout.source_label)?;
             move_window(self.source_edit, layout.source_edit)?;
             move_window(self.translated_label, layout.translated_label)?;
@@ -551,11 +581,27 @@ unsafe extern "system" fn default_wnd_proc(
     }
     if msg == WM_COMMAND {
         let command = wparam.0 & 0xffff;
+        let notification = (wparam.0 >> 16) & 0xffff;
         match command {
             ID_TRANSLATE => unsafe {
                 let _ = PostMessageW(Some(hwnd), WM_TRANSLATE_WINDOW_SOURCE, WPARAM(0), LPARAM(0));
                 return LRESULT(0);
             },
+            command if command == ID_PROFILE_COMBO as usize => {
+                if notification
+                    == windows::Win32::UI::WindowsAndMessaging::CBN_SELCHANGE as usize
+                {
+                    unsafe {
+                        let _ = PostMessageW(
+                            Some(hwnd),
+                            WM_TRANSLATE_WINDOW_PROFILE_CHANGED,
+                            WPARAM(0),
+                            LPARAM(0),
+                        );
+                    }
+                    return LRESULT(0);
+                }
+            }
             _ => {}
         }
     }
@@ -770,6 +816,29 @@ fn create_edit(
 }
 
 #[cfg(windows)]
+fn create_combo(
+    parent: windows::Win32::Foundation::HWND,
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+    id: isize,
+) -> Result<windows::Win32::Foundation::HWND> {
+    use windows::Win32::UI::WindowsAndMessaging::{CBS_DROPDOWNLIST, WINDOW_STYLE, WS_VSCROLL};
+    create_control(
+        parent,
+        "COMBOBOX",
+        "",
+        x,
+        y,
+        width,
+        height,
+        id,
+        WINDOW_STYLE(CBS_DROPDOWNLIST as u32 | WS_VSCROLL.0),
+    )
+}
+
+#[cfg(windows)]
 fn create_control(
     parent: windows::Win32::Foundation::HWND,
     class_name: &str,
@@ -802,6 +871,56 @@ fn create_control(
             None,
         )
         .map_err(|err| AppError::Windows(format!("创建控件失败: {err}")))
+    }
+}
+
+#[cfg(windows)]
+fn reset_combo_items(
+    hwnd: windows::Win32::Foundation::HWND,
+    options: &[TranslationProfileOption],
+) -> Result<()> {
+    use windows::Win32::Foundation::{LPARAM, WPARAM};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        CB_ADDSTRING, CB_RESETCONTENT, CB_SETCURSEL, SendMessageW,
+    };
+
+    unsafe {
+        let _ = SendMessageW(hwnd, CB_RESETCONTENT, Some(WPARAM(0)), Some(LPARAM(0)));
+        let mut active_index = 0usize;
+        for (index, option) in options.iter().enumerate() {
+            if option.active {
+                active_index = index;
+            }
+            let label = wide(&option.label);
+            let _ = SendMessageW(
+                hwnd,
+                CB_ADDSTRING,
+                Some(WPARAM(0)),
+                Some(LPARAM(label.as_ptr() as isize)),
+            );
+        }
+        if !options.is_empty() {
+            let _ = SendMessageW(
+                hwnd,
+                CB_SETCURSEL,
+                Some(WPARAM(active_index)),
+                Some(LPARAM(0)),
+            );
+        }
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn selected_combo_index(hwnd: windows::Win32::Foundation::HWND) -> Option<usize> {
+    use windows::Win32::Foundation::{LPARAM, WPARAM};
+    use windows::Win32::UI::WindowsAndMessaging::{CB_GETCURSEL, CB_ERR, SendMessageW};
+
+    let index = unsafe { SendMessageW(hwnd, CB_GETCURSEL, Some(WPARAM(0)), Some(LPARAM(0))).0 };
+    if index == CB_ERR as isize {
+        None
+    } else {
+        Some(index as usize)
     }
 }
 
@@ -872,6 +991,11 @@ fn resize_translation_window(hwnd: windows::Win32::Foundation::HWND) -> Result<(
         let source_label =
             windows::Win32::UI::WindowsAndMessaging::GetDlgItem(Some(hwnd), ID_SOURCE_LABEL as i32)
                 .map_err(|err| AppError::Windows(format!("获取原文标签失败: {err}")))?;
+        let profile_combo = windows::Win32::UI::WindowsAndMessaging::GetDlgItem(
+            Some(hwnd),
+            ID_PROFILE_COMBO as i32,
+        )
+        .map_err(|err| AppError::Windows(format!("获取配置下拉框失败: {err}")))?;
         let source_edit =
             windows::Win32::UI::WindowsAndMessaging::GetDlgItem(Some(hwnd), ID_SOURCE_EDIT as i32)
                 .map_err(|err| AppError::Windows(format!("获取原文输入框失败: {err}")))?;
@@ -891,6 +1015,7 @@ fn resize_translation_window(hwnd: windows::Win32::Foundation::HWND) -> Result<(
         let translate_button =
             windows::Win32::UI::WindowsAndMessaging::GetDlgItem(Some(hwnd), ID_TRANSLATE as i32)
                 .map_err(|err| AppError::Windows(format!("获取翻译按钮失败: {err}")))?;
+        move_window(profile_combo, layout.profile_combo)?;
         move_window(source_label, layout.source_label)?;
         move_window(source_edit, layout.source_edit)?;
         move_window(translated_label, layout.translated_label)?;
