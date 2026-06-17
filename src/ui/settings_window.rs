@@ -1,4 +1,4 @@
-use crate::config::{AppSettings, ProviderKind};
+use crate::config::{AppSettings, TranslatorProvider};
 use crate::error::{AppError, Result};
 
 const SETTINGS_WINDOW_WIDTH: i32 = 520;
@@ -23,26 +23,106 @@ const ID_CANCEL: isize = 3002;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SettingsViewModel {
-    pub default_provider: ProviderKind,
+    pub profiles: Vec<SettingsProfileListItem>,
+    pub selected_profile: SettingsProfileDetail,
     pub hotkey: String,
-    pub openai_base_url: String,
-    pub openai_model: String,
-    pub has_openai_key: bool,
     pub clipboard_capture_enabled: bool,
     pub copy_wait_ms: u64,
 }
 
-impl From<&AppSettings> for SettingsViewModel {
-    fn from(settings: &AppSettings) -> Self {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SettingsProfileListItem {
+    pub id: String,
+    pub label: String,
+    pub selected: bool,
+    pub default: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SettingsProfileDetail {
+    pub id: String,
+    pub name: String,
+    pub provider: TranslatorProvider,
+    pub base_url: String,
+    pub model: String,
+    pub has_api_key: bool,
+    pub timeout_secs: u64,
+    pub built_in: bool,
+    pub can_delete: bool,
+    pub network_fields_enabled: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SettingsEditAction {
+    NewProfile,
+    DeleteProfile(String),
+    SetDefault(String),
+    SelectProfile(String),
+}
+
+pub fn apply_settings_edit_action(
+    settings: &mut AppSettings,
+    action: SettingsEditAction,
+) -> Result<String> {
+    match action {
+        SettingsEditAction::NewProfile => Ok(settings.add_custom_profile().id),
+        SettingsEditAction::DeleteProfile(id) => {
+            settings.delete_profile(&id)?;
+            Ok(settings.default_profile_id.clone())
+        }
+        SettingsEditAction::SetDefault(id) => {
+            settings.set_default_profile(&id)?;
+            Ok(id)
+        }
+        SettingsEditAction::SelectProfile(id) => {
+            if settings.profile_by_id(&id).is_none() {
+                return Err(AppError::Config("翻译配置不存在".to_string()));
+            }
+            Ok(id)
+        }
+    }
+}
+
+impl SettingsViewModel {
+    pub fn from_settings_with_selected(settings: &AppSettings, selected_profile_id: &str) -> Self {
+        let selected = settings
+            .profile_by_id(selected_profile_id)
+            .or_else(|| settings.profile_by_id(&settings.default_profile_id))
+            .or_else(|| settings.translator_profiles.first())
+            .expect("settings always contain profiles after normalization");
         Self {
-            default_provider: settings.default_provider,
+            profiles: settings
+                .translator_profiles
+                .iter()
+                .map(|profile| SettingsProfileListItem {
+                    id: profile.id.clone(),
+                    label: profile.name.clone(),
+                    selected: profile.id == selected.id,
+                    default: profile.id == settings.default_profile_id,
+                })
+                .collect(),
+            selected_profile: SettingsProfileDetail {
+                id: selected.id.clone(),
+                name: selected.name.clone(),
+                provider: selected.provider,
+                base_url: selected.base_url.clone(),
+                model: selected.model.clone(),
+                has_api_key: selected.encrypted_api_key.is_some(),
+                timeout_secs: selected.timeout_secs,
+                built_in: selected.built_in,
+                can_delete: !selected.built_in,
+                network_fields_enabled: selected.provider != TranslatorProvider::Google,
+            },
             hotkey: settings.hotkey.clone(),
-            openai_base_url: settings.openai.base_url.clone(),
-            openai_model: settings.openai.model.clone(),
-            has_openai_key: settings.openai.encrypted_api_key.is_some(),
             clipboard_capture_enabled: settings.clipboard_capture.enabled,
             copy_wait_ms: settings.clipboard_capture.copy_wait_ms,
         }
+    }
+}
+
+impl From<&AppSettings> for SettingsViewModel {
+    fn from(settings: &AppSettings) -> Self {
+        Self::from_settings_with_selected(settings, &settings.default_profile_id)
     }
 }
 
@@ -109,18 +189,23 @@ impl SettingsWindow {
             let settings_ptr = Box::into_raw(Box::new(settings.clone()));
             let _ = SetWindowLongPtrW(hwnd, GWLP_USERDATA, settings_ptr as isize);
 
-            let provider = match view_model.default_provider {
-                ProviderKind::GoogleFree => "google_free",
-                ProviderKind::OpenAiCompatible => "openai_compatible",
-            };
-            create_static(hwnd, "默认提供方", 18, 20, 120, 22)?;
-            create_edit(hwnd, provider, 150, 18, 230, 24, false, ID_PROVIDER)?;
+            create_static(hwnd, "默认配置 ID", 18, 20, 120, 22)?;
+            create_edit(
+                hwnd,
+                &view_model.selected_profile.id,
+                150,
+                18,
+                230,
+                24,
+                false,
+                ID_PROVIDER,
+            )?;
             create_static(hwnd, "快捷键", 18, 54, 120, 22)?;
             create_edit(hwnd, &view_model.hotkey, 150, 52, 230, 24, false, ID_HOTKEY)?;
             create_static(hwnd, "OpenAI Base URL", 18, 88, 120, 22)?;
             create_edit(
                 hwnd,
-                &view_model.openai_base_url,
+                &view_model.selected_profile.base_url,
                 150,
                 86,
                 320,
@@ -131,7 +216,7 @@ impl SettingsWindow {
             create_static(hwnd, "OpenAI Model", 18, 122, 120, 22)?;
             create_edit(
                 hwnd,
-                &view_model.openai_model,
+                &view_model.selected_profile.model,
                 150,
                 120,
                 230,
@@ -142,7 +227,7 @@ impl SettingsWindow {
             create_static(hwnd, "API Key", 18, 156, 120, 22)?;
             create_edit(
                 hwnd,
-                if view_model.has_openai_key {
+                if view_model.selected_profile.has_api_key {
                     "已保存"
                 } else {
                     ""
@@ -263,28 +348,36 @@ unsafe fn save_settings_from_window(hwnd: windows::Win32::Foundation::HWND) -> R
         return Err(AppError::Config("设置窗口状态缺失".to_string()));
     }
     let settings = unsafe { &mut *(ptr as *mut AppSettings) };
-    settings.default_provider = match read_control_text(hwnd, ID_PROVIDER)?.as_str() {
-        "openai_compatible" => ProviderKind::OpenAiCompatible,
-        _ => ProviderKind::GoogleFree,
-    };
+    let profile_id = read_control_text(hwnd, ID_PROVIDER)?;
     settings.hotkey = read_control_text(hwnd, ID_HOTKEY)?;
-    settings.openai.base_url = read_control_text(hwnd, ID_BASE_URL)?;
-    settings.openai.model = read_control_text(hwnd, ID_MODEL)?;
     settings.clipboard_capture.copy_wait_ms = read_control_text(hwnd, ID_COPY_WAIT)?
         .parse::<u64>()
         .unwrap_or(settings.clipboard_capture.copy_wait_ms);
 
-    let api_key = read_control_text(hwnd, ID_API_KEY)?;
-    if !api_key.trim().is_empty() && api_key != "已保存" {
-        settings.openai.encrypted_api_key =
-            Some(crate::secret::SecretStore::new("ait-openai-api-key").protect(&api_key)?);
+    let profile = settings
+        .profile_by_id_mut(&profile_id)
+        .ok_or_else(|| AppError::Config("翻译配置不存在".to_string()))?;
+    if profile.provider == TranslatorProvider::Google {
+        profile.base_url.clear();
+        profile.model.clear();
+        profile.encrypted_api_key = None;
+        profile.timeout_secs = 0;
+    } else {
+        profile.base_url = read_control_text(hwnd, ID_BASE_URL)?;
+        profile.model = read_control_text(hwnd, ID_MODEL)?;
+        let api_key = read_control_text(hwnd, ID_API_KEY)?;
+        if !api_key.trim().is_empty() && api_key != "已保存" {
+            profile.encrypted_api_key = Some(
+                crate::secret::SecretStore::new(&format!("ait-translator-profile-{}", profile.id))
+                    .protect(&api_key)?,
+            );
+        }
     }
 
     let dir = crate::config::SettingsStore::default_dir()?;
     crate::config::SettingsStore::new(dir).save(settings)?;
     tracing::info!(
-        provider = ?settings.default_provider,
-        has_openai_key = settings.openai.encrypted_api_key.is_some(),
+        default_profile_id = %settings.default_profile_id,
         "settings saved"
     );
     Ok(())

@@ -80,7 +80,7 @@ impl GoogleFreeTranslator {
 
         Ok(TranslationResponse {
             translated_text: translated,
-            provider: ProviderKind::GoogleFree,
+            provider: ProviderKind::Google,
         })
     }
 }

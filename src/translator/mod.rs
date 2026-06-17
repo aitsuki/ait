@@ -1,25 +1,13 @@
 pub mod google_free;
 pub mod openai_compatible;
 
+pub use crate::config::TranslatorProvider;
 use crate::error::Result;
 use std::fmt;
 use std::future::Future;
 use std::pin::Pin;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ProviderKind {
-    GoogleFree,
-    OpenAiCompatible,
-}
-
-impl ProviderKind {
-    pub fn as_log_name(self) -> &'static str {
-        match self {
-            Self::GoogleFree => "google_free",
-            Self::OpenAiCompatible => "openai_compatible",
-        }
-    }
-}
+pub type ProviderKind = TranslatorProvider;
 
 #[derive(Clone)]
 pub struct TranslationRequest {

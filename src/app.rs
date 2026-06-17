@@ -128,6 +128,64 @@ where
 
 impl TranslationObserver for () {}
 
+#[derive(Debug, Clone)]
+pub struct AppRuntimeState {
+    settings: crate::config::AppSettings,
+    active_profile_id: String,
+}
+
+impl AppRuntimeState {
+    pub fn new(settings: crate::config::AppSettings) -> Self {
+        let active_profile_id = settings
+            .default_profile()
+            .map(|profile| profile.id.clone())
+            .unwrap_or_else(|_| "google".to_string());
+        Self {
+            settings,
+            active_profile_id,
+        }
+    }
+
+    pub fn settings(&self) -> &crate::config::AppSettings {
+        &self.settings
+    }
+
+    pub fn active_profile_id(&self) -> &str {
+        &self.active_profile_id
+    }
+
+    pub fn active_profile(&self) -> Result<&crate::config::TranslatorProfile> {
+        self.settings
+            .profile_by_id(&self.active_profile_id)
+            .or_else(|| self.settings.profile_by_id(&self.settings.default_profile_id))
+            .or_else(|| self.settings.translator_profiles.first())
+            .ok_or_else(|| AppError::Config("没有可用的翻译配置".to_string()))
+    }
+
+    pub fn select_profile(&mut self, profile_id: &str) -> Result<()> {
+        if self.settings.profile_by_id(profile_id).is_none() {
+            return Err(AppError::Config("翻译配置不存在".to_string()));
+        }
+        self.active_profile_id = profile_id.to_string();
+        self.settings.default_profile_id = profile_id.to_string();
+        Ok(())
+    }
+
+    pub fn replace_settings(&mut self, settings: crate::config::AppSettings) {
+        self.settings = settings;
+        if self
+            .settings
+            .profile_by_id(&self.settings.default_profile_id)
+            .is_some()
+        {
+            self.active_profile_id = self.settings.default_profile_id.clone();
+        } else if let Some(profile) = self.settings.translator_profiles.first() {
+            self.active_profile_id = profile.id.clone();
+            self.settings.default_profile_id = profile.id.clone();
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HotkeyAction {
     Ignore,
@@ -186,13 +244,14 @@ fn run_platform() -> Result<()> {
         .load()
         .unwrap_or_else(|_| AppSettings::default());
     let hotkey = settings.hotkey.parse::<Hotkey>()?;
+    let runtime_state = AppRuntimeState::new(settings);
     let _tray = TrayIcon::create()?;
     let _registered = RegisteredHotkey::register(1, hotkey)?;
     let workflow = TranslationWorkflow::new(
         WindowsWorkflowCapture {
-            wait_ms: settings.clipboard_capture.copy_wait_ms,
+            wait_ms: runtime_state.settings().clipboard_capture.copy_wait_ms,
         },
-        build_workflow_translator(&settings)?,
+        build_workflow_translator_for_profile(runtime_state.active_profile()?)?,
     );
     let mut translation_window = TranslationWindow::new()?;
 
@@ -208,7 +267,11 @@ fn run_platform() -> Result<()> {
                     }
                     HotkeyAction::TranslateSelection => {
                         tracing::info!("TranslateSelection requested");
-                        let _ = perform_translation(&workflow, &settings, &mut translation_window);
+                        let _ = perform_translation(
+                            &workflow,
+                            runtime_state.settings(),
+                            &mut translation_window,
+                        );
                     }
                 }
             } else if msg.message == crate::ui::tray::WM_TRAY_COMMAND {
@@ -217,19 +280,27 @@ fn run_platform() -> Result<()> {
                         let _ = translation_window.show_window();
                     }
                     TrayAction::OpenSettings => {
-                        let _ =
-                            handle_app_command(crate::command::AppCommand::OpenSettings, &settings);
+                        let _ = handle_app_command(
+                            crate::command::AppCommand::OpenSettings,
+                            runtime_state.settings(),
+                        );
                     }
                     TrayAction::Exit => {
-                        if handle_app_command(crate::command::AppCommand::Exit, &settings)? {
+                        if handle_app_command(
+                            crate::command::AppCommand::Exit,
+                            runtime_state.settings(),
+                        )? {
                             PostQuitMessage(0);
                         }
                     }
                     TrayAction::Unknown => {}
                 }
             } else if msg.message == crate::ui::translate_window::WM_TRANSLATE_WINDOW_SOURCE {
-                let _ =
-                    perform_window_text_translation(&workflow, &settings, &mut translation_window);
+                let _ = perform_window_text_translation(
+                    &workflow,
+                    runtime_state.settings(),
+                    &mut translation_window,
+                );
             }
             let _ = TranslateMessage(&msg);
             DispatchMessageW(&msg);
@@ -342,27 +413,32 @@ impl WorkflowTranslator for BlockingGoogleTranslator {
 }
 
 #[cfg(windows)]
-fn build_workflow_translator(
-    settings: &crate::config::AppSettings,
+fn build_workflow_translator_for_profile(
+    profile: &crate::config::TranslatorProfile,
 ) -> Result<Box<dyn WorkflowTranslator>> {
-    match settings.default_provider {
-        crate::config::ProviderKind::GoogleFree => Ok(Box::new(BlockingGoogleTranslator(
+    match profile.provider {
+        crate::config::TranslatorProvider::Google => Ok(Box::new(BlockingGoogleTranslator(
             crate::translator::google_free::GoogleFreeTranslator::new(),
         ))),
-        crate::config::ProviderKind::OpenAiCompatible => {
-            let encrypted = settings
-                .openai
+        crate::config::TranslatorProvider::OpenAi
+        | crate::config::TranslatorProvider::Claude
+        | crate::config::TranslatorProvider::Gemini
+        | crate::config::TranslatorProvider::DeepSeek
+        | crate::config::TranslatorProvider::Custom => {
+            let encrypted = profile
                 .encrypted_api_key
                 .as_ref()
                 .ok_or_else(|| crate::error::AppError::Translate("API Key 缺失".to_string()))?;
             let api_key =
-                crate::secret::SecretStore::new("ait-openai-api-key").unprotect(encrypted)?;
+                crate::secret::SecretStore::new(&format!("ait-translator-profile-{}", profile.id))
+                    .unprotect(encrypted)?;
             let translator = crate::translator::openai_compatible::OpenAiCompatibleTranslator::new(
                 crate::translator::openai_compatible::OpenAiCompatibleConfig {
-                    base_url: settings.openai.base_url.clone(),
+                    provider: profile.provider,
+                    base_url: profile.base_url.clone(),
                     api_key,
-                    model: settings.openai.model.clone(),
-                    timeout_secs: settings.openai.timeout_secs,
+                    model: profile.model.clone(),
+                    timeout_secs: profile.timeout_secs,
                 },
             )?;
             Ok(Box::new(BlockingOpenAiTranslator(translator)))
