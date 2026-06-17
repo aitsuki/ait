@@ -9,8 +9,6 @@ const ID_PROFILE_LIST: i32 = 3101;
 #[cfg(windows)]
 const ID_NAME: i32 = 3102;
 #[cfg(windows)]
-const ID_PROVIDER: i32 = 3103;
-#[cfg(windows)]
 const ID_BASE_URL: i32 = 3104;
 #[cfg(windows)]
 const ID_MODEL: i32 = 3105;
@@ -23,6 +21,8 @@ const ID_HOTKEY: i32 = 3108;
 #[cfg(windows)]
 const ID_COPY_WAIT: i32 = 3109;
 #[cfg(windows)]
+const ID_GOOGLE_NOTICE: i32 = 3110;
+#[cfg(windows)]
 const ID_NEW_PROFILE: isize = 3001;
 #[cfg(windows)]
 const ID_DELETE_PROFILE: isize = 3002;
@@ -34,15 +34,6 @@ const ID_SAVE: isize = 3004;
 const ID_CANCEL: isize = 3005;
 #[cfg(windows)]
 pub const WM_SETTINGS_SAVED: u32 = windows::Win32::UI::WindowsAndMessaging::WM_APP + 40;
-
-const PROVIDER_OPTIONS: [TranslatorProvider; 6] = [
-    TranslatorProvider::Google,
-    TranslatorProvider::OpenAi,
-    TranslatorProvider::Claude,
-    TranslatorProvider::Gemini,
-    TranslatorProvider::DeepSeek,
-    TranslatorProvider::Custom,
-];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SettingsViewModel {
@@ -273,49 +264,97 @@ impl SettingsWindow {
             let settings_ptr = Box::into_raw(Box::new(settings.clone()));
             let _ = SetWindowLongPtrW(hwnd, GWLP_USERDATA, settings_ptr as isize);
 
-            create_static(hwnd, "翻译配置", 18, 18, 120, 22)?;
-            let profile_list = create_listbox(hwnd, 18, 44, 220, 284, ID_PROFILE_LIST)?;
+            create_static(hwnd, "快捷键", 18, 20, 90, 22)?;
+            create_edit(hwnd, &view_model.hotkey, 118, 18, 180, 24, false, ID_HOTKEY)?;
+            create_static(hwnd, "复制等待毫秒", 318, 20, 100, 22)?;
+            create_edit(
+                hwnd,
+                &view_model.copy_wait_ms.to_string(),
+                430,
+                18,
+                90,
+                24,
+                false,
+                ID_COPY_WAIT,
+            )?;
+            create_static(hwnd, "", 18, 62, 668, 1)?;
+
+            create_static(hwnd, "翻译配置", 18, 74, 120, 22)?;
+            let profile_list = create_listbox(hwnd, 18, 100, 220, 228, ID_PROFILE_LIST)?;
             reset_profile_list(profile_list, &view_model)?;
             create_button(hwnd, "新增", 18, 342, 64, 28, ID_NEW_PROFILE)?;
-            create_button(hwnd, "删除", 90, 342, 64, 28, ID_DELETE_PROFILE)?;
+            let delete_button = create_button(hwnd, "删除", 90, 342, 64, 28, ID_DELETE_PROFILE)?;
             create_button(hwnd, "设为默认", 162, 342, 76, 28, ID_SET_DEFAULT)?;
 
-            create_static(hwnd, "名称", 266, 20, 90, 22)?;
-            create_edit(hwnd, &view_model.selected_profile.name, 370, 18, 240, 24, false, ID_NAME)?;
-            create_static(hwnd, "供应商", 266, 54, 90, 22)?;
-            let provider_combo = create_provider_combo(hwnd, 370, 52, 180, 180, ID_PROVIDER)?;
-            select_provider(provider_combo, view_model.selected_profile.provider)?;
-            create_static(hwnd, "Base URL", 266, 88, 90, 22)?;
-            create_edit(hwnd, &view_model.selected_profile.base_url, 370, 86, 300, 24, false, ID_BASE_URL)?;
-            create_static(hwnd, "模型", 266, 122, 90, 22)?;
-            create_edit(hwnd, &view_model.selected_profile.model, 370, 120, 240, 24, false, ID_MODEL)?;
-            create_static(hwnd, "API Key", 266, 156, 90, 22)?;
+            create_static(hwnd, "名称", 266, 102, 90, 22)?;
+            create_edit(
+                hwnd,
+                &view_model.selected_profile.name,
+                370,
+                100,
+                240,
+                24,
+                false,
+                ID_NAME,
+            )?;
+            create_static(hwnd, "Base URL", 266, 136, 90, 22)?;
+            create_edit(
+                hwnd,
+                &view_model.selected_profile.base_url,
+                370,
+                134,
+                300,
+                24,
+                false,
+                ID_BASE_URL,
+            )?;
+            create_static(hwnd, "模型", 266, 170, 90, 22)?;
+            create_edit(
+                hwnd,
+                &view_model.selected_profile.model,
+                370,
+                168,
+                240,
+                24,
+                false,
+                ID_MODEL,
+            )?;
+            create_static(hwnd, "API Key", 266, 204, 90, 22)?;
             create_edit(
                 hwnd,
                 if view_model.selected_profile.has_api_key { "已保存" } else { "" },
                 370,
-                154,
+                202,
                 240,
                 24,
                 true,
                 ID_API_KEY,
             )?;
-            create_static(hwnd, "超时秒数", 266, 190, 90, 22)?;
+            create_static(hwnd, "超时秒数", 266, 238, 90, 22)?;
             create_edit(
                 hwnd,
                 &view_model.selected_profile.timeout_secs.to_string(),
                 370,
-                188,
+                236,
                 90,
                 24,
                 false,
                 ID_TIMEOUT,
             )?;
-            create_static(hwnd, "快捷键", 266, 236, 90, 22)?;
-            create_edit(hwnd, &view_model.hotkey, 370, 234, 180, 24, false, ID_HOTKEY)?;
-            create_static(hwnd, "复制等待毫秒", 266, 270, 90, 22)?;
-            create_edit(hwnd, &view_model.copy_wait_ms.to_string(), 370, 268, 90, 24, false, ID_COPY_WAIT)?;
-            create_static(hwnd, "Google 配置使用免 Key 翻译，网络字段不会保存。", 266, 314, 390, 36)?;
+            create_static_with_id(
+                hwnd,
+                "Google 配置使用免 Key 翻译。",
+                266,
+                278,
+                390,
+                36,
+                ID_GOOGLE_NOTICE,
+            )?;
+            apply_profile_detail_ui_state(hwnd, &view_model.selected_profile);
+            let _ = windows::Win32::UI::Input::KeyboardAndMouse::EnableWindow(
+                delete_button,
+                view_model.selected_profile.can_delete,
+            );
             create_button(hwnd, "保存", 534, 382, 72, 28, ID_SAVE)?;
             create_button(hwnd, "取消", 614, 382, 72, 28, ID_CANCEL)?;
             let _ = ShowWindow(hwnd, SW_SHOW);
@@ -478,7 +517,6 @@ unsafe extern "system" fn default_wnd_proc(
                             windows::Win32::Foundation::LPARAM(0),
                         );
                     }
-                    let _ = DestroyWindow(hwnd);
                 },
                 Err(err) => {
                     tracing::warn!(error = %err, "save settings failed");
@@ -519,6 +557,10 @@ unsafe fn save_settings_from_window(hwnd: windows::Win32::Foundation::HWND) -> R
     }
     let settings = unsafe { &mut *(ptr as *mut AppSettings) };
     let profile_id = selected_profile_id(hwnd)?;
+    let existing_provider = settings
+        .profile_by_id(&profile_id)
+        .map(|profile| profile.provider)
+        .ok_or_else(|| AppError::Config("翻译配置不存在".to_string()))?;
     let api_key = read_control_text(hwnd, ID_API_KEY)?;
     let encrypted_api_key = if !api_key.trim().is_empty() && api_key != "已保存" {
         Some(
@@ -533,7 +575,7 @@ unsafe fn save_settings_from_window(hwnd: windows::Win32::Foundation::HWND) -> R
         SettingsProfileDetailUpdate {
             id: profile_id,
             name: read_control_text(hwnd, ID_NAME)?,
-            provider: selected_provider(hwnd)?,
+            provider: existing_provider,
             base_url: read_control_text(hwnd, ID_BASE_URL)?,
             model: read_control_text(hwnd, ID_MODEL)?,
             api_key: encrypted_api_key,
@@ -595,7 +637,6 @@ fn load_profile_into_window(
     let vm = SettingsViewModel::from_settings_with_selected(settings, profile_id);
     let profile = &vm.selected_profile;
     set_control_text(hwnd, ID_NAME, &profile.name)?;
-    select_provider(control(hwnd, ID_PROVIDER)?, profile.provider)?;
     set_control_text(hwnd, ID_BASE_URL, &profile.base_url)?;
     set_control_text(hwnd, ID_MODEL, &profile.model)?;
     set_control_text(
@@ -606,8 +647,48 @@ fn load_profile_into_window(
     set_control_text(hwnd, ID_TIMEOUT, &profile.timeout_secs.to_string())?;
     set_control_text(hwnd, ID_HOTKEY, &vm.hotkey)?;
     set_control_text(hwnd, ID_COPY_WAIT, &vm.copy_wait_ms.to_string())?;
-    set_network_fields_enabled(hwnd, profile.network_fields_enabled);
+    apply_profile_detail_ui_state(hwnd, profile);
     Ok(())
+}
+
+#[cfg(windows)]
+fn apply_profile_detail_ui_state(
+    hwnd: windows::Win32::Foundation::HWND,
+    profile: &SettingsProfileDetail,
+) {
+    use windows::Win32::UI::Input::KeyboardAndMouse::EnableWindow;
+    use windows::Win32::UI::WindowsAndMessaging::{SW_HIDE, SW_SHOW, ShowWindow};
+
+    if let Ok(delete_button) = control(hwnd, ID_DELETE_PROFILE as i32) {
+        unsafe {
+            let _ = EnableWindow(delete_button, profile.can_delete);
+        }
+    }
+    for id in [ID_NAME, ID_BASE_URL, ID_MODEL, ID_API_KEY, ID_TIMEOUT] {
+        if let Ok(child) = control(hwnd, id) {
+            let visible = if id == ID_NAME {
+                true
+            } else {
+                profile.network_fields_visible
+            };
+            unsafe {
+                let _ = ShowWindow(child, if visible { SW_SHOW } else { SW_HIDE });
+                let _ = EnableWindow(child, id != ID_NAME || profile.name_editable);
+            }
+        }
+    }
+    if let Ok(google_notice) = control(hwnd, ID_GOOGLE_NOTICE) {
+        unsafe {
+            let _ = ShowWindow(
+                google_notice,
+                if profile.google_notice_visible {
+                    SW_SHOW
+                } else {
+                    SW_HIDE
+                },
+            );
+        }
+    }
 }
 
 #[cfg(windows)]
@@ -654,19 +735,6 @@ fn selected_profile_id(hwnd: windows::Win32::Foundation::HWND) -> Result<String>
 }
 
 #[cfg(windows)]
-fn selected_provider(hwnd: windows::Win32::Foundation::HWND) -> Result<TranslatorProvider> {
-    use windows::Win32::Foundation::{LPARAM, WPARAM};
-    use windows::Win32::UI::WindowsAndMessaging::{SendMessageW, CB_GETCURSEL};
-
-    let combo = control(hwnd, ID_PROVIDER)?;
-    let index = unsafe { SendMessageW(combo, CB_GETCURSEL, Some(WPARAM(0)), Some(LPARAM(0))) }.0;
-    PROVIDER_OPTIONS
-        .get(index as usize)
-        .copied()
-        .ok_or_else(|| AppError::Config("未选择供应商".to_string()))
-}
-
-#[cfg(windows)]
 unsafe fn get_owner_hwnd(
     hwnd: windows::Win32::Foundation::HWND,
 ) -> Option<windows::Win32::Foundation::HWND> {
@@ -699,19 +767,6 @@ fn set_control_text(
             .map_err(|err| AppError::Windows(format!("设置控件文本失败: {err}")))?;
     }
     Ok(())
-}
-
-#[cfg(windows)]
-fn set_network_fields_enabled(hwnd: windows::Win32::Foundation::HWND, enabled: bool) {
-    use windows::Win32::UI::Input::KeyboardAndMouse::EnableWindow;
-
-    for id in [ID_BASE_URL, ID_MODEL, ID_API_KEY, ID_TIMEOUT] {
-        if let Ok(child) = control(hwnd, id) {
-            unsafe {
-                let _ = EnableWindow(child, enabled);
-            }
-        }
-    }
 }
 
 #[cfg(windows)]
@@ -776,24 +831,6 @@ fn reset_profile_list(
 }
 
 #[cfg(windows)]
-fn select_provider(
-    combo: windows::Win32::Foundation::HWND,
-    provider: TranslatorProvider,
-) -> Result<()> {
-    use windows::Win32::Foundation::{LPARAM, WPARAM};
-    use windows::Win32::UI::WindowsAndMessaging::{SendMessageW, CB_SETCURSEL};
-
-    let index = PROVIDER_OPTIONS
-        .iter()
-        .position(|item| *item == provider)
-        .ok_or_else(|| AppError::Config("供应商不存在".to_string()))?;
-    unsafe {
-        let _ = SendMessageW(combo, CB_SETCURSEL, Some(WPARAM(index)), Some(LPARAM(0)));
-    }
-    Ok(())
-}
-
-#[cfg(windows)]
 fn create_static(
     parent: windows::Win32::Foundation::HWND,
     text: &str,
@@ -811,6 +848,29 @@ fn create_static(
         width,
         height,
         0,
+        Default::default(),
+    )
+}
+
+#[cfg(windows)]
+fn create_static_with_id(
+    parent: windows::Win32::Foundation::HWND,
+    text: &str,
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+    id: i32,
+) -> Result<windows::Win32::Foundation::HWND> {
+    create_control(
+        parent,
+        "STATIC",
+        text,
+        x,
+        y,
+        width,
+        height,
+        id as isize,
         Default::default(),
     )
 }
@@ -836,45 +896,6 @@ fn create_listbox(
         id as isize,
         WINDOW_STYLE(LBS_NOTIFY as u32) | WS_VSCROLL,
     )
-}
-
-#[cfg(windows)]
-fn create_provider_combo(
-    parent: windows::Win32::Foundation::HWND,
-    x: i32,
-    y: i32,
-    width: i32,
-    height: i32,
-    id: i32,
-) -> Result<windows::Win32::Foundation::HWND> {
-    use windows::Win32::Foundation::{LPARAM, WPARAM};
-    use windows::Win32::UI::WindowsAndMessaging::{
-        SendMessageW, CB_ADDSTRING, CBS_DROPDOWNLIST, WINDOW_STYLE,
-    };
-
-    let combo = create_control(
-        parent,
-        "COMBOBOX",
-        "",
-        x,
-        y,
-        width,
-        height,
-        id as isize,
-        WINDOW_STYLE(CBS_DROPDOWNLIST as u32),
-    )?;
-    unsafe {
-        for provider in PROVIDER_OPTIONS {
-            let label = wide(provider.display_name());
-            let _ = SendMessageW(
-                combo,
-                CB_ADDSTRING,
-                Some(WPARAM(0)),
-                Some(LPARAM(label.as_ptr() as isize)),
-            );
-        }
-    }
-    Ok(combo)
 }
 
 #[cfg(windows)]
