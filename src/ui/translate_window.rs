@@ -68,6 +68,10 @@ pub fn translation_window_min_client_size() -> (i32, i32) {
     (420, 300)
 }
 
+pub fn translation_profile_combo_dropdown_height() -> i32 {
+    220
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TranslationProfileOption {
     pub id: String,
@@ -524,7 +528,13 @@ impl TranslationWindow {
             let mut rect = RECT::default();
             let _ = GetClientRect(self.hwnd, &mut rect);
             let layout = translation_window_layout(rect.right - rect.left, rect.bottom - rect.top);
-            move_window(self.profile_combo, layout.profile_combo)?;
+            move_window(
+                self.profile_combo,
+                ControlRect {
+                    height: translation_profile_combo_dropdown_height(),
+                    ..layout.profile_combo
+                },
+            )?;
             move_window(self.source_label, layout.source_label)?;
             move_window(self.source_edit, layout.source_edit)?;
             move_window(self.translated_label, layout.translated_label)?;
@@ -1016,7 +1026,13 @@ fn resize_translation_window(hwnd: windows::Win32::Foundation::HWND) -> Result<(
         let translate_button =
             windows::Win32::UI::WindowsAndMessaging::GetDlgItem(Some(hwnd), ID_TRANSLATE as i32)
                 .map_err(|err| AppError::Windows(format!("获取翻译按钮失败: {err}")))?;
-        move_window(profile_combo, layout.profile_combo)?;
+        move_window(
+            profile_combo,
+            ControlRect {
+                height: translation_profile_combo_dropdown_height(),
+                ..layout.profile_combo
+            },
+        )?;
         move_window(source_label, layout.source_label)?;
         move_window(source_edit, layout.source_edit)?;
         move_window(translated_label, layout.translated_label)?;

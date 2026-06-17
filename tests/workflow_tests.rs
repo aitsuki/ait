@@ -10,7 +10,8 @@ use ait::ui::translate_window::{
     TranslationProfileOption, TranslationWindowState, WindowZOrder, edit_char_action,
     edit_display_text, edit_shortcut_action, is_third_click_after_double_click,
     paragraph_selection_range_utf16, profile_selection_action, show_action,
-    translation_window_layout, translation_window_min_client_size, window_z_order,
+    translation_profile_combo_dropdown_height, translation_window_layout,
+    translation_window_min_client_size, window_z_order,
 };
 use std::cell::RefCell;
 
@@ -277,6 +278,14 @@ fn translation_window_layout_keeps_controls_inside_small_client_area() {
         assert!(rect.x + rect.width <= 180);
         assert!(rect.y + rect.height <= 160);
     }
+}
+
+#[test]
+fn translation_profile_combo_keeps_dropdown_height() {
+    let layout = translation_window_layout(620, 420);
+
+    assert_eq!(layout.profile_combo.height, 26);
+    assert_eq!(translation_profile_combo_dropdown_height(), 220);
 }
 
 #[test]
