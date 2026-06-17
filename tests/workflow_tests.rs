@@ -10,7 +10,7 @@ use ait::ui::translate_window::{
     EditCharAction, EditShortcutAction, ProfileSelectionAction, ShowAction, ShowMode,
     TranslationProfileOption, TranslationWindowState, WindowZOrder, edit_char_action,
     edit_display_text, edit_shortcut_action, is_third_click_after_double_click,
-    paragraph_selection_range_utf16, profile_selection_action, show_action,
+    paragraph_selection_range_utf16, profile_selection_action, show_action, show_window_z_order,
     translation_profile_combo_dropdown_height, translation_window_layout,
     translation_window_min_client_size, window_z_order,
 };
@@ -200,6 +200,37 @@ fn translation_starting_window_does_not_take_focus() {
     assert!(ShowMode::Loading.activates_window());
     assert!(ShowMode::Result.activates_window());
     assert!(ShowMode::Error.activates_window());
+}
+
+#[test]
+fn translation_starting_window_is_temporarily_shown_above_foreground_app() {
+    assert_eq!(
+        show_window_z_order(ShowMode::Starting),
+        WindowZOrder::TopmostNoActivate
+    );
+    assert_eq!(show_window_z_order(ShowMode::Result), WindowZOrder::NotTopmost);
+}
+
+#[test]
+fn translation_window_completion_keeps_source_text() {
+    let mut state = TranslationWindowState {
+        source_text: String::new(),
+        translated_text: String::new(),
+        loading: true,
+        error: Some("old error".to_string()),
+    };
+    let result = TranslationWorkflowResult {
+        source_text: "hello".to_string(),
+        translated_text: "你好".to_string(),
+        provider: ProviderKind::GoogleFree,
+    };
+
+    state.apply_translation_result(&result);
+
+    assert_eq!(state.source_text, "hello");
+    assert_eq!(state.translated_text, "你好");
+    assert!(!state.loading);
+    assert_eq!(state.error, None);
 }
 
 #[test]

@@ -34,6 +34,13 @@ impl TranslationWindowState {
         self.error = None;
     }
 
+    pub fn apply_translation_result(&mut self, result: &crate::app::TranslationWorkflowResult) {
+        self.source_text = result.source_text.clone();
+        self.translated_text = result.translated_text.clone();
+        self.loading = false;
+        self.error = None;
+    }
+
     pub fn with_profile_switch_error(mut self, message: String) -> Self {
         self.loading = false;
         self.error = Some(message);
@@ -58,10 +65,18 @@ impl ShowMode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WindowZOrder {
     NotTopmost,
+    TopmostNoActivate,
 }
 
 pub fn window_z_order() -> WindowZOrder {
     WindowZOrder::NotTopmost
+}
+
+pub fn show_window_z_order(mode: ShowMode) -> WindowZOrder {
+    match mode {
+        ShowMode::Starting => WindowZOrder::TopmostNoActivate,
+        ShowMode::Loading | ShowMode::Result | ShowMode::Error => WindowZOrder::NotTopmost,
+    }
 }
 
 pub fn translation_window_min_client_size() -> (i32, i32) {
@@ -459,10 +474,9 @@ impl TranslationWindow {
         Ok(())
     }
 
-    pub fn show_result(&mut self, translated_text: String) -> Result<()> {
-        self.state.translated_text = translated_text;
-        self.state.loading = false;
-        self.state.error = None;
+    pub fn show_result(&mut self, result: &crate::app::TranslationWorkflowResult) -> Result<()> {
+        self.state.apply_translation_result(result);
+        set_text(self.source_edit, &self.state.source_text)?;
         set_text(self.translated_edit, &self.state.translated_text)?;
         set_text(self.status_text, "翻译完成")?;
         show_window_at_cursor(self.hwnd, ShowMode::Result);
@@ -493,7 +507,7 @@ impl TranslationWindow {
         result: crate::error::Result<crate::app::TranslationWorkflowResult>,
     ) -> Result<()> {
         match result {
-            Ok(result) => self.show_result(result.translated_text),
+            Ok(result) => self.show_result(&result),
             Err(err) => self.show_error(err.to_string()),
         }
     }
@@ -578,7 +592,7 @@ impl crate::app::TranslationObserver for TranslationWindow {
         &mut self,
         result: &crate::app::TranslationWorkflowResult,
     ) -> Result<()> {
-        self.show_result(result.translated_text.clone())
+        self.show_result(result)
     }
 }
 
@@ -1109,7 +1123,7 @@ fn show_window_at_cursor(hwnd: windows::Win32::Foundation::HWND, mode: ShowMode)
         GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromPoint,
     };
     use windows::Win32::UI::WindowsAndMessaging::{
-        GetCursorPos, GetWindowRect, HWND_NOTOPMOST, SET_WINDOW_POS_FLAGS, SW_SHOW,
+        GetCursorPos, GetWindowRect, HWND_NOTOPMOST, HWND_TOPMOST, SET_WINDOW_POS_FLAGS, SW_SHOW,
         SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_SHOWWINDOW, SetForegroundWindow, SetWindowPos,
         ShowWindow,
     };
@@ -1151,9 +1165,13 @@ fn show_window_at_cursor(hwnd: windows::Win32::Foundation::HWND, mode: ShowMode)
         if !mode.activates_window() {
             flags |= SWP_NOACTIVATE.0;
         }
+        let z_order = match show_window_z_order(mode) {
+            WindowZOrder::NotTopmost => HWND_NOTOPMOST,
+            WindowZOrder::TopmostNoActivate => HWND_TOPMOST,
+        };
         let _ = SetWindowPos(
             hwnd,
-            Some(HWND_NOTOPMOST),
+            Some(z_order),
             x,
             y,
             width,
