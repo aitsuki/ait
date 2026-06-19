@@ -196,6 +196,38 @@ pub enum HotkeyAction {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HotkeyRegistrationUpdate {
+    Unchanged,
+    Changed {
+        hotkey: String,
+    },
+    Rejected {
+        rollback_hotkey: String,
+        message: String,
+    },
+}
+
+pub fn hotkey_registration_update(
+    current_hotkey: &str,
+    next_hotkey: &str,
+    registration_result: std::result::Result<(), String>,
+) -> HotkeyRegistrationUpdate {
+    if current_hotkey == next_hotkey {
+        return HotkeyRegistrationUpdate::Unchanged;
+    }
+
+    match registration_result {
+        Ok(()) => HotkeyRegistrationUpdate::Changed {
+            hotkey: next_hotkey.to_string(),
+        },
+        Err(error) => HotkeyRegistrationUpdate::Rejected {
+            rollback_hotkey: current_hotkey.to_string(),
+            message: format!("快捷键注册失败，请换一个组合键；当前仍使用原来的快捷键。{error}"),
+        },
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TranslationRequestKind {
     Selection,
     WindowText { source_text: String },
@@ -304,7 +336,9 @@ fn run_platform() -> Result<()> {
     let hotkey = settings.hotkey.parse::<Hotkey>()?;
     let mut runtime_state = AppRuntimeState::new(settings);
     let _tray = TrayIcon::create()?;
-    let _registered = RegisteredHotkey::register(1, hotkey)?;
+    let mut _registered_hotkey = RegisteredHotkey::register(1, hotkey)?;
+    let mut registered_hotkey_id = 1;
+    let mut registered_hotkey_text = hotkey.to_string();
     let mut translation_window = TranslationWindow::new()?;
     translation_window
         .refresh_profiles(runtime_state.settings(), runtime_state.active_profile_id())?;
@@ -369,8 +403,58 @@ fn run_platform() -> Result<()> {
                 }
             } else if msg.message == crate::ui::settings_window::WM_SETTINGS_SAVED {
                 match SettingsStore::new(settings_dir.clone()).load() {
-                    Ok(settings) => {
-                        runtime_state.replace_settings(settings);
+                    Ok(mut settings) => {
+                        let next_hotkey_text = settings.hotkey.clone();
+                        if next_hotkey_text != registered_hotkey_text {
+                            match next_hotkey_text.parse::<Hotkey>() {
+                                Ok(next_hotkey) => {
+                                    let next_hotkey_id =
+                                        if registered_hotkey_id == 1 { 2 } else { 1 };
+                                    match RegisteredHotkey::register(next_hotkey_id, next_hotkey) {
+                                        Ok(next_registered) => {
+                                            _registered_hotkey = next_registered;
+                                            registered_hotkey_id = next_hotkey_id;
+                                            registered_hotkey_text = next_hotkey.to_string();
+                                            settings.hotkey = registered_hotkey_text.clone();
+                                            runtime_state.replace_settings(settings);
+                                        }
+                                        Err(err) => {
+                                            settings.hotkey = registered_hotkey_text.clone();
+                                            if let Err(save_err) =
+                                                SettingsStore::new(settings_dir.clone())
+                                                    .save(&settings)
+                                            {
+                                                tracing::warn!(error = %save_err, "rollback hotkey save failed");
+                                            }
+                                            show_runtime_message(
+                                                translation_window.hwnd(),
+                                                "快捷键注册失败",
+                                                &format!(
+                                                    "快捷键注册失败，请换一个组合键；当前仍使用原来的快捷键。{err}"
+                                                ),
+                                            );
+                                            runtime_state.replace_settings(settings);
+                                        }
+                                    }
+                                }
+                                Err(err) => {
+                                    settings.hotkey = registered_hotkey_text.clone();
+                                    if let Err(save_err) =
+                                        SettingsStore::new(settings_dir.clone()).save(&settings)
+                                    {
+                                        tracing::warn!(error = %save_err, "rollback invalid hotkey save failed");
+                                    }
+                                    show_runtime_message(
+                                        translation_window.hwnd(),
+                                        "快捷键注册失败",
+                                        &format!("快捷键无效，当前仍使用原来的快捷键。{err}"),
+                                    );
+                                    runtime_state.replace_settings(settings);
+                                }
+                            }
+                        } else {
+                            runtime_state.replace_settings(settings);
+                        }
                         let _ = translation_window.refresh_profiles(
                             runtime_state.settings(),
                             runtime_state.active_profile_id(),
@@ -581,6 +665,25 @@ fn handle_app_command(
         crate::command::AppCommand::Exit => Ok(true),
         _ => Ok(false),
     }
+}
+
+#[cfg(windows)]
+fn show_runtime_message(owner_hwnd: windows::Win32::Foundation::HWND, caption: &str, text: &str) {
+    let caption = wide(caption);
+    let text = wide(text);
+    unsafe {
+        let _ = windows::Win32::UI::WindowsAndMessaging::MessageBoxW(
+            Some(owner_hwnd),
+            windows::core::PCWSTR(text.as_ptr()),
+            windows::core::PCWSTR(caption.as_ptr()),
+            windows::Win32::UI::WindowsAndMessaging::MB_OK,
+        );
+    }
+}
+
+#[cfg(windows)]
+fn wide(text: &str) -> Vec<u16> {
+    text.encode_utf16().chain(Some(0)).collect()
 }
 
 #[cfg(windows)]

@@ -1,7 +1,8 @@
 use ait::app::{
-    HotkeyAction, TranslationObserver, TranslationRequestKind, TranslationWorkflow,
-    TranslationWorkflowResult, WorkflowCapture, WorkflowTranslator, hotkey_action,
-    run_translation_request_with_observer, translation_task_action,
+    HotkeyAction, HotkeyRegistrationUpdate, TranslationObserver, TranslationRequestKind,
+    TranslationWorkflow, TranslationWorkflowResult, WorkflowCapture, WorkflowTranslator,
+    hotkey_action, hotkey_registration_update, run_translation_request_with_observer,
+    translation_task_action,
 };
 use ait::capture::CapturedText;
 use ait::config::AppSettings;
@@ -341,6 +342,40 @@ fn hotkey_translation_runs_as_selection_task() {
     assert_eq!(
         translation_task_action(true, ""),
         TranslationRequestKind::Selection
+    );
+}
+
+#[test]
+fn hotkey_registration_update_noops_when_hotkey_is_unchanged() {
+    assert_eq!(
+        hotkey_registration_update("Ctrl+Alt+E", "Ctrl+Alt+E", Ok(())),
+        HotkeyRegistrationUpdate::Unchanged
+    );
+}
+
+#[test]
+fn hotkey_registration_update_accepts_changed_registered_hotkey() {
+    assert_eq!(
+        hotkey_registration_update("Ctrl+Alt+E", "Ctrl+Alt+T", Ok(())),
+        HotkeyRegistrationUpdate::Changed {
+            hotkey: "Ctrl+Alt+T".to_string()
+        }
+    );
+}
+
+#[test]
+fn hotkey_registration_update_keeps_old_hotkey_when_registration_fails() {
+    assert_eq!(
+        hotkey_registration_update(
+            "Ctrl+Alt+E",
+            "Ctrl+Alt+T",
+            Err("注册快捷键失败: already registered".to_string())
+        ),
+        HotkeyRegistrationUpdate::Rejected {
+            rollback_hotkey: "Ctrl+Alt+E".to_string(),
+            message: "快捷键注册失败，请换一个组合键；当前仍使用原来的快捷键。注册快捷键失败: already registered"
+                .to_string()
+        }
     );
 }
 
