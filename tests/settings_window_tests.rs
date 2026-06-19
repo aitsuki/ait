@@ -2,12 +2,12 @@ use ait::config::{AppSettings, TranslatorProvider};
 use ait::ui::settings_window::{
     SettingsApiKeyUpdate, SettingsEditAction, SettingsProfileDetailControl,
     SettingsProfileDetailUpdate, SettingsSaveOutcome, SettingsViewModel, api_key_placeholder_text,
-    apply_settings_detail_update, apply_settings_edit_action, settings_api_key_input_text,
-    settings_api_key_update_from_input, settings_profile_detail_control_rect,
-    settings_profile_detail_control_states, settings_profile_detail_hidden_rect,
-    settings_profile_google_notice_text, settings_save_outcome_after_success,
-    settings_static_controls_have_border, settings_window_center_position, settings_window_layout,
-    settings_window_uses_background_brush,
+    apply_settings_detail_update, apply_settings_edit_action, hotkey_capture_text,
+    settings_api_key_input_text, settings_api_key_update_from_input,
+    settings_profile_detail_control_rect, settings_profile_detail_control_states,
+    settings_profile_detail_hidden_rect, settings_profile_google_notice_text,
+    settings_save_outcome_after_success, settings_static_controls_have_border,
+    settings_window_center_position, settings_window_layout, settings_window_uses_background_brush,
 };
 
 #[test]
@@ -395,6 +395,60 @@ fn settings_detail_update_clears_network_fields_for_google() {
     assert_eq!(google.model, "");
     assert_eq!(google.encrypted_api_key, None);
     assert_eq!(google.timeout_secs, 0);
+}
+
+#[test]
+fn hotkey_capture_text_formats_supported_combinations() {
+    let ctrl_alt = ait::hotkey::Modifiers {
+        ctrl: true,
+        alt: true,
+        shift: false,
+        win: false,
+    };
+    let ctrl_shift = ait::hotkey::Modifiers {
+        ctrl: true,
+        alt: false,
+        shift: true,
+        win: false,
+    };
+
+    assert_eq!(
+        hotkey_capture_text(0x54, ctrl_alt).as_deref(),
+        Some("Ctrl+Alt+T")
+    );
+    assert_eq!(
+        hotkey_capture_text(0x31, ctrl_shift).as_deref(),
+        Some("Ctrl+Shift+1")
+    );
+    assert_eq!(
+        hotkey_capture_text(0x70, ctrl_alt).as_deref(),
+        Some("Ctrl+Alt+F1")
+    );
+    assert_eq!(
+        hotkey_capture_text(0x87, ctrl_alt).as_deref(),
+        Some("Ctrl+Alt+F24")
+    );
+}
+
+#[test]
+fn hotkey_capture_text_ignores_incomplete_or_unsupported_keys() {
+    let none = ait::hotkey::Modifiers {
+        ctrl: false,
+        alt: false,
+        shift: false,
+        win: false,
+    };
+    let ctrl = ait::hotkey::Modifiers {
+        ctrl: true,
+        alt: false,
+        shift: false,
+        win: false,
+    };
+
+    assert_eq!(hotkey_capture_text(0x54, none), None);
+    assert_eq!(hotkey_capture_text(0x11, ctrl), None);
+    assert_eq!(hotkey_capture_text(0x1B, ctrl), None);
+    assert_eq!(hotkey_capture_text(0xBA, ctrl), None);
 }
 
 #[test]

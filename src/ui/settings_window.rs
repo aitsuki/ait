@@ -37,6 +37,8 @@ const ID_API_KEY_VISIBILITY: isize = 3116;
 #[cfg(windows)]
 const EM_SET_PASSWORD_CHAR: u32 = 0x00CC;
 #[cfg(windows)]
+const EM_SETREADONLY: u32 = 0x00CF;
+#[cfg(windows)]
 const ID_NEW_PROFILE: isize = 3001;
 #[cfg(windows)]
 const ID_DELETE_PROFILE: isize = 3002;
@@ -156,6 +158,22 @@ pub fn settings_api_key_update_from_input(
     } else {
         SettingsApiKeyUpdate::Replace(input.to_string())
     }
+}
+
+pub fn hotkey_capture_text(vk: u32, modifiers: crate::hotkey::Modifiers) -> Option<String> {
+    if !modifiers.any() {
+        return None;
+    }
+
+    let key = match vk {
+        0x30..=0x39 => crate::hotkey::KeyCode::Char(char::from_u32(vk)?),
+        0x41..=0x5A => crate::hotkey::KeyCode::Char(char::from_u32(vk)?),
+        0x70..=0x87 => crate::hotkey::KeyCode::Function((vk - 0x70 + 1) as u8),
+        0x10 | 0x11 | 0x12 | 0x1B | 0x5B | 0x5C => return None,
+        _ => return None,
+    };
+
+    Some(crate::hotkey::Hotkey { modifiers, key }.to_string())
 }
 
 pub fn settings_profile_detail_control_states(
@@ -502,7 +520,9 @@ impl SettingsWindow {
             let _ = SetWindowLongPtrW(hwnd, GWLP_USERDATA, settings_ptr as isize);
 
             create_static(hwnd, "快捷键", 18, 20, 90, 22)?;
-            create_edit(hwnd, &view_model.hotkey, 118, 18, 180, 24, false, ID_HOTKEY)?;
+            let hotkey_edit =
+                create_edit(hwnd, &view_model.hotkey, 118, 18, 180, 24, false, ID_HOTKEY)?;
+            set_hotkey_capture_mode(hotkey_edit)?;
             create_static(hwnd, "", 18, 62, 668, 1)?;
 
             create_static(hwnd, "翻译配置", 18, 74, 120, 22)?;
@@ -956,6 +976,71 @@ fn set_api_key_password_mode(hwnd: windows::Win32::Foundation::HWND, password: b
         let _ = InvalidateRect(Some(edit), None, true);
     }
     Ok(())
+}
+
+#[cfg(windows)]
+fn set_hotkey_capture_mode(edit: windows::Win32::Foundation::HWND) -> Result<()> {
+    use windows::Win32::Foundation::{LPARAM, WPARAM};
+    use windows::Win32::UI::Shell::SetWindowSubclass;
+    use windows::Win32::UI::WindowsAndMessaging::SendMessageW;
+
+    unsafe {
+        let _ = SendMessageW(edit, EM_SETREADONLY, Some(WPARAM(1)), Some(LPARAM(0)));
+        if !SetWindowSubclass(edit, Some(hotkey_edit_subclass_proc), 1, 0).as_bool() {
+            return Err(AppError::Windows("安装快捷键捕获失败".to_string()));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+unsafe extern "system" fn hotkey_edit_subclass_proc(
+    hwnd: windows::Win32::Foundation::HWND,
+    msg: u32,
+    wparam: windows::Win32::Foundation::WPARAM,
+    lparam: windows::Win32::Foundation::LPARAM,
+    subclass_id: usize,
+    _ref_data: usize,
+) -> windows::Win32::Foundation::LRESULT {
+    use windows::Win32::Foundation::LRESULT;
+    use windows::Win32::UI::Input::KeyboardAndMouse::GetKeyState;
+    use windows::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        WM_CHAR, WM_CLEAR, WM_CUT, WM_KEYDOWN, WM_NCDESTROY, WM_PASTE, WM_SYSKEYDOWN,
+    };
+
+    if msg == WM_NCDESTROY {
+        unsafe {
+            let _ = RemoveWindowSubclass(hwnd, Some(hotkey_edit_subclass_proc), subclass_id);
+            return DefSubclassProc(hwnd, msg, wparam, lparam);
+        }
+    }
+
+    if msg == WM_CHAR || msg == WM_PASTE || msg == WM_CLEAR || msg == WM_CUT {
+        return LRESULT(0);
+    }
+
+    if msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN {
+        let modifiers = crate::hotkey::Modifiers {
+            ctrl: unsafe { GetKeyState(0x11) < 0 },
+            alt: unsafe { GetKeyState(0x12) < 0 },
+            shift: unsafe { GetKeyState(0x10) < 0 },
+            win: unsafe { GetKeyState(0x5B) < 0 || GetKeyState(0x5C) < 0 },
+        };
+
+        if let Some(text) = hotkey_capture_text(wparam.0 as u32, modifiers) {
+            let text = wide(&text);
+            unsafe {
+                let _ = windows::Win32::UI::WindowsAndMessaging::SetWindowTextW(
+                    hwnd,
+                    windows::core::PCWSTR(text.as_ptr()),
+                );
+            }
+            return LRESULT(0);
+        }
+    }
+
+    unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) }
 }
 
 #[cfg(windows)]
