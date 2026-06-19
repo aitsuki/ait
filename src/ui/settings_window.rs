@@ -915,6 +915,7 @@ unsafe fn save_settings_from_window(hwnd: windows::Win32::Foundation::HWND) -> R
             ),
             update => update,
         };
+    let auto_start_enabled = is_checkbox_checked(hwnd, ID_AUTO_START)?;
     apply_settings_detail_update(
         settings,
         SettingsProfileDetailUpdate {
@@ -929,9 +930,10 @@ unsafe fn save_settings_from_window(hwnd: windows::Win32::Foundation::HWND) -> R
                 .unwrap_or(30),
             hotkey: read_control_text(hwnd, ID_HOTKEY)?,
             copy_wait_ms: settings.clipboard_capture.copy_wait_ms,
-            auto_start_enabled: false,
+            auto_start_enabled,
         },
     )?;
+    crate::startup::set_auto_start_enabled(auto_start_enabled)?;
     refresh_profile_list(hwnd, settings)?;
 
     let dir = crate::config::SettingsStore::default_dir()?;
@@ -980,7 +982,15 @@ fn load_profile_into_window(
     settings: &AppSettings,
     profile_id: &str,
 ) -> Result<()> {
-    let vm = SettingsViewModel::from_settings_with_selected(settings, profile_id);
+    let auto_start_enabled = crate::startup::is_auto_start_enabled().unwrap_or_else(|err| {
+        tracing::warn!(error = %err, "read startup setting failed");
+        false
+    });
+    let vm = SettingsViewModel::from_settings_with_selected_and_auto_start(
+        settings,
+        profile_id,
+        auto_start_enabled,
+    );
     let profile = &vm.selected_profile;
     set_control_text(hwnd, ID_NAME, &profile.name)?;
     set_control_text(hwnd, ID_BASE_URL, &profile.base_url)?;
@@ -1003,6 +1013,7 @@ fn load_profile_into_window(
         },
     )?;
     set_control_text(hwnd, ID_HOTKEY, &vm.hotkey)?;
+    set_checkbox_checked(hwnd, ID_AUTO_START, vm.auto_start_enabled)?;
     apply_profile_detail_ui_state(hwnd, profile);
     Ok(())
 }
@@ -1339,7 +1350,6 @@ fn set_checkbox_checked(
 }
 
 #[cfg(windows)]
-#[allow(dead_code)]
 fn is_checkbox_checked(hwnd: windows::Win32::Foundation::HWND, id: i32) -> Result<bool> {
     use windows::Win32::Foundation::{LPARAM, WPARAM};
     use windows::Win32::UI::Controls::BST_CHECKED;

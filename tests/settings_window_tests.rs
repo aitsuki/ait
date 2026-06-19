@@ -505,6 +505,24 @@ fn settings_detail_update_carries_auto_start_state_without_storing_in_app_settin
 }
 
 #[test]
+fn settings_detail_update_can_carry_enabled_auto_start_choice() {
+    let update = SettingsProfileDetailUpdate {
+        id: "google".to_string(),
+        name: "Google".to_string(),
+        provider: TranslatorProvider::Google,
+        base_url: String::new(),
+        model: String::new(),
+        api_key: SettingsApiKeyUpdate::Preserve,
+        timeout_secs: 0,
+        hotkey: "Ctrl+Alt+E".to_string(),
+        copy_wait_ms: 300,
+        auto_start_enabled: true,
+    };
+
+    assert!(update.auto_start_enabled);
+}
+
+#[test]
 fn hotkey_capture_text_formats_supported_combinations() {
     let ctrl_alt = ait::hotkey::Modifiers {
         ctrl: true,
