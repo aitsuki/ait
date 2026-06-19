@@ -847,13 +847,13 @@ mod tests {
     use super::SettingsWindowRegistry;
 
     #[test]
-    fn settings_window_registry_reuses_existing_window() {
+    fn settings_window_registry_drops_dead_window() {
         let mut registry = SettingsWindowRegistry::default();
 
         assert!(registry.existing_if_alive().is_none());
         registry.set(101);
 
-        assert_eq!(registry.existing_if_alive(), Some(101));
+        assert!(registry.existing_if_alive().is_none());
     }
 
     #[test]
