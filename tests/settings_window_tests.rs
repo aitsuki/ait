@@ -2,8 +2,8 @@ use ait::config::{AppSettings, TranslatorProvider};
 use ait::ui::settings_window::{
     SettingsApiKeyUpdate, SettingsEditAction, SettingsProfileDetailControl,
     SettingsProfileDetailUpdate, SettingsSaveOutcome, SettingsViewModel, api_key_placeholder_text,
-    app_version_text, apply_settings_detail_update, apply_settings_edit_action, hotkey_capture_text,
-    settings_api_key_input_text, settings_api_key_update_from_input,
+    app_version_text, apply_settings_detail_update, apply_settings_edit_action,
+    hotkey_capture_text, settings_api_key_input_text, settings_api_key_update_from_input,
     settings_profile_detail_control_rect, settings_profile_detail_control_states,
     settings_profile_detail_hidden_rect, settings_profile_google_notice_text,
     settings_save_outcome_after_success, settings_static_controls_have_border,
@@ -80,16 +80,10 @@ fn settings_view_model_does_not_show_builtin_label() {
 fn settings_view_model_includes_auto_start_state() {
     let settings = AppSettings::default();
 
-    let disabled = SettingsViewModel::from_settings_with_selected_and_auto_start(
-        &settings,
-        "google",
-        false,
-    );
-    let enabled = SettingsViewModel::from_settings_with_selected_and_auto_start(
-        &settings,
-        "google",
-        true,
-    );
+    let disabled =
+        SettingsViewModel::from_settings_with_selected_and_auto_start(&settings, "google", false);
+    let enabled =
+        SettingsViewModel::from_settings_with_selected_and_auto_start(&settings, "google", true);
 
     assert!(!disabled.auto_start_enabled);
     assert!(enabled.auto_start_enabled);

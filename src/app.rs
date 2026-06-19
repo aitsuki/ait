@@ -1,7 +1,7 @@
 use crate::capture::CapturedText;
 use crate::error::{AppError, Result};
 use crate::translator::{ProviderKind, TranslationRequest, TranslationResponse};
-use crate::update::{check_for_updates, latest_release_url, update_status_message, UpdateStatus};
+use crate::update::{UpdateStatus, check_for_updates, latest_release_url, update_status_message};
 
 pub trait WorkflowCapture {
     fn capture(&self) -> Result<CapturedText>;
@@ -919,7 +919,7 @@ fn build_workflow_translator_for_profile(
                 .as_ref()
                 .ok_or_else(|| crate::error::AppError::Translate("API Key 缺失".to_string()))?;
             let api_key =
-                crate::secret::SecretStore::new(&format!("ait-translator-profile-{}", profile.id))
+                crate::secret::SecretStore::new(format!("ait-translator-profile-{}", profile.id))
                     .unprotect(encrypted)?;
             let translator = crate::translator::openai_compatible::OpenAiCompatibleTranslator::new(
                 crate::translator::openai_compatible::OpenAiCompatibleConfig {

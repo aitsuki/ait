@@ -36,7 +36,10 @@ pub fn normalize_version(version: &str) -> Result<String> {
     Ok(normalized.to_string())
 }
 
-pub fn update_status_from_versions(current_version: &str, latest_version: &str) -> Result<UpdateStatus> {
+pub fn update_status_from_versions(
+    current_version: &str,
+    latest_version: &str,
+) -> Result<UpdateStatus> {
     let current = parse_version(current_version)?;
     let latest = parse_version(latest_version)?;
     if current == latest {
@@ -60,7 +63,9 @@ pub fn update_status_message(current_version: &str, status: &UpdateStatus) -> St
             release_url,
             ..
         } => {
-            format!("发现新版本 {latest_version}，当前版本 {current_version}。打开最新 Release：{release_url}")
+            format!(
+                "发现新版本 {latest_version}，当前版本 {current_version}。打开最新 Release：{release_url}"
+            )
         }
     }
 }
@@ -82,7 +87,10 @@ pub async fn check_for_updates_with_base_url(
 }
 
 async fn fetch_latest_release(client: &reqwest::Client, base_url: &str) -> Result<GitHubRelease> {
-    let url = format!("{}/repos/aitsuki/ait/releases/latest", base_url.trim_end_matches('/'));
+    let url = format!(
+        "{}/repos/aitsuki/ait/releases/latest",
+        base_url.trim_end_matches('/')
+    );
     let response = client
         .get(url)
         .header(reqwest::header::ACCEPT, "application/vnd.github+json")
@@ -96,7 +104,9 @@ async fn fetch_latest_release(client: &reqwest::Client, base_url: &str) -> Resul
         return Err(AppError::Network("GitHub Releases 访问被拒绝".to_string()));
     }
     if !status.is_success() {
-        return Err(AppError::Network(format!("获取最新版本失败，状态码: {status}")));
+        return Err(AppError::Network(format!(
+            "获取最新版本失败，状态码: {status}"
+        )));
     }
 
     response

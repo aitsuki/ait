@@ -1,7 +1,7 @@
 use crate::error::{AppError, Result};
 use crate::translator::{
-    invalid_response_error, response_snippet, ProviderKind, TranslationErrorKind,
-    TranslationRequest, TranslationResponse, Translator,
+    ProviderKind, TranslationErrorKind, TranslationRequest, TranslationResponse, Translator,
+    invalid_response_error, response_snippet,
 };
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
@@ -108,9 +108,7 @@ impl OpenAiCompatibleTranslator {
             .first()
             .map(|choice| choice.message.content.trim().to_string())
             .filter(|text| !text.is_empty())
-            .ok_or_else(|| {
-                invalid_response_error("choices[0].message.content 为空")
-            })?;
+            .ok_or_else(|| invalid_response_error("choices[0].message.content 为空"))?;
 
         Ok(TranslationResponse {
             translated_text: text,

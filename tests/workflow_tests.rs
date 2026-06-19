@@ -517,7 +517,8 @@ fn app_error_user_summaries_are_actionable() {
     );
     assert_eq!(
         ait::error::AppError::Translate(
-            "翻译服务返回了无法识别的数据。详情: 响应不是 JSON。片段: <html>blocked</html>".to_string()
+            "翻译服务返回了无法识别的数据。详情: 响应不是 JSON。片段: <html>blocked</html>"
+                .to_string()
         )
         .user_summary(),
         "翻译服务返回了无法识别的数据。"
@@ -572,12 +573,13 @@ fn legacy_logs_menu_id_is_not_reused() {
 }
 
 #[test]
-fn release_workflow_mentions_checksums_and_source_transparency() {
+fn release_workflow_writes_basic_download_notes() {
     let workflow = std::fs::read_to_string(".github/workflows/release.yml").unwrap();
     assert!(workflow.contains("Write release notes"));
-    assert!(workflow.contains("SHA256"));
-    assert!(workflow.contains("GitHub Releases"));
-    assert!(workflow.contains("Release artifacts are not code-signed."));
+    assert!(workflow.contains("## Download"));
+    assert!(workflow.contains("${{ steps.version.outputs.setup_name }}"));
+    assert!(workflow.contains("${{ steps.version.outputs.portable_name }}"));
+    assert!(workflow.contains("Publish GitHub Release"));
 }
 
 #[test]

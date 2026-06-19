@@ -1,6 +1,6 @@
 use ait::update::{
-    check_for_updates_with_base_url, latest_release_url, normalize_version,
-    update_status_from_versions, update_status_message, GitHubRelease, UpdateStatus,
+    GitHubRelease, UpdateStatus, check_for_updates_with_base_url, latest_release_url,
+    normalize_version, update_status_from_versions, update_status_message,
 };
 use httpmock::Method::GET;
 use httpmock::MockServer;

@@ -30,7 +30,7 @@ impl SecretStore {
         use windows::core::PCWSTR;
 
         let mut input = plain.as_bytes().to_vec();
-        let mut in_blob = CRYPT_INTEGER_BLOB {
+        let in_blob = CRYPT_INTEGER_BLOB {
             cbData: input.len() as u32,
             pbData: input.as_mut_ptr(),
         };
@@ -39,7 +39,7 @@ impl SecretStore {
 
         unsafe {
             CryptProtectData(
-                &mut in_blob,
+                &in_blob,
                 PCWSTR(description.as_ptr()),
                 None,
                 None,
@@ -61,14 +61,14 @@ impl SecretStore {
         use windows::Win32::Security::Cryptography::{CRYPT_INTEGER_BLOB, CryptUnprotectData};
 
         let mut input = base64_decode(encrypted)?;
-        let mut in_blob = CRYPT_INTEGER_BLOB {
+        let in_blob = CRYPT_INTEGER_BLOB {
             cbData: input.len() as u32,
             pbData: input.as_mut_ptr(),
         };
         let mut out_blob = CRYPT_INTEGER_BLOB::default();
 
         unsafe {
-            CryptUnprotectData(&mut in_blob, None, None, None, None, 0, &mut out_blob)
+            CryptUnprotectData(&in_blob, None, None, None, None, 0, &mut out_blob)
                 .map_err(|err| AppError::Secret(format!("DPAPI 解密失败: {err}")))?;
 
             let bytes =
@@ -106,7 +106,7 @@ fn base64_encode(bytes: &[u8]) -> String {
 fn base64_decode(input: &str) -> Result<Vec<u8>> {
     let mut bytes = Vec::new();
     let cleaned = input.trim().as_bytes();
-    if cleaned.len() % 4 != 0 {
+    if !cleaned.len().is_multiple_of(4) {
         return Err(AppError::Secret("无效的 base64 密文长度".to_string()));
     }
     for chunk in cleaned.chunks(4) {
@@ -122,7 +122,7 @@ fn base64_decode(input: &str) -> Result<Vec<u8>> {
                 _ => 255,
             })
             .collect();
-        if vals.iter().any(|v| *v == 255) {
+        if vals.contains(&255) {
             return Err(AppError::Secret("无效的 base64 字符".to_string()));
         }
         bytes.push((vals[0] << 2) | (vals[1] >> 4));

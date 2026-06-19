@@ -731,15 +731,7 @@ impl SettingsWindow {
                 layout.update_action.height,
                 ID_CHECK_UPDATE,
             )?;
-            create_button(
-                hwnd,
-                "保存",
-                534,
-                382,
-                72,
-                28,
-                ID_SAVE,
-            )?;
+            create_button(hwnd, "保存", 534, 382, 72, 28, ID_SAVE)?;
             create_button(hwnd, "取消", 614, 382, 72, 28, ID_CANCEL)?;
             {
                 let mut registry = settings_window_registry().lock().unwrap();
@@ -1060,7 +1052,7 @@ unsafe fn save_settings_from_window(hwnd: windows::Win32::Foundation::HWND) -> R
     let api_key_update =
         match settings_api_key_update_from_input(existing_encrypted_api_key, &api_key) {
             SettingsApiKeyUpdate::Replace(api_key) => SettingsApiKeyUpdate::Replace(
-                crate::secret::SecretStore::new(&format!("ait-translator-profile-{profile_id}"))
+                crate::secret::SecretStore::new(format!("ait-translator-profile-{profile_id}"))
                     .protect(&api_key)?,
             ),
             update => update,
@@ -1190,7 +1182,7 @@ unsafe fn toggle_api_key_visibility(hwnd: windows::Win32::Foundation::HWND) -> R
         .profile_by_id(&profile_id)
         .and_then(|profile| profile.encrypted_api_key.as_ref())
         .ok_or_else(|| AppError::Secret("API Key 未保存".to_string()))?;
-    let api_key = crate::secret::SecretStore::new(&format!("ait-translator-profile-{profile_id}"))
+    let api_key = crate::secret::SecretStore::new(format!("ait-translator-profile-{profile_id}"))
         .unprotect(encrypted)?;
 
     set_api_key_password_mode(hwnd, false)?;
@@ -1693,6 +1685,8 @@ fn create_checkbox(
 }
 
 #[cfg(windows)]
+// Mirrors the Win32 control parameters directly; grouping them would obscure the API mapping.
+#[allow(clippy::too_many_arguments)]
 fn create_edit(
     parent: windows::Win32::Foundation::HWND,
     text: &str,
@@ -1724,6 +1718,8 @@ fn create_edit(
 }
 
 #[cfg(windows)]
+// Mirrors CreateWindowExW inputs so call sites remain explicit about control layout and style.
+#[allow(clippy::too_many_arguments)]
 fn create_control(
     parent: windows::Win32::Foundation::HWND,
     class_name: &str,

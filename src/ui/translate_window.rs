@@ -650,18 +650,20 @@ unsafe extern "system" fn default_wnd_proc(
                 let _ = PostMessageW(Some(hwnd), WM_TRANSLATE_WINDOW_SOURCE, WPARAM(0), LPARAM(0));
                 return LRESULT(0);
             },
-            command if command == ID_PROFILE_COMBO as usize => {
-                if notification == windows::Win32::UI::WindowsAndMessaging::CBN_SELCHANGE as usize {
-                    unsafe {
-                        let _ = PostMessageW(
-                            Some(hwnd),
-                            WM_TRANSLATE_WINDOW_PROFILE_CHANGED,
-                            WPARAM(0),
-                            LPARAM(0),
-                        );
-                    }
-                    return LRESULT(0);
+            command
+                if command == ID_PROFILE_COMBO as usize
+                    && notification
+                        == windows::Win32::UI::WindowsAndMessaging::CBN_SELCHANGE as usize =>
+            {
+                unsafe {
+                    let _ = PostMessageW(
+                        Some(hwnd),
+                        WM_TRANSLATE_WINDOW_PROFILE_CHANGED,
+                        WPARAM(0),
+                        LPARAM(0),
+                    );
                 }
+                return LRESULT(0);
             }
             _ => {}
         }
@@ -727,27 +729,21 @@ unsafe extern "system" fn edit_subclass_proc(
     if msg == WM_CHAR && edit_char_action(wparam.0 as u32) == EditCharAction::Swallow {
         return LRESULT(0);
     }
-    if msg == WM_LBUTTONDBLCLK {
-        if !state_ptr.is_null() {
-            let state = unsafe { &mut *state_ptr };
-            state.last_double_click_time = Some(unsafe { GetMessageTime() } as u32);
-        }
+    if msg == WM_LBUTTONDBLCLK && !state_ptr.is_null() {
+        let state = unsafe { &mut *state_ptr };
+        state.last_double_click_time = Some(unsafe { GetMessageTime() } as u32);
     }
-    if msg == WM_LBUTTONDOWN {
-        if !state_ptr.is_null() {
-            let state = unsafe { &mut *state_ptr };
-            let current_time = unsafe { GetMessageTime() } as u32;
-            if is_third_click_after_double_click(
-                state.last_double_click_time,
-                current_time,
-                unsafe { GetDoubleClickTime() },
-            ) {
-                state.last_double_click_time = None;
-                unsafe {
-                    select_paragraph_at_point(hwnd, lparam);
-                }
-                return LRESULT(0);
+    if msg == WM_LBUTTONDOWN && !state_ptr.is_null() {
+        let state = unsafe { &mut *state_ptr };
+        let current_time = unsafe { GetMessageTime() } as u32;
+        if is_third_click_after_double_click(state.last_double_click_time, current_time, unsafe {
+            GetDoubleClickTime()
+        }) {
+            state.last_double_click_time = None;
+            unsafe {
+                select_paragraph_at_point(hwnd, lparam);
             }
+            return LRESULT(0);
         }
     }
     if msg == WM_NCDESTROY && ref_data != 0 {
@@ -900,6 +896,8 @@ fn create_combo(
 }
 
 #[cfg(windows)]
+// Mirrors CreateWindowExW inputs so call sites remain explicit about control layout and style.
+#[allow(clippy::too_many_arguments)]
 fn create_control(
     parent: windows::Win32::Foundation::HWND,
     class_name: &str,

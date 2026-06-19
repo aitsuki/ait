@@ -1,7 +1,7 @@
 use crate::error::{AppError, Result};
 use crate::translator::{
-    invalid_response_error, response_snippet, ProviderKind, TranslationErrorKind,
-    TranslationRequest, TranslationResponse, Translator,
+    ProviderKind, TranslationErrorKind, TranslationRequest, TranslationResponse, Translator,
+    invalid_response_error, response_snippet,
 };
 use reqwest::StatusCode;
 use serde_json::Value;
@@ -105,15 +105,17 @@ impl Translator for GoogleFreeTranslator {
 }
 
 fn parse_google_response(json: &Value) -> Result<String> {
-    let segments = json.get(0).and_then(Value::as_array).ok_or_else(|| {
-        invalid_response_error("JSON 顶层缺少第 0 项数组")
-    })?;
+    let segments = json
+        .get(0)
+        .and_then(Value::as_array)
+        .ok_or_else(|| invalid_response_error("JSON 顶层缺少第 0 项数组"))?;
 
     let mut out = String::new();
     for segment in segments {
-        let text = segment.get(0).and_then(Value::as_str).ok_or_else(|| {
-            invalid_response_error("翻译段缺少第 0 项字符串")
-        })?;
+        let text = segment
+            .get(0)
+            .and_then(Value::as_str)
+            .ok_or_else(|| invalid_response_error("翻译段缺少第 0 项字符串"))?;
         out.push_str(text);
     }
 
