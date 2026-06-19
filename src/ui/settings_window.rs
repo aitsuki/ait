@@ -58,6 +58,8 @@ pub struct SettingsViewModel {
     pub hotkey: String,
     pub clipboard_capture_enabled: bool,
     pub copy_wait_ms: u64,
+    pub auto_start_enabled: bool,
+    pub version_text: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -96,6 +98,7 @@ pub struct SettingsProfileDetailUpdate {
     pub timeout_secs: u64,
     pub hotkey: String,
     pub copy_wait_ms: u64,
+    pub auto_start_enabled: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -137,6 +140,10 @@ pub enum SettingsEditAction {
 
 pub fn api_key_placeholder_text() -> &'static str {
     API_KEY_PLACEHOLDER_TEXT
+}
+
+pub fn app_version_text() -> String {
+    format!("ait v{}", env!("CARGO_PKG_VERSION"))
 }
 
 pub fn settings_api_key_input_text(has_api_key: bool) -> &'static str {
@@ -388,7 +395,11 @@ pub fn apply_settings_detail_update(
 }
 
 impl SettingsViewModel {
-    pub fn from_settings_with_selected(settings: &AppSettings, selected_profile_id: &str) -> Self {
+    pub fn from_settings_with_selected_and_auto_start(
+        settings: &AppSettings,
+        selected_profile_id: &str,
+        auto_start_enabled: bool,
+    ) -> Self {
         let selected = settings
             .profile_by_id(selected_profile_id)
             .or_else(|| settings.profile_by_id(&settings.default_profile_id))
@@ -434,7 +445,13 @@ impl SettingsViewModel {
             hotkey: settings.hotkey.clone(),
             clipboard_capture_enabled: settings.clipboard_capture.enabled,
             copy_wait_ms: settings.clipboard_capture.copy_wait_ms,
+            auto_start_enabled,
+            version_text: app_version_text(),
         }
+    }
+
+    pub fn from_settings_with_selected(settings: &AppSettings, selected_profile_id: &str) -> Self {
+        Self::from_settings_with_selected_and_auto_start(settings, selected_profile_id, false)
     }
 }
 
@@ -851,6 +868,7 @@ unsafe fn save_settings_from_window(hwnd: windows::Win32::Foundation::HWND) -> R
                 .unwrap_or(30),
             hotkey: read_control_text(hwnd, ID_HOTKEY)?,
             copy_wait_ms: settings.clipboard_capture.copy_wait_ms,
+            auto_start_enabled: false,
         },
     )?;
     refresh_profile_list(hwnd, settings)?;

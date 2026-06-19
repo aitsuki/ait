@@ -2,7 +2,7 @@ use ait::config::{AppSettings, TranslatorProvider};
 use ait::ui::settings_window::{
     SettingsApiKeyUpdate, SettingsEditAction, SettingsProfileDetailControl,
     SettingsProfileDetailUpdate, SettingsSaveOutcome, SettingsViewModel, api_key_placeholder_text,
-    apply_settings_detail_update, apply_settings_edit_action, hotkey_capture_text,
+    app_version_text, apply_settings_detail_update, apply_settings_edit_action, hotkey_capture_text,
     settings_api_key_input_text, settings_api_key_update_from_input,
     settings_profile_detail_control_rect, settings_profile_detail_control_states,
     settings_profile_detail_hidden_rect, settings_profile_google_notice_text,
@@ -73,6 +73,35 @@ fn settings_view_model_does_not_show_builtin_label() {
     let openai = vm.profiles.iter().find(|item| item.id == "openai").unwrap();
     assert_eq!(openai.label, "OpenAI");
     assert!(!vm.profiles.iter().any(|item| item.label.contains("内置")));
+}
+
+#[test]
+fn settings_view_model_includes_auto_start_state() {
+    let settings = AppSettings::default();
+
+    let disabled = SettingsViewModel::from_settings_with_selected_and_auto_start(
+        &settings,
+        "google",
+        false,
+    );
+    let enabled = SettingsViewModel::from_settings_with_selected_and_auto_start(
+        &settings,
+        "google",
+        true,
+    );
+
+    assert!(!disabled.auto_start_enabled);
+    assert!(enabled.auto_start_enabled);
+}
+
+#[test]
+fn settings_view_model_includes_version_text() {
+    let settings = AppSettings::default();
+
+    let vm = SettingsViewModel::from(&settings);
+
+    assert_eq!(vm.version_text, app_version_text());
+    assert!(vm.version_text.starts_with("ait v"));
 }
 
 #[test]
@@ -256,6 +285,7 @@ fn settings_detail_update_saves_selected_profile_fields() {
             timeout_secs: 45,
             hotkey: "Ctrl+Alt+T".to_string(),
             copy_wait_ms: 250,
+            auto_start_enabled: false,
         },
     )
     .unwrap();
@@ -294,6 +324,7 @@ fn settings_detail_update_preserves_api_key_for_placeholder_input() {
             timeout_secs: 30,
             hotkey: "Ctrl+Alt+E".to_string(),
             copy_wait_ms: 300,
+            auto_start_enabled: false,
         },
     )
     .unwrap();
@@ -327,6 +358,7 @@ fn settings_detail_update_clears_api_key_for_empty_input() {
             timeout_secs: 30,
             hotkey: "Ctrl+Alt+E".to_string(),
             copy_wait_ms: 300,
+            auto_start_enabled: false,
         },
     )
     .unwrap();
@@ -355,6 +387,7 @@ fn settings_detail_update_preserves_existing_provider() {
             timeout_secs: 30,
             hotkey: "Ctrl+Alt+E".to_string(),
             copy_wait_ms: 300,
+            auto_start_enabled: false,
         },
     )
     .unwrap();
@@ -386,6 +419,7 @@ fn settings_detail_update_clears_network_fields_for_google() {
             timeout_secs: 30,
             hotkey: "Ctrl+Alt+E".to_string(),
             copy_wait_ms: 300,
+            auto_start_enabled: false,
         },
     )
     .unwrap();
@@ -413,6 +447,7 @@ fn settings_detail_update_normalizes_hotkey_before_saving() {
             timeout_secs: 0,
             hotkey: " shift + ctrl + 1 ".to_string(),
             copy_wait_ms: 300,
+            auto_start_enabled: false,
         },
     )
     .unwrap();
@@ -436,11 +471,36 @@ fn settings_detail_update_rejects_invalid_hotkey() {
             timeout_secs: 0,
             hotkey: "not-a-hotkey".to_string(),
             copy_wait_ms: 300,
+            auto_start_enabled: false,
         },
     )
     .unwrap_err();
 
     assert!(err.to_string().contains("快捷键"));
+    assert_eq!(settings.hotkey, "Ctrl+Alt+E");
+}
+
+#[test]
+fn settings_detail_update_carries_auto_start_state_without_storing_in_app_settings() {
+    let mut settings = AppSettings::default();
+
+    apply_settings_detail_update(
+        &mut settings,
+        SettingsProfileDetailUpdate {
+            id: "google".to_string(),
+            name: "Google".to_string(),
+            provider: TranslatorProvider::Google,
+            base_url: String::new(),
+            model: String::new(),
+            api_key: SettingsApiKeyUpdate::Preserve,
+            timeout_secs: 0,
+            hotkey: "Ctrl+Alt+E".to_string(),
+            copy_wait_ms: 300,
+            auto_start_enabled: true,
+        },
+    )
+    .unwrap();
+
     assert_eq!(settings.hotkey, "Ctrl+Alt+E");
 }
 

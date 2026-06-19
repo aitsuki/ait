@@ -67,6 +67,15 @@ fn save_and_load_round_trips_settings() {
 }
 
 #[test]
+fn saved_settings_do_not_persist_auto_start_state() {
+    let settings = AppSettings::default();
+    let raw = serde_json::to_string_pretty(&settings).unwrap();
+
+    assert!(!raw.contains("auto_start"));
+    assert!(!raw.contains("startup"));
+}
+
+#[test]
 fn corrupted_config_is_backed_up_and_defaults_are_returned() {
     let dir = tempfile::tempdir().unwrap();
     let store = SettingsStore::new(dir.path().to_path_buf());
