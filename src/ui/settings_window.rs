@@ -833,7 +833,7 @@ pub fn settings_window_layout() -> SettingsWindowLayout {
         },
         update_action: SettingsControlRect {
             x: 180,
-            y: 382,
+            y: 386,
             width: 88,
             height: 28,
         },
