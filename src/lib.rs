@@ -6,5 +6,6 @@ pub mod error;
 pub mod hotkey;
 pub mod logging;
 pub mod secret;
+pub mod startup;
 pub mod translator;
 pub mod ui;
