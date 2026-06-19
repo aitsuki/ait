@@ -78,3 +78,12 @@ fn disabling_startup_deletes_existing_entry() {
 
     assert_eq!(store.values.borrow().get("ait"), None);
 }
+
+#[cfg(windows)]
+#[test]
+fn utf16_registry_value_round_trips() {
+    let bytes = ait::startup::registry_string_to_bytes(r#""C:\Program Files\ait\ait.exe""#);
+    let decoded = ait::startup::registry_string_from_bytes(&bytes).unwrap();
+
+    assert_eq!(decoded, r#""C:\Program Files\ait\ait.exe""#);
+}
