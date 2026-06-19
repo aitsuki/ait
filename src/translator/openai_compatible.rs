@@ -1,6 +1,7 @@
 use crate::error::{AppError, Result};
 use crate::translator::{
-    ProviderKind, TranslationErrorKind, TranslationRequest, TranslationResponse, Translator,
+    invalid_response_error, response_snippet, ProviderKind, TranslationErrorKind,
+    TranslationRequest, TranslationResponse, Translator,
 };
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
@@ -86,12 +87,21 @@ impl OpenAiCompatibleTranslator {
             )));
         }
 
-        let body: ChatResponse = response.json().await.map_err(|_| {
-            AppError::Translate(
-                TranslationErrorKind::InvalidResponse
-                    .user_message()
-                    .to_string(),
-            )
+        let content_type = response
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or("unknown")
+            .to_string();
+        let body_text = response
+            .text()
+            .await
+            .map_err(|err| AppError::Network(err.to_string()))?;
+        let body: ChatResponse = serde_json::from_str(&body_text).map_err(|err| {
+            invalid_response_error(format!(
+                "响应不是 JSON；content-type: {content_type}；片段: {}；解析错误: {err}",
+                response_snippet(&body_text)
+            ))
         })?;
         let text = body
             .choices
@@ -99,11 +109,7 @@ impl OpenAiCompatibleTranslator {
             .map(|choice| choice.message.content.trim().to_string())
             .filter(|text| !text.is_empty())
             .ok_or_else(|| {
-                AppError::Translate(
-                    TranslationErrorKind::InvalidResponse
-                        .user_message()
-                        .to_string(),
-                )
+                invalid_response_error("choices[0].message.content 为空")
             })?;
 
         Ok(TranslationResponse {

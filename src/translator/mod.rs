@@ -76,3 +76,17 @@ pub fn translate_blocking<T: Translator>(
         .map_err(|err| crate::error::AppError::Translate(format!("启动翻译运行时失败: {err}")))?;
     runtime.block_on(translator.translate(request))
 }
+
+pub(crate) fn invalid_response_error(detail: impl Into<String>) -> crate::error::AppError {
+    let detail = detail.into();
+    crate::error::AppError::Translate(format!("翻译服务返回了无法识别的数据。详情: {detail}"))
+}
+
+pub(crate) fn response_snippet(body: &str) -> String {
+    const LIMIT: usize = 240;
+    let mut snippet: String = body.chars().take(LIMIT).collect();
+    if body.chars().count() > LIMIT {
+        snippet.push_str("...");
+    }
+    snippet.replace(['\r', '\n'], " ")
+}

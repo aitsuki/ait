@@ -515,6 +515,13 @@ fn app_error_user_summaries_are_actionable() {
         ait::error::AppError::Translate("API Key 缺失".to_string()).user_summary(),
         "翻译失败：API Key 缺失，请在设置中填写 API Key。"
     );
+    assert_eq!(
+        ait::error::AppError::Translate(
+            "翻译服务返回了无法识别的数据。详情: 响应不是 JSON。片段: <html>blocked</html>".to_string()
+        )
+        .user_summary(),
+        "翻译服务返回了无法识别的数据。"
+    );
 }
 
 #[test]

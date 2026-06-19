@@ -32,6 +32,9 @@ impl AppError {
             AppError::Translate(msg) if msg.contains("API Key 缺失") => {
                 "翻译失败：API Key 缺失，请在设置中填写 API Key。".to_string()
             }
+            AppError::Translate(msg) if msg.starts_with("翻译服务返回了无法识别的数据。") => {
+                "翻译服务返回了无法识别的数据。".to_string()
+            }
             AppError::Translate(msg) => format!("翻译失败：{msg}"),
             AppError::Network(_) => "网络连接失败，请检查网络或代理设置后重试。".to_string(),
             AppError::Secret(_) => "API Key 读取失败，请重新保存接口配置。".to_string(),

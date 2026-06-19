@@ -1,6 +1,7 @@
 use crate::error::{AppError, Result};
 use crate::translator::{
-    ProviderKind, TranslationErrorKind, TranslationRequest, TranslationResponse, Translator,
+    invalid_response_error, response_snippet, ProviderKind, TranslationErrorKind,
+    TranslationRequest, TranslationResponse, Translator,
 };
 use reqwest::StatusCode;
 use serde_json::Value;
@@ -69,12 +70,21 @@ impl GoogleFreeTranslator {
             )));
         }
 
-        let json: Value = response.json().await.map_err(|_| {
-            AppError::Translate(
-                TranslationErrorKind::InvalidResponse
-                    .user_message()
-                    .to_string(),
-            )
+        let content_type = response
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or("unknown")
+            .to_string();
+        let body = response
+            .text()
+            .await
+            .map_err(|err| AppError::Network(err.to_string()))?;
+        let json: Value = serde_json::from_str(&body).map_err(|err| {
+            invalid_response_error(format!(
+                "响应不是 JSON；content-type: {content_type}；片段: {}；解析错误: {err}",
+                response_snippet(&body)
+            ))
         })?;
         let translated = parse_google_response(&json)?;
 
@@ -96,31 +106,19 @@ impl Translator for GoogleFreeTranslator {
 
 fn parse_google_response(json: &Value) -> Result<String> {
     let segments = json.get(0).and_then(Value::as_array).ok_or_else(|| {
-        AppError::Translate(
-            TranslationErrorKind::InvalidResponse
-                .user_message()
-                .to_string(),
-        )
+        invalid_response_error("JSON 顶层缺少第 0 项数组")
     })?;
 
     let mut out = String::new();
     for segment in segments {
         let text = segment.get(0).and_then(Value::as_str).ok_or_else(|| {
-            AppError::Translate(
-                TranslationErrorKind::InvalidResponse
-                    .user_message()
-                    .to_string(),
-            )
+            invalid_response_error("翻译段缺少第 0 项字符串")
         })?;
         out.push_str(text);
     }
 
     if out.trim().is_empty() {
-        return Err(AppError::Translate(
-            TranslationErrorKind::InvalidResponse
-                .user_message()
-                .to_string(),
-        ));
+        return Err(invalid_response_error("解析出的译文为空"));
     }
     Ok(out)
 }

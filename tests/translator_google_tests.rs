@@ -98,3 +98,29 @@ async fn google_free_maps_rate_limit() {
 
     assert!(err.contains("限流"));
 }
+
+#[tokio::test]
+async fn google_free_reports_invalid_response_details() {
+    let server = MockServer::start();
+    server.mock(|when, then| {
+        when.method(GET).path("/translate_a/single");
+        then.status(200)
+            .header("content-type", "text/html")
+            .body("<html>blocked</html>");
+    });
+    let translator = GoogleFreeTranslator::with_base_url(server.url(""));
+
+    let err = translator
+        .translate(ait::translator::TranslationRequest {
+            text: "hello".to_string(),
+            source_lang: "auto".to_string(),
+            target_lang: "zh-CN".to_string(),
+        })
+        .await
+        .unwrap_err()
+        .to_string();
+
+    assert!(err.contains("无法识别的数据"));
+    assert!(err.contains("text/html"));
+    assert!(err.contains("blocked"));
+}
