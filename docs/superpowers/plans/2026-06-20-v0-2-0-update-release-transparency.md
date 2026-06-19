@@ -40,7 +40,7 @@
   - Keeps installer behavior aligned with the release and README wording.
 
 - Create or modify tests:
-  - `tests/update_tests.rs`
+  - `tests/release_tests.rs`
   - `tests/settings_window_tests.rs`
   - `tests/workflow_tests.rs`
   - `tests/windows_subsystem_tests.rs` only if a release-side change affects GUI subsystem behavior.
@@ -52,11 +52,11 @@
 **Files:**
 - Create: `src/update.rs`
 - Modify: `src/lib.rs`
-- Test: `tests/update_tests.rs`
+- Test: `tests/release_tests.rs`
 
 - [ ] **Step 1: Write the failing tests for version comparison and URL generation**
 
-Create `tests/update_tests.rs`:
+Create `tests/release_tests.rs`:
 
 ```rust
 use ait::update::{latest_release_url, normalize_version, update_status_from_versions, UpdateStatus};
@@ -100,7 +100,7 @@ fn update_status_reports_update_available_when_remote_is_newer() {
 Run:
 
 ```powershell
-cargo test --test update_tests
+cargo test --test release_tests
 ```
 
 Expected: compile failure because `ait::update` does not exist yet.
@@ -184,7 +184,7 @@ pub fn update_status_from_versions(current_version: &str, latest_version: &str) 
 Run:
 
 ```powershell
-cargo test --test update_tests
+cargo test --test release_tests
 ```
 
 Expected: the URL and status tests pass.
@@ -194,7 +194,7 @@ Expected: the URL and status tests pass.
 Run:
 
 ```powershell
-git add src/lib.rs src/update.rs tests/update_tests.rs
+git add src/lib.rs src/update.rs tests/release_tests.rs
 git commit -m "feat: add update status model"
 ```
 
@@ -350,7 +350,7 @@ Run:
 
 ```powershell
 cargo test --test settings_window_tests settings_view_model_exposes_update_action_state
-cargo test --test update_tests
+cargo test --test release_tests
 cargo check
 ```
 
