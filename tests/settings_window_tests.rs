@@ -584,6 +584,15 @@ fn settings_window_layout_places_global_settings_above_profiles() {
 }
 
 #[test]
+fn settings_window_layout_places_auto_start_with_global_settings() {
+    let layout = settings_window_layout();
+
+    assert!(layout.auto_start.y > layout.hotkey.y);
+    assert!(layout.auto_start.y < layout.separator.y);
+    assert!(layout.version.y > layout.profile_list.y);
+}
+
+#[test]
 fn settings_window_erases_hidden_control_pixels() {
     assert!(settings_window_uses_background_brush());
 }

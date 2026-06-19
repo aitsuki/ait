@@ -35,6 +35,10 @@ const ID_NAME_LABEL: i32 = 3115;
 #[cfg(windows)]
 const ID_API_KEY_VISIBILITY: isize = 3116;
 #[cfg(windows)]
+const ID_AUTO_START: i32 = 3117;
+#[cfg(windows)]
+const ID_VERSION_LABEL: i32 = 3118;
+#[cfg(windows)]
 const EM_SET_PASSWORD_CHAR: u32 = 0x00CC;
 #[cfg(windows)]
 const EM_SETREADONLY: u32 = 0x00CF;
@@ -490,7 +494,16 @@ impl SettingsWindow {
         };
         use windows::core::PCWSTR;
 
-        let view_model = SettingsViewModel::from(settings);
+        let auto_start_enabled = crate::startup::is_auto_start_enabled().unwrap_or_else(|err| {
+            tracing::warn!(error = %err, "read startup setting failed");
+            false
+        });
+        let view_model = SettingsViewModel::from_settings_with_selected_and_auto_start(
+            settings,
+            &settings.default_profile_id,
+            auto_start_enabled,
+        );
+        let layout = settings_window_layout();
         let class_name = wide("ait_settings_window");
         unsafe {
             let class = WNDCLASSW {
@@ -538,10 +551,35 @@ impl SettingsWindow {
             let _ = SetWindowLongPtrW(hwnd, GWLP_USERDATA, settings_ptr as isize);
 
             create_static(hwnd, "快捷键", 18, 20, 90, 22)?;
-            let hotkey_edit =
-                create_edit(hwnd, &view_model.hotkey, 118, 18, 180, 24, false, ID_HOTKEY)?;
+            let hotkey_edit = create_edit(
+                hwnd,
+                &view_model.hotkey,
+                layout.hotkey.x,
+                layout.hotkey.y,
+                layout.hotkey.width,
+                layout.hotkey.height,
+                false,
+                ID_HOTKEY,
+            )?;
             set_hotkey_capture_mode(hotkey_edit)?;
-            create_static(hwnd, "", 18, 62, 668, 1)?;
+            create_checkbox(
+                hwnd,
+                "开启自启",
+                layout.auto_start.x,
+                layout.auto_start.y,
+                layout.auto_start.width,
+                layout.auto_start.height,
+                ID_AUTO_START,
+            )?;
+            set_checkbox_checked(hwnd, ID_AUTO_START, view_model.auto_start_enabled)?;
+            create_static(
+                hwnd,
+                "",
+                layout.separator.x,
+                layout.separator.y,
+                layout.separator.width,
+                layout.separator.height,
+            )?;
 
             create_static(hwnd, "翻译配置", 18, 74, 120, 22)?;
             let profile_list = create_listbox(hwnd, 18, 100, 220, 228, ID_PROFILE_LIST)?;
@@ -625,6 +663,15 @@ impl SettingsWindow {
                 api_key_visibility_button,
                 view_model.selected_profile.has_api_key,
             );
+            create_static_with_id(
+                hwnd,
+                &view_model.version_text,
+                layout.version.x,
+                layout.version.y,
+                layout.version.width,
+                layout.version.height,
+                ID_VERSION_LABEL,
+            )?;
             create_button(hwnd, "保存", 534, 382, 72, 28, ID_SAVE)?;
             create_button(hwnd, "取消", 614, 382, 72, 28, ID_CANCEL)?;
             let _ = ShowWindow(hwnd, SW_SHOW);
@@ -666,9 +713,11 @@ pub struct SettingsControlRect {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SettingsWindowLayout {
     pub hotkey: SettingsControlRect,
+    pub auto_start: SettingsControlRect,
     pub separator: SettingsControlRect,
     pub profile_list: SettingsControlRect,
     pub name: SettingsControlRect,
+    pub version: SettingsControlRect,
 }
 
 pub fn settings_window_layout() -> SettingsWindowLayout {
@@ -678,6 +727,12 @@ pub fn settings_window_layout() -> SettingsWindowLayout {
             y: 18,
             width: 180,
             height: 24,
+        },
+        auto_start: SettingsControlRect {
+            x: 320,
+            y: 42,
+            width: 100,
+            height: 18,
         },
         separator: SettingsControlRect {
             x: 18,
@@ -696,6 +751,12 @@ pub fn settings_window_layout() -> SettingsWindowLayout {
             y: 100,
             width: 240,
             height: 24,
+        },
+        version: SettingsControlRect {
+            x: 18,
+            y: 420,
+            width: 160,
+            height: 22,
         },
     }
 }
@@ -1255,6 +1316,41 @@ fn set_control_text(hwnd: windows::Win32::Foundation::HWND, id: i32, text: &str)
 }
 
 #[cfg(windows)]
+fn set_checkbox_checked(
+    hwnd: windows::Win32::Foundation::HWND,
+    id: i32,
+    checked: bool,
+) -> Result<()> {
+    use windows::Win32::Foundation::{LPARAM, WPARAM};
+    use windows::Win32::UI::Controls::{BST_CHECKED, BST_UNCHECKED};
+    use windows::Win32::UI::WindowsAndMessaging::{BM_SETCHECK, SendMessageW};
+
+    let child = control(hwnd, id)?;
+    let state = if checked { BST_CHECKED } else { BST_UNCHECKED };
+    unsafe {
+        let _ = SendMessageW(
+            child,
+            BM_SETCHECK,
+            Some(WPARAM(state.0 as usize)),
+            Some(LPARAM(0)),
+        );
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+#[allow(dead_code)]
+fn is_checkbox_checked(hwnd: windows::Win32::Foundation::HWND, id: i32) -> Result<bool> {
+    use windows::Win32::Foundation::{LPARAM, WPARAM};
+    use windows::Win32::UI::Controls::BST_CHECKED;
+    use windows::Win32::UI::WindowsAndMessaging::{BM_GETCHECK, SendMessageW};
+
+    let child = control(hwnd, id)?;
+    let state = unsafe { SendMessageW(child, BM_GETCHECK, Some(WPARAM(0)), Some(LPARAM(0))) };
+    Ok(state.0 as u32 == BST_CHECKED.0)
+}
+
+#[cfg(windows)]
 fn control(
     hwnd: windows::Win32::Foundation::HWND,
     id: i32,
@@ -1407,6 +1503,31 @@ fn create_button(
         height,
         id,
         WINDOW_STYLE(BS_PUSHBUTTON as u32),
+        true,
+    )
+}
+
+#[cfg(windows)]
+fn create_checkbox(
+    parent: windows::Win32::Foundation::HWND,
+    text: &str,
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+    id: i32,
+) -> Result<windows::Win32::Foundation::HWND> {
+    use windows::Win32::UI::WindowsAndMessaging::{BS_AUTOCHECKBOX, WINDOW_STYLE};
+    create_control(
+        parent,
+        "BUTTON",
+        text,
+        x,
+        y,
+        width,
+        height,
+        id as isize,
+        WINDOW_STYLE(BS_AUTOCHECKBOX as u32),
         true,
     )
 }
