@@ -1737,7 +1737,7 @@ fn create_control(
     };
     use windows::core::PCWSTR;
 
-    unsafe {
+    let hwnd = unsafe {
         CreateWindowExW(
             WINDOW_EX_STYLE::default(),
             PCWSTR(wide(class_name).as_ptr()),
@@ -1759,8 +1759,10 @@ fn create_control(
             None,
             None,
         )
-        .map_err(|err| AppError::Windows(format!("创建控件失败: {err}")))
-    }
+        .map_err(|err| AppError::Windows(format!("创建控件失败: {err}")))?
+    };
+    crate::ui::font::apply_ui_font(hwnd)?;
+    Ok(hwnd)
 }
 
 #[cfg(windows)]

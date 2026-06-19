@@ -35,15 +35,15 @@ fn ui_font() -> Result<windows::Win32::Graphics::Gdi::HFONT> {
     let font = create_ui_font()?;
     let _ = FONT.set(font.0 as isize);
     Ok(HFONT(
-        *FONT.get().unwrap_or(&(font.0 as isize)) as *mut core::ffi::c_void,
+        *FONT.get().unwrap_or(&(font.0 as isize)) as *mut core::ffi::c_void
     ))
 }
 
 #[cfg(windows)]
 fn create_ui_font() -> Result<windows::Win32::Graphics::Gdi::HFONT> {
     use windows::Win32::Graphics::Gdi::{
-        CLIP_DEFAULT_PRECIS, CreateFontW, DEFAULT_CHARSET, DEFAULT_PITCH, FF_DONTCARE,
-        GetDC, GetDeviceCaps, HDC, LOGPIXELSY, OUT_DEFAULT_PRECIS, PROOF_QUALITY, ReleaseDC,
+        CLIP_DEFAULT_PRECIS, CreateFontW, DEFAULT_CHARSET, DEFAULT_PITCH, FF_DONTCARE, GetDC,
+        GetDeviceCaps, HDC, LOGPIXELSY, OUT_DEFAULT_PRECIS, PROOF_QUALITY, ReleaseDC,
     };
     use windows::core::PCWSTR;
 
