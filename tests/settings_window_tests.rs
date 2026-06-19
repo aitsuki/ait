@@ -611,6 +611,11 @@ fn settings_window_layout_places_auto_start_with_global_settings() {
 }
 
 #[test]
+fn app_version_text_uses_v0_1_2() {
+    assert_eq!(app_version_text(), "ait v0.1.2");
+}
+
+#[test]
 fn settings_window_erases_hidden_control_pixels() {
     assert!(settings_window_uses_background_brush());
 }
