@@ -10,6 +10,12 @@ pub struct Modifiers {
     pub win: bool,
 }
 
+impl Modifiers {
+    pub fn any(self) -> bool {
+        self.ctrl || self.alt || self.shift || self.win
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KeyCode {
     Char(char),
@@ -61,6 +67,11 @@ impl FromStr for Hotkey {
         }
 
         let key = key.ok_or_else(|| AppError::Hotkey("快捷键必须包含一个普通按键".to_string()))?;
+        if !modifiers.any() {
+            return Err(AppError::Hotkey(
+                "快捷键必须至少包含一个修饰键".to_string(),
+            ));
+        }
         Ok(Self { modifiers, key })
     }
 }
