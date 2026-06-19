@@ -1133,7 +1133,7 @@ fn show_window_at_cursor(hwnd: windows::Win32::Foundation::HWND, mode: ShowMode)
     };
     use windows::Win32::UI::WindowsAndMessaging::{
         GetCursorPos, GetWindowRect, HWND_NOTOPMOST, HWND_TOPMOST, SET_WINDOW_POS_FLAGS, SW_SHOW,
-        SW_SHOWNOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOACTIVATE, SWP_SHOWWINDOW,
+        SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW,
         SetForegroundWindow, SetWindowPos, ShowWindow,
     };
 

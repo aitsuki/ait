@@ -322,7 +322,11 @@ impl SettingsWindow {
             create_static(hwnd, "API Key", 266, 204, 90, 22)?;
             create_edit(
                 hwnd,
-                if view_model.selected_profile.has_api_key { "已保存" } else { "" },
+                if view_model.selected_profile.has_api_key {
+                    "已保存"
+                } else {
+                    ""
+                },
                 370,
                 202,
                 240,
@@ -478,7 +482,8 @@ unsafe extern "system" fn default_wnd_proc(
             return LRESULT(0);
         }
         if command == ID_NEW_PROFILE as usize {
-            if let Err(err) = unsafe { edit_settings_profiles(hwnd, SettingsEditAction::NewProfile) }
+            if let Err(err) =
+                unsafe { edit_settings_profiles(hwnd, SettingsEditAction::NewProfile) }
             {
                 tracing::warn!(error = %err, "create settings profile failed");
             }
@@ -579,7 +584,9 @@ unsafe fn save_settings_from_window(hwnd: windows::Win32::Foundation::HWND) -> R
             base_url: read_control_text(hwnd, ID_BASE_URL)?,
             model: read_control_text(hwnd, ID_MODEL)?,
             api_key: encrypted_api_key,
-            timeout_secs: read_control_text(hwnd, ID_TIMEOUT)?.parse::<u64>().unwrap_or(30),
+            timeout_secs: read_control_text(hwnd, ID_TIMEOUT)?
+                .parse::<u64>()
+                .unwrap_or(30),
             hotkey: read_control_text(hwnd, ID_HOTKEY)?,
             copy_wait_ms: read_control_text(hwnd, ID_COPY_WAIT)?
                 .parse::<u64>()
@@ -692,7 +699,10 @@ fn apply_profile_detail_ui_state(
 }
 
 #[cfg(windows)]
-fn refresh_profile_list(hwnd: windows::Win32::Foundation::HWND, settings: &AppSettings) -> Result<()> {
+fn refresh_profile_list(
+    hwnd: windows::Win32::Foundation::HWND,
+    settings: &AppSettings,
+) -> Result<()> {
     refresh_profile_list_with_selected(hwnd, settings, &settings.default_profile_id)
 }
 
@@ -710,7 +720,7 @@ fn refresh_profile_list_with_selected(
 #[cfg(windows)]
 fn selected_profile_id(hwnd: windows::Win32::Foundation::HWND) -> Result<String> {
     use windows::Win32::Foundation::{LPARAM, WPARAM};
-    use windows::Win32::UI::WindowsAndMessaging::{SendMessageW, LB_GETCURSEL};
+    use windows::Win32::UI::WindowsAndMessaging::{LB_GETCURSEL, SendMessageW};
 
     let list = control(hwnd, ID_PROFILE_LIST)?;
     let index = unsafe { SendMessageW(list, LB_GETCURSEL, Some(WPARAM(0)), Some(LPARAM(0))) }.0;
@@ -754,11 +764,7 @@ fn read_control_text(hwnd: windows::Win32::Foundation::HWND, id: i32) -> Result<
 }
 
 #[cfg(windows)]
-fn set_control_text(
-    hwnd: windows::Win32::Foundation::HWND,
-    id: i32,
-    text: &str,
-) -> Result<()> {
+fn set_control_text(hwnd: windows::Win32::Foundation::HWND, id: i32, text: &str) -> Result<()> {
     use windows::Win32::UI::WindowsAndMessaging::SetWindowTextW;
 
     let child = control(hwnd, id)?;
@@ -801,7 +807,7 @@ fn reset_profile_list(
 ) -> Result<()> {
     use windows::Win32::Foundation::{LPARAM, WPARAM};
     use windows::Win32::UI::WindowsAndMessaging::{
-        SendMessageW, LB_ADDSTRING, LB_RESETCONTENT, LB_SETCURSEL,
+        LB_ADDSTRING, LB_RESETCONTENT, LB_SETCURSEL, SendMessageW,
     };
 
     unsafe {

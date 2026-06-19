@@ -2,8 +2,7 @@ use ait::config::{AppSettings, TranslatorProvider};
 use ait::ui::settings_window::{
     SettingsEditAction, SettingsProfileDetailUpdate, SettingsSaveOutcome, SettingsViewModel,
     apply_settings_detail_update, apply_settings_edit_action, settings_save_outcome_after_success,
-    settings_window_layout,
-    settings_window_center_position,
+    settings_window_center_position, settings_window_layout,
 };
 
 #[test]
@@ -28,7 +27,11 @@ fn settings_view_model_lists_profiles_and_selected_detail() {
 
     let vm = SettingsViewModel::from_settings_with_selected(&settings, "deepseek");
 
-    assert!(vm.profiles.iter().any(|item| item.label == "Google（默认）"));
+    assert!(
+        vm.profiles
+            .iter()
+            .any(|item| item.label == "Google（默认）")
+    );
     assert!(vm.profiles.iter().any(|item| item.label == "DeepSeek"));
     assert_eq!(vm.selected_profile.id, "deepseek");
     assert_eq!(vm.selected_profile.provider, TranslatorProvider::DeepSeek);
