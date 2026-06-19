@@ -754,7 +754,7 @@ pub fn settings_window_layout() -> SettingsWindowLayout {
         },
         version: SettingsControlRect {
             x: 18,
-            y: 420,
+            y: 386,
             width: 160,
             height: 22,
         },

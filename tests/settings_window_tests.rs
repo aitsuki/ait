@@ -616,6 +616,13 @@ fn app_version_text_uses_v0_1_2() {
 }
 
 #[test]
+fn settings_window_layout_keeps_version_label_in_visible_client_area() {
+    let layout = settings_window_layout();
+
+    assert!(layout.version.y + layout.version.height <= 410);
+}
+
+#[test]
 fn settings_window_erases_hidden_control_pixels() {
     assert!(settings_window_uses_background_brush());
 }
