@@ -72,47 +72,26 @@ jobs:
           $env:AIT_OUTPUT_BASE = "ait-${{ steps.version.outputs.version }}-setup"
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" installer\ait.iss
 
-      - name: Generate checksums
-        shell: pwsh
-        run: |
-          $portable = "dist\${{ steps.version.outputs.portable_name }}"
-          $setup = "dist\${{ steps.version.outputs.setup_name }}"
-          Get-FileHash $portable -Algorithm SHA256 | Format-List | Out-String | Set-Content dist\portable.sha256.txt -Encoding UTF8
-          Get-FileHash $setup -Algorithm SHA256 | Format-List | Out-String | Set-Content dist\setup.sha256.txt -Encoding UTF8
-
       - name: Write release notes
         shell: pwsh
         run: |
-          $version = "${{ steps.version.outputs.version }}"
-          $setupName = "${{ steps.version.outputs.setup_name }}"
-          $portableName = "${{ steps.version.outputs.portable_name }}"
-          $portableHash = (Get-FileHash "dist\${{ steps.version.outputs.portable_name }}" -Algorithm SHA256).Hash
-          $setupHash = (Get-FileHash "dist\${{ steps.version.outputs.setup_name }}" -Algorithm SHA256).Hash
-          $notes = @"
-          # ait $version
+          @'
+          # ait ${{ steps.version.outputs.version }}
 
           Windows-only lightweight selection translator.
 
           ## Download
 
-          - `$setupName`: recommended for most users.
-          - `$portableName`: portable single-file executable.
-
-          ## Checksums
-
-          - `$setupName` SHA256: $setupHash
-          - `$portableName` SHA256: $portableHash
+          - `${{ steps.version.outputs.setup_name }}`: recommended for most users.
+          - `${{ steps.version.outputs.portable_name }}`: portable single-file executable.
 
           ## Notes
 
           - Release builds run as a Windows GUI app and no longer open a console window.
           - Windows only.
-          - Download from GitHub Releases only.
-          - Release artifacts are not code-signed.
           - The built-in no-key Google translation provider may be rate-limited or break.
           - OpenAI-compatible providers can be configured in settings.
-          "@
-          $notes | Set-Content -Path release-notes.md -Encoding UTF8
+          '@ | Set-Content -Path release-notes.md -Encoding UTF8
 
       - name: Publish GitHub Release
         shell: pwsh
@@ -130,8 +109,6 @@ jobs:
           gh release create $version `
             "dist/${{ steps.version.outputs.portable_name }}#${{ steps.version.outputs.portable_name }}" `
             "dist/${{ steps.version.outputs.setup_name }}#${{ steps.version.outputs.setup_name }}" `
-            "dist\portable.sha256.txt#portable.sha256.txt" `
-            "dist\setup.sha256.txt#setup.sha256.txt" `
             --title "ait $version" `
             --notes-file release-notes.md `
             --target "${{ github.sha }}"
