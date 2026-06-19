@@ -1,8 +1,9 @@
 use ait::config::{AppSettings, TranslatorProvider};
 use ait::ui::settings_window::{
-    SettingsEditAction, SettingsProfileDetailControl, SettingsProfileDetailUpdate,
-    SettingsSaveOutcome, SettingsViewModel, apply_settings_detail_update,
-    apply_settings_edit_action, settings_profile_detail_control_rect,
+    SettingsApiKeyUpdate, SettingsEditAction, SettingsProfileDetailControl,
+    SettingsProfileDetailUpdate, SettingsSaveOutcome, SettingsViewModel, api_key_placeholder_text,
+    apply_settings_detail_update, apply_settings_edit_action, settings_api_key_input_text,
+    settings_api_key_update_from_input, settings_profile_detail_control_rect,
     settings_profile_detail_control_states, settings_profile_detail_hidden_rect,
     settings_profile_google_notice_text, settings_save_outcome_after_success,
     settings_static_controls_have_border, settings_window_center_position, settings_window_layout,
@@ -23,6 +24,13 @@ fn settings_view_model_hides_api_key_value() {
     assert_eq!(vm.selected_profile.id, "openai");
     assert!(vm.selected_profile.has_api_key);
     assert!(!format!("{vm:?}").contains("encrypted-secret"));
+}
+
+#[test]
+fn saved_api_key_uses_fixed_placeholder_text() {
+    assert_eq!(api_key_placeholder_text(), "********");
+    assert_eq!(settings_api_key_input_text(true), "********");
+    assert_eq!(settings_api_key_input_text(false), "");
 }
 
 #[test]
@@ -244,7 +252,7 @@ fn settings_detail_update_saves_selected_profile_fields() {
             provider: TranslatorProvider::OpenAi,
             base_url: "https://example.test/v1".to_string(),
             model: "gpt-test".to_string(),
-            api_key: Some("secret".to_string()),
+            api_key: SettingsApiKeyUpdate::Replace("secret".to_string()),
             timeout_secs: 45,
             hotkey: "Ctrl+Alt+T".to_string(),
             copy_wait_ms: 250,
@@ -264,6 +272,72 @@ fn settings_detail_update_saves_selected_profile_fields() {
 }
 
 #[test]
+fn settings_detail_update_preserves_api_key_for_placeholder_input() {
+    let mut settings = AppSettings::default();
+    let openai = settings.profile_by_id_mut("openai").unwrap();
+    openai.encrypted_api_key = Some("encrypted-old".to_string());
+
+    let update = settings_api_key_update_from_input(
+        openai.encrypted_api_key.clone(),
+        api_key_placeholder_text(),
+    );
+
+    apply_settings_detail_update(
+        &mut settings,
+        SettingsProfileDetailUpdate {
+            id: "openai".to_string(),
+            name: "OpenAI".to_string(),
+            provider: TranslatorProvider::OpenAi,
+            base_url: "https://api.openai.com/v1".to_string(),
+            model: "gpt-4o-mini".to_string(),
+            api_key: update,
+            timeout_secs: 30,
+            hotkey: "Ctrl+Alt+E".to_string(),
+            copy_wait_ms: 300,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(
+        settings
+            .profile_by_id("openai")
+            .unwrap()
+            .encrypted_api_key
+            .as_deref(),
+        Some("encrypted-old")
+    );
+}
+
+#[test]
+fn settings_detail_update_clears_api_key_for_empty_input() {
+    let mut settings = AppSettings::default();
+    let openai = settings.profile_by_id_mut("openai").unwrap();
+    openai.encrypted_api_key = Some("encrypted-old".to_string());
+    let existing_api_key = openai.encrypted_api_key.clone();
+
+    apply_settings_detail_update(
+        &mut settings,
+        SettingsProfileDetailUpdate {
+            id: "openai".to_string(),
+            name: "OpenAI".to_string(),
+            provider: TranslatorProvider::OpenAi,
+            base_url: "https://api.openai.com/v1".to_string(),
+            model: "gpt-4o-mini".to_string(),
+            api_key: settings_api_key_update_from_input(existing_api_key, ""),
+            timeout_secs: 30,
+            hotkey: "Ctrl+Alt+E".to_string(),
+            copy_wait_ms: 300,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(
+        settings.profile_by_id("openai").unwrap().encrypted_api_key,
+        None
+    );
+}
+
+#[test]
 fn settings_detail_update_preserves_existing_provider() {
     let mut settings = AppSettings::default();
     let id = settings.add_custom_profile().id;
@@ -277,7 +351,7 @@ fn settings_detail_update_preserves_existing_provider() {
             provider: TranslatorProvider::Google,
             base_url: "https://api.deepseek.com/v1".to_string(),
             model: "deepseek-chat".to_string(),
-            api_key: None,
+            api_key: SettingsApiKeyUpdate::Preserve,
             timeout_secs: 30,
             hotkey: "Ctrl+Alt+E".to_string(),
             copy_wait_ms: 300,
@@ -308,7 +382,7 @@ fn settings_detail_update_clears_network_fields_for_google() {
             provider: TranslatorProvider::Google,
             base_url: "https://ignored.test".to_string(),
             model: "ignored".to_string(),
-            api_key: Some("ignored".to_string()),
+            api_key: SettingsApiKeyUpdate::Replace("ignored".to_string()),
             timeout_secs: 30,
             hotkey: "Ctrl+Alt+E".to_string(),
             copy_wait_ms: 300,

@@ -4,6 +4,7 @@ use crate::error::{AppError, Result};
 const SETTINGS_WINDOW_WIDTH: i32 = 720;
 const SETTINGS_WINDOW_HEIGHT: i32 = 460;
 const GOOGLE_NOTICE_TEXT: &str = "Google 使用内置免 Key 翻译，无需填写 Base URL、模型或 API Key。";
+const API_KEY_PLACEHOLDER_TEXT: &str = "********";
 
 #[cfg(windows)]
 const ID_PROFILE_LIST: i32 = 3101;
@@ -31,6 +32,10 @@ const ID_API_KEY_LABEL: i32 = 3113;
 const ID_TIMEOUT_LABEL: i32 = 3114;
 #[cfg(windows)]
 const ID_NAME_LABEL: i32 = 3115;
+#[cfg(windows)]
+const ID_API_KEY_VISIBILITY: isize = 3116;
+#[cfg(windows)]
+const EM_SET_PASSWORD_CHAR: u32 = 0x00CC;
 #[cfg(windows)]
 const ID_NEW_PROFILE: isize = 3001;
 #[cfg(windows)]
@@ -85,10 +90,17 @@ pub struct SettingsProfileDetailUpdate {
     pub provider: TranslatorProvider,
     pub base_url: String,
     pub model: String,
-    pub api_key: Option<String>,
+    pub api_key: SettingsApiKeyUpdate,
     pub timeout_secs: u64,
     pub hotkey: String,
     pub copy_wait_ms: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SettingsApiKeyUpdate {
+    Preserve,
+    Clear,
+    Replace(String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -119,6 +131,31 @@ pub enum SettingsEditAction {
     DeleteProfile(String),
     SetDefault(String),
     SelectProfile(String),
+}
+
+pub fn api_key_placeholder_text() -> &'static str {
+    API_KEY_PLACEHOLDER_TEXT
+}
+
+pub fn settings_api_key_input_text(has_api_key: bool) -> &'static str {
+    if has_api_key {
+        API_KEY_PLACEHOLDER_TEXT
+    } else {
+        ""
+    }
+}
+
+pub fn settings_api_key_update_from_input(
+    existing_encrypted_api_key: Option<String>,
+    input: &str,
+) -> SettingsApiKeyUpdate {
+    if input == API_KEY_PLACEHOLDER_TEXT && existing_encrypted_api_key.is_some() {
+        SettingsApiKeyUpdate::Preserve
+    } else if input.trim().is_empty() {
+        SettingsApiKeyUpdate::Clear
+    } else {
+        SettingsApiKeyUpdate::Replace(input.to_string())
+    }
 }
 
 pub fn settings_profile_detail_control_states(
@@ -315,8 +352,16 @@ pub fn apply_settings_detail_update(
     } else {
         profile.base_url = update.base_url;
         profile.model = update.model;
-        if let Some(api_key) = update.api_key.filter(|value| !value.trim().is_empty()) {
-            profile.encrypted_api_key = Some(api_key);
+        match update.api_key {
+            SettingsApiKeyUpdate::Preserve => {}
+            SettingsApiKeyUpdate::Clear => profile.encrypted_api_key = None,
+            SettingsApiKeyUpdate::Replace(api_key) => {
+                if api_key.trim().is_empty() {
+                    profile.encrypted_api_key = None;
+                } else {
+                    profile.encrypted_api_key = Some(api_key);
+                }
+            }
         }
         profile.timeout_secs = update.timeout_secs.max(1);
     }
@@ -503,11 +548,7 @@ impl SettingsWindow {
             create_static_with_id(hwnd, "API Key", 266, 204, 90, 22, ID_API_KEY_LABEL)?;
             create_edit(
                 hwnd,
-                if view_model.selected_profile.has_api_key {
-                    "已保存"
-                } else {
-                    ""
-                },
+                settings_api_key_input_text(view_model.selected_profile.has_api_key),
                 370,
                 202,
                 240,
@@ -515,6 +556,8 @@ impl SettingsWindow {
                 true,
                 ID_API_KEY,
             )?;
+            let api_key_visibility_button =
+                create_button(hwnd, "显示", 618, 200, 52, 28, ID_API_KEY_VISIBILITY)?;
             create_static_with_id(hwnd, "超时秒数", 266, 238, 90, 22, ID_TIMEOUT_LABEL)?;
             create_edit(
                 hwnd,
@@ -539,6 +582,10 @@ impl SettingsWindow {
             let _ = windows::Win32::UI::Input::KeyboardAndMouse::EnableWindow(
                 delete_button,
                 view_model.selected_profile.can_delete,
+            );
+            let _ = windows::Win32::UI::Input::KeyboardAndMouse::EnableWindow(
+                api_key_visibility_button,
+                view_model.selected_profile.has_api_key,
             );
             create_button(hwnd, "保存", 534, 382, 72, 28, ID_SAVE)?;
             create_button(hwnd, "取消", 614, 382, 72, 28, ID_CANCEL)?;
@@ -693,6 +740,15 @@ unsafe extern "system" fn default_wnd_proc(
             }
             return LRESULT(0);
         }
+        if command == ID_API_KEY_VISIBILITY as usize {
+            if let Err(err) = unsafe { toggle_api_key_visibility(hwnd) } {
+                tracing::warn!(error = %err, "toggle api key visibility failed");
+                unsafe {
+                    show_message(hwnd, "读取失败", &err.user_summary());
+                }
+            }
+            return LRESULT(0);
+        }
         if command == ID_SAVE as usize {
             match unsafe { save_settings_from_window(hwnd) } {
                 Ok(_) => unsafe {
@@ -748,15 +804,18 @@ unsafe fn save_settings_from_window(hwnd: windows::Win32::Foundation::HWND) -> R
         .profile_by_id(&profile_id)
         .map(|profile| profile.provider)
         .ok_or_else(|| AppError::Config("翻译配置不存在".to_string()))?;
+    let existing_encrypted_api_key = settings
+        .profile_by_id(&profile_id)
+        .and_then(|profile| profile.encrypted_api_key.clone());
     let api_key = read_control_text(hwnd, ID_API_KEY)?;
-    let encrypted_api_key = if !api_key.trim().is_empty() && api_key != "已保存" {
-        Some(
-            crate::secret::SecretStore::new(&format!("ait-translator-profile-{profile_id}"))
-                .protect(&api_key)?,
-        )
-    } else {
-        None
-    };
+    let api_key_update =
+        match settings_api_key_update_from_input(existing_encrypted_api_key, &api_key) {
+            SettingsApiKeyUpdate::Replace(api_key) => SettingsApiKeyUpdate::Replace(
+                crate::secret::SecretStore::new(&format!("ait-translator-profile-{profile_id}"))
+                    .protect(&api_key)?,
+            ),
+            update => update,
+        };
     apply_settings_detail_update(
         settings,
         SettingsProfileDetailUpdate {
@@ -765,7 +824,7 @@ unsafe fn save_settings_from_window(hwnd: windows::Win32::Foundation::HWND) -> R
             provider: existing_provider,
             base_url: read_control_text(hwnd, ID_BASE_URL)?,
             model: read_control_text(hwnd, ID_MODEL)?,
-            api_key: encrypted_api_key,
+            api_key: api_key_update,
             timeout_secs: read_control_text(hwnd, ID_TIMEOUT)?
                 .parse::<u64>()
                 .unwrap_or(30),
@@ -829,8 +888,10 @@ fn load_profile_into_window(
     set_control_text(
         hwnd,
         ID_API_KEY,
-        if profile.has_api_key { "已保存" } else { "" },
+        settings_api_key_input_text(profile.has_api_key),
     )?;
+    set_control_text(hwnd, ID_API_KEY_VISIBILITY as i32, "显示")?;
+    set_api_key_password_mode(hwnd, true)?;
     set_control_text(hwnd, ID_TIMEOUT, &profile.timeout_secs.to_string())?;
     set_control_text(
         hwnd,
@@ -843,6 +904,57 @@ fn load_profile_into_window(
     )?;
     set_control_text(hwnd, ID_HOTKEY, &vm.hotkey)?;
     apply_profile_detail_ui_state(hwnd, profile);
+    Ok(())
+}
+
+#[cfg(windows)]
+unsafe fn toggle_api_key_visibility(hwnd: windows::Win32::Foundation::HWND) -> Result<()> {
+    use windows::Win32::UI::WindowsAndMessaging::{GWLP_USERDATA, GetWindowLongPtrW};
+
+    let button_text = read_control_text(hwnd, ID_API_KEY_VISIBILITY as i32)?;
+    if button_text == "隐藏" {
+        set_control_text(hwnd, ID_API_KEY, API_KEY_PLACEHOLDER_TEXT)?;
+        set_api_key_password_mode(hwnd, true)?;
+        set_control_text(hwnd, ID_API_KEY_VISIBILITY as i32, "显示")?;
+        return Ok(());
+    }
+
+    let ptr = unsafe { GetWindowLongPtrW(hwnd, GWLP_USERDATA) };
+    if ptr == 0 {
+        return Err(AppError::Config("设置窗口状态缺失".to_string()));
+    }
+    let settings = unsafe { &*(ptr as *const AppSettings) };
+    let profile_id = selected_profile_id(hwnd)?;
+    let encrypted = settings
+        .profile_by_id(&profile_id)
+        .and_then(|profile| profile.encrypted_api_key.as_ref())
+        .ok_or_else(|| AppError::Secret("API Key 未保存".to_string()))?;
+    let api_key = crate::secret::SecretStore::new(&format!("ait-translator-profile-{profile_id}"))
+        .unprotect(encrypted)?;
+
+    set_api_key_password_mode(hwnd, false)?;
+    set_control_text(hwnd, ID_API_KEY, &api_key)?;
+    set_control_text(hwnd, ID_API_KEY_VISIBILITY as i32, "隐藏")?;
+    Ok(())
+}
+
+#[cfg(windows)]
+fn set_api_key_password_mode(hwnd: windows::Win32::Foundation::HWND, password: bool) -> Result<()> {
+    use windows::Win32::Foundation::{LPARAM, WPARAM};
+    use windows::Win32::Graphics::Gdi::InvalidateRect;
+    use windows::Win32::UI::WindowsAndMessaging::SendMessageW;
+
+    let edit = control(hwnd, ID_API_KEY)?;
+    let password_char = if password { '*' as usize } else { 0 };
+    unsafe {
+        let _ = SendMessageW(
+            edit,
+            EM_SET_PASSWORD_CHAR,
+            Some(WPARAM(password_char)),
+            Some(LPARAM(0)),
+        );
+        let _ = InvalidateRect(Some(edit), None, true);
+    }
     Ok(())
 }
 
@@ -863,6 +975,43 @@ fn apply_profile_detail_ui_state(
     if let Ok(delete_button) = control(hwnd, ID_DELETE_PROFILE as i32) {
         unsafe {
             let _ = EnableWindow(delete_button, profile.can_delete);
+        }
+    }
+    if let Ok(api_key_visibility_button) = control(hwnd, ID_API_KEY_VISIBILITY as i32) {
+        unsafe {
+            let _ = EnableWindow(api_key_visibility_button, profile.has_api_key);
+            let rect = if profile.network_fields_visible {
+                SettingsControlRect {
+                    x: 618,
+                    y: 200,
+                    width: 52,
+                    height: 28,
+                }
+            } else {
+                settings_profile_detail_hidden_rect()
+            };
+            let _ = MoveWindow(
+                api_key_visibility_button,
+                rect.x,
+                rect.y,
+                rect.width,
+                rect.height,
+                true,
+            );
+            let visibility_flag = if profile.network_fields_visible {
+                SWP_SHOWWINDOW
+            } else {
+                SWP_HIDEWINDOW
+            };
+            let _ = SetWindowPos(
+                api_key_visibility_button,
+                None,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | visibility_flag,
+            );
         }
     }
     for state in settings_profile_detail_control_states(profile) {
