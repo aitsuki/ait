@@ -3,6 +3,7 @@ use crate::error::{AppError, Result};
 
 const SETTINGS_WINDOW_WIDTH: i32 = 720;
 const SETTINGS_WINDOW_HEIGHT: i32 = 460;
+const GOOGLE_NOTICE_TEXT: &str = "Google 使用内置免 Key 翻译，无需填写 Base URL、模型或 API Key。";
 
 #[cfg(windows)]
 const ID_PROFILE_LIST: i32 = 3101;
@@ -22,6 +23,16 @@ const ID_HOTKEY: i32 = 3108;
 const ID_COPY_WAIT: i32 = 3109;
 #[cfg(windows)]
 const ID_GOOGLE_NOTICE: i32 = 3110;
+#[cfg(windows)]
+const ID_BASE_URL_LABEL: i32 = 3111;
+#[cfg(windows)]
+const ID_MODEL_LABEL: i32 = 3112;
+#[cfg(windows)]
+const ID_API_KEY_LABEL: i32 = 3113;
+#[cfg(windows)]
+const ID_TIMEOUT_LABEL: i32 = 3114;
+#[cfg(windows)]
+const ID_NAME_LABEL: i32 = 3115;
 #[cfg(windows)]
 const ID_NEW_PROFILE: isize = 3001;
 #[cfg(windows)]
@@ -82,12 +93,184 @@ pub struct SettingsProfileDetailUpdate {
     pub copy_wait_ms: u64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SettingsProfileDetailControl {
+    NameLabel,
+    NameInput,
+    BaseUrlLabel,
+    BaseUrlInput,
+    ModelLabel,
+    ModelInput,
+    ApiKeyLabel,
+    ApiKeyInput,
+    TimeoutLabel,
+    TimeoutInput,
+    GoogleNotice,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SettingsProfileDetailControlState {
+    pub control: SettingsProfileDetailControl,
+    pub visible: bool,
+    pub enabled: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SettingsEditAction {
     NewProfile,
     DeleteProfile(String),
     SetDefault(String),
     SelectProfile(String),
+}
+
+pub fn settings_profile_detail_control_states(
+    profile: &SettingsProfileDetail,
+) -> Vec<SettingsProfileDetailControlState> {
+    let network_visible = profile.network_fields_visible;
+    let network_enabled = profile.network_fields_enabled;
+    vec![
+        SettingsProfileDetailControlState {
+            control: SettingsProfileDetailControl::NameLabel,
+            visible: profile.name_editable,
+            enabled: profile.name_editable,
+        },
+        SettingsProfileDetailControlState {
+            control: SettingsProfileDetailControl::NameInput,
+            visible: profile.name_editable,
+            enabled: profile.name_editable,
+        },
+        SettingsProfileDetailControlState {
+            control: SettingsProfileDetailControl::BaseUrlLabel,
+            visible: network_visible,
+            enabled: network_enabled,
+        },
+        SettingsProfileDetailControlState {
+            control: SettingsProfileDetailControl::BaseUrlInput,
+            visible: network_visible,
+            enabled: network_enabled,
+        },
+        SettingsProfileDetailControlState {
+            control: SettingsProfileDetailControl::ModelLabel,
+            visible: network_visible,
+            enabled: network_enabled,
+        },
+        SettingsProfileDetailControlState {
+            control: SettingsProfileDetailControl::ModelInput,
+            visible: network_visible,
+            enabled: network_enabled,
+        },
+        SettingsProfileDetailControlState {
+            control: SettingsProfileDetailControl::ApiKeyLabel,
+            visible: network_visible,
+            enabled: network_enabled,
+        },
+        SettingsProfileDetailControlState {
+            control: SettingsProfileDetailControl::ApiKeyInput,
+            visible: network_visible,
+            enabled: network_enabled,
+        },
+        SettingsProfileDetailControlState {
+            control: SettingsProfileDetailControl::TimeoutLabel,
+            visible: network_visible,
+            enabled: network_enabled,
+        },
+        SettingsProfileDetailControlState {
+            control: SettingsProfileDetailControl::TimeoutInput,
+            visible: network_visible,
+            enabled: network_enabled,
+        },
+        SettingsProfileDetailControlState {
+            control: SettingsProfileDetailControl::GoogleNotice,
+            visible: profile.google_notice_visible,
+            enabled: true,
+        },
+    ]
+}
+
+pub fn settings_profile_detail_control_rect(
+    control: SettingsProfileDetailControl,
+) -> SettingsControlRect {
+    match control {
+        SettingsProfileDetailControl::NameLabel => SettingsControlRect {
+            x: 266,
+            y: 102,
+            width: 90,
+            height: 22,
+        },
+        SettingsProfileDetailControl::NameInput => SettingsControlRect {
+            x: 370,
+            y: 100,
+            width: 240,
+            height: 24,
+        },
+        SettingsProfileDetailControl::BaseUrlLabel => SettingsControlRect {
+            x: 266,
+            y: 136,
+            width: 90,
+            height: 22,
+        },
+        SettingsProfileDetailControl::BaseUrlInput => SettingsControlRect {
+            x: 370,
+            y: 134,
+            width: 300,
+            height: 24,
+        },
+        SettingsProfileDetailControl::ModelLabel => SettingsControlRect {
+            x: 266,
+            y: 170,
+            width: 90,
+            height: 22,
+        },
+        SettingsProfileDetailControl::ModelInput => SettingsControlRect {
+            x: 370,
+            y: 168,
+            width: 240,
+            height: 24,
+        },
+        SettingsProfileDetailControl::ApiKeyLabel => SettingsControlRect {
+            x: 266,
+            y: 204,
+            width: 90,
+            height: 22,
+        },
+        SettingsProfileDetailControl::ApiKeyInput => SettingsControlRect {
+            x: 370,
+            y: 202,
+            width: 240,
+            height: 24,
+        },
+        SettingsProfileDetailControl::TimeoutLabel => SettingsControlRect {
+            x: 266,
+            y: 238,
+            width: 90,
+            height: 22,
+        },
+        SettingsProfileDetailControl::TimeoutInput => SettingsControlRect {
+            x: 370,
+            y: 236,
+            width: 90,
+            height: 24,
+        },
+        SettingsProfileDetailControl::GoogleNotice => SettingsControlRect {
+            x: 266,
+            y: 100,
+            width: 420,
+            height: 44,
+        },
+    }
+}
+
+pub fn settings_profile_google_notice_text() -> &'static str {
+    GOOGLE_NOTICE_TEXT
+}
+
+pub fn settings_profile_detail_hidden_rect() -> SettingsControlRect {
+    SettingsControlRect {
+        x: -32000,
+        y: -32000,
+        width: 0,
+        height: 0,
+    }
 }
 
 pub fn apply_settings_edit_action(
@@ -151,6 +334,16 @@ impl SettingsViewModel {
             .or_else(|| settings.translator_profiles.first())
             .expect("settings always contain profiles after normalization");
         let is_google = selected.provider == TranslatorProvider::Google;
+        let (base_url, model, has_api_key, timeout_secs) = if is_google {
+            (String::new(), String::new(), false, 0)
+        } else {
+            (
+                selected.base_url.clone(),
+                selected.model.clone(),
+                selected.encrypted_api_key.is_some(),
+                selected.timeout_secs,
+            )
+        };
         Self {
             profiles: settings
                 .translator_profiles
@@ -166,10 +359,10 @@ impl SettingsViewModel {
                 id: selected.id.clone(),
                 name: selected.name.clone(),
                 provider: selected.provider,
-                base_url: selected.base_url.clone(),
-                model: selected.model.clone(),
-                has_api_key: selected.encrypted_api_key.is_some(),
-                timeout_secs: selected.timeout_secs,
+                base_url,
+                model,
+                has_api_key,
+                timeout_secs,
                 built_in: selected.built_in,
                 can_delete: !selected.built_in,
                 name_editable: !is_google,
@@ -209,7 +402,8 @@ impl SettingsWindow {
     ) -> Result<()> {
         use windows::Win32::Foundation::GetLastError;
         use windows::Win32::Graphics::Gdi::{
-            GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromPoint,
+            COLOR_WINDOW, GetMonitorInfoW, GetSysColorBrush, MONITOR_DEFAULTTONEAREST, MONITORINFO,
+            MonitorFromPoint,
         };
         use windows::Win32::UI::WindowsAndMessaging::{
             CreateWindowExW, GWLP_USERDATA, GetCursorPos, IDC_ARROW, LoadCursorW, RegisterClassW,
@@ -225,6 +419,7 @@ impl SettingsWindow {
                 lpfnWndProc: Some(default_wnd_proc),
                 lpszClassName: PCWSTR(class_name.as_ptr()),
                 hCursor: LoadCursorW(None, IDC_ARROW).unwrap_or_default(),
+                hbrBackground: GetSysColorBrush(COLOR_WINDOW),
                 ..Default::default()
             };
             let atom = RegisterClassW(&class);
@@ -286,7 +481,7 @@ impl SettingsWindow {
             let delete_button = create_button(hwnd, "删除", 90, 342, 64, 28, ID_DELETE_PROFILE)?;
             create_button(hwnd, "设为默认", 162, 342, 76, 28, ID_SET_DEFAULT)?;
 
-            create_static(hwnd, "名称", 266, 102, 90, 22)?;
+            create_static_with_id(hwnd, "名称", 266, 102, 90, 22, ID_NAME_LABEL)?;
             create_edit(
                 hwnd,
                 &view_model.selected_profile.name,
@@ -297,7 +492,7 @@ impl SettingsWindow {
                 false,
                 ID_NAME,
             )?;
-            create_static(hwnd, "Base URL", 266, 136, 90, 22)?;
+            create_static_with_id(hwnd, "Base URL", 266, 136, 90, 22, ID_BASE_URL_LABEL)?;
             create_edit(
                 hwnd,
                 &view_model.selected_profile.base_url,
@@ -308,7 +503,7 @@ impl SettingsWindow {
                 false,
                 ID_BASE_URL,
             )?;
-            create_static(hwnd, "模型", 266, 170, 90, 22)?;
+            create_static_with_id(hwnd, "模型", 266, 170, 90, 22, ID_MODEL_LABEL)?;
             create_edit(
                 hwnd,
                 &view_model.selected_profile.model,
@@ -319,7 +514,7 @@ impl SettingsWindow {
                 false,
                 ID_MODEL,
             )?;
-            create_static(hwnd, "API Key", 266, 204, 90, 22)?;
+            create_static_with_id(hwnd, "API Key", 266, 204, 90, 22, ID_API_KEY_LABEL)?;
             create_edit(
                 hwnd,
                 if view_model.selected_profile.has_api_key {
@@ -334,7 +529,7 @@ impl SettingsWindow {
                 true,
                 ID_API_KEY,
             )?;
-            create_static(hwnd, "超时秒数", 266, 238, 90, 22)?;
+            create_static_with_id(hwnd, "超时秒数", 266, 238, 90, 22, ID_TIMEOUT_LABEL)?;
             create_edit(
                 hwnd,
                 &view_model.selected_profile.timeout_secs.to_string(),
@@ -347,7 +542,7 @@ impl SettingsWindow {
             )?;
             create_static_with_id(
                 hwnd,
-                "Google 配置使用免 Key 翻译。",
+                GOOGLE_NOTICE_TEXT,
                 266,
                 278,
                 390,
@@ -439,6 +634,14 @@ pub fn settings_window_layout() -> SettingsWindowLayout {
             height: 24,
         },
     }
+}
+
+pub fn settings_window_uses_background_brush() -> bool {
+    true
+}
+
+pub fn settings_static_controls_have_border() -> bool {
+    false
 }
 
 #[cfg(windows)]
@@ -652,6 +855,15 @@ fn load_profile_into_window(
         if profile.has_api_key { "已保存" } else { "" },
     )?;
     set_control_text(hwnd, ID_TIMEOUT, &profile.timeout_secs.to_string())?;
+    set_control_text(
+        hwnd,
+        ID_GOOGLE_NOTICE,
+        if profile.google_notice_visible {
+            GOOGLE_NOTICE_TEXT
+        } else {
+            ""
+        },
+    )?;
     set_control_text(hwnd, ID_HOTKEY, &vm.hotkey)?;
     set_control_text(hwnd, ID_COPY_WAIT, &vm.copy_wait_ms.to_string())?;
     apply_profile_detail_ui_state(hwnd, profile);
@@ -663,39 +875,77 @@ fn apply_profile_detail_ui_state(
     hwnd: windows::Win32::Foundation::HWND,
     profile: &SettingsProfileDetail,
 ) {
+    use windows::Win32::Graphics::Gdi::{
+        InvalidateRect, RDW_ERASE, RDW_INVALIDATE, RDW_UPDATENOW, RedrawWindow,
+    };
     use windows::Win32::UI::Input::KeyboardAndMouse::EnableWindow;
-    use windows::Win32::UI::WindowsAndMessaging::{SW_HIDE, SW_SHOW, ShowWindow};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        MoveWindow, SWP_HIDEWINDOW, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW,
+        SetWindowPos,
+    };
 
     if let Ok(delete_button) = control(hwnd, ID_DELETE_PROFILE as i32) {
         unsafe {
             let _ = EnableWindow(delete_button, profile.can_delete);
         }
     }
-    for id in [ID_NAME, ID_BASE_URL, ID_MODEL, ID_API_KEY, ID_TIMEOUT] {
+    for state in settings_profile_detail_control_states(profile) {
+        let Some(id) = settings_profile_detail_control_id(state.control) else {
+            continue;
+        };
         if let Ok(child) = control(hwnd, id) {
-            let visible = if id == ID_NAME {
-                true
-            } else {
-                profile.network_fields_visible
-            };
             unsafe {
-                let _ = ShowWindow(child, if visible { SW_SHOW } else { SW_HIDE });
-                let _ = EnableWindow(child, id != ID_NAME || profile.name_editable);
+                let rect = if state.visible {
+                    settings_profile_detail_control_rect(state.control)
+                } else {
+                    settings_profile_detail_hidden_rect()
+                };
+                let _ = MoveWindow(child, rect.x, rect.y, rect.width, rect.height, true);
+                let visibility_flag = if state.visible {
+                    SWP_SHOWWINDOW
+                } else {
+                    SWP_HIDEWINDOW
+                };
+                let _ = SetWindowPos(
+                    child,
+                    None,
+                    0,
+                    0,
+                    0,
+                    0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | visibility_flag,
+                );
+                let _ = EnableWindow(child, state.enabled);
             }
         }
     }
-    if let Ok(google_notice) = control(hwnd, ID_GOOGLE_NOTICE) {
-        unsafe {
-            let _ = ShowWindow(
-                google_notice,
-                if profile.google_notice_visible {
-                    SW_SHOW
-                } else {
-                    SW_HIDE
-                },
-            );
-        }
+
+    unsafe {
+        let _ = InvalidateRect(Some(hwnd), None, true);
+        let _ = RedrawWindow(
+            Some(hwnd),
+            None,
+            None,
+            RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW,
+        );
     }
+}
+
+#[cfg(windows)]
+fn settings_profile_detail_control_id(control: SettingsProfileDetailControl) -> Option<i32> {
+    Some(match control {
+        SettingsProfileDetailControl::NameInput => ID_NAME,
+        SettingsProfileDetailControl::NameLabel => ID_NAME_LABEL,
+        SettingsProfileDetailControl::BaseUrlLabel => ID_BASE_URL_LABEL,
+        SettingsProfileDetailControl::BaseUrlInput => ID_BASE_URL,
+        SettingsProfileDetailControl::ModelLabel => ID_MODEL_LABEL,
+        SettingsProfileDetailControl::ModelInput => ID_MODEL,
+        SettingsProfileDetailControl::ApiKeyLabel => ID_API_KEY_LABEL,
+        SettingsProfileDetailControl::ApiKeyInput => ID_API_KEY,
+        SettingsProfileDetailControl::TimeoutLabel => ID_TIMEOUT_LABEL,
+        SettingsProfileDetailControl::TimeoutInput => ID_TIMEOUT,
+        SettingsProfileDetailControl::GoogleNotice => ID_GOOGLE_NOTICE,
+    })
 }
 
 #[cfg(windows)]
@@ -765,11 +1015,11 @@ fn read_control_text(hwnd: windows::Win32::Foundation::HWND, id: i32) -> Result<
 
 #[cfg(windows)]
 fn set_control_text(hwnd: windows::Win32::Foundation::HWND, id: i32, text: &str) -> Result<()> {
-    use windows::Win32::UI::WindowsAndMessaging::SetWindowTextW;
+    use windows::Win32::UI::WindowsAndMessaging::SetDlgItemTextW;
 
-    let child = control(hwnd, id)?;
+    let text = wide(text);
     unsafe {
-        SetWindowTextW(child, windows::core::PCWSTR(wide(text).as_ptr()))
+        SetDlgItemTextW(hwnd, id, windows::core::PCWSTR(text.as_ptr()))
             .map_err(|err| AppError::Windows(format!("设置控件文本失败: {err}")))?;
     }
     Ok(())
@@ -855,6 +1105,7 @@ fn create_static(
         height,
         0,
         Default::default(),
+        false,
     )
 }
 
@@ -878,6 +1129,7 @@ fn create_static_with_id(
         height,
         id as isize,
         Default::default(),
+        false,
     )
 }
 
@@ -901,6 +1153,7 @@ fn create_listbox(
         height,
         id as isize,
         WINDOW_STYLE(LBS_NOTIFY as u32) | WS_VSCROLL,
+        true,
     )
 }
 
@@ -925,6 +1178,7 @@ fn create_button(
         height,
         id,
         WINDOW_STYLE(BS_PUSHBUTTON as u32),
+        true,
     )
 }
 
@@ -955,6 +1209,7 @@ fn create_edit(
         height,
         id as isize,
         WINDOW_STYLE(style as u32),
+        true,
     )
 }
 
@@ -969,6 +1224,7 @@ fn create_control(
     height: i32,
     id: isize,
     extra_style: windows::Win32::UI::WindowsAndMessaging::WINDOW_STYLE,
+    bordered: bool,
 ) -> Result<windows::Win32::Foundation::HWND> {
     use windows::Win32::UI::WindowsAndMessaging::{
         CreateWindowExW, HMENU, WINDOW_EX_STYLE, WS_BORDER, WS_CHILD, WS_VISIBLE,
@@ -980,7 +1236,14 @@ fn create_control(
             WINDOW_EX_STYLE::default(),
             PCWSTR(wide(class_name).as_ptr()),
             PCWSTR(wide(text).as_ptr()),
-            WS_CHILD | WS_VISIBLE | WS_BORDER | extra_style,
+            WS_CHILD
+                | WS_VISIBLE
+                | if bordered {
+                    WS_BORDER
+                } else {
+                    windows::Win32::UI::WindowsAndMessaging::WINDOW_STYLE(0)
+                }
+                | extra_style,
             x,
             y,
             width,

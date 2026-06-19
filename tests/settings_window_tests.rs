@@ -1,8 +1,12 @@
 use ait::config::{AppSettings, TranslatorProvider};
 use ait::ui::settings_window::{
-    SettingsEditAction, SettingsProfileDetailUpdate, SettingsSaveOutcome, SettingsViewModel,
-    apply_settings_detail_update, apply_settings_edit_action, settings_save_outcome_after_success,
-    settings_window_center_position, settings_window_layout,
+    SettingsEditAction, SettingsProfileDetailControl, SettingsProfileDetailUpdate,
+    SettingsSaveOutcome, SettingsViewModel, apply_settings_detail_update,
+    apply_settings_edit_action, settings_profile_detail_control_rect,
+    settings_profile_detail_control_states, settings_profile_detail_hidden_rect,
+    settings_profile_google_notice_text, settings_save_outcome_after_success,
+    settings_static_controls_have_border, settings_window_center_position, settings_window_layout,
+    settings_window_uses_background_brush,
 };
 
 #[test]
@@ -65,11 +69,20 @@ fn settings_view_model_does_not_show_builtin_label() {
 
 #[test]
 fn google_profile_detail_is_readonly_and_hides_network_fields() {
-    let settings = AppSettings::default();
+    let mut settings = AppSettings::default();
+    let google = settings.profile_by_id_mut("google").unwrap();
+    google.base_url = "https://api.deepseek.com/v1".to_string();
+    google.model = "deepseek-chat".to_string();
+    google.encrypted_api_key = Some("stored-key".to_string());
+    google.timeout_secs = 30;
 
     let vm = SettingsViewModel::from_settings_with_selected(&settings, "google");
 
     assert_eq!(vm.selected_profile.id, "google");
+    assert_eq!(vm.selected_profile.base_url, "");
+    assert_eq!(vm.selected_profile.model, "");
+    assert!(!vm.selected_profile.has_api_key);
+    assert_eq!(vm.selected_profile.timeout_secs, 0);
     assert!(!vm.selected_profile.can_delete);
     assert!(!vm.selected_profile.name_editable);
     assert!(!vm.selected_profile.network_fields_visible);
@@ -87,6 +100,109 @@ fn non_google_profile_detail_is_editable_and_shows_network_fields() {
     assert!(vm.selected_profile.name_editable);
     assert!(vm.selected_profile.network_fields_visible);
     assert!(!vm.selected_profile.google_notice_visible);
+}
+
+#[test]
+fn profile_detail_control_states_hide_google_network_labels_and_inputs() {
+    let settings = AppSettings::default();
+    let google = SettingsViewModel::from_settings_with_selected(&settings, "google");
+    let states = settings_profile_detail_control_states(&google.selected_profile);
+
+    for control in [
+        SettingsProfileDetailControl::NameLabel,
+        SettingsProfileDetailControl::NameInput,
+        SettingsProfileDetailControl::BaseUrlLabel,
+        SettingsProfileDetailControl::BaseUrlInput,
+        SettingsProfileDetailControl::ModelLabel,
+        SettingsProfileDetailControl::ModelInput,
+        SettingsProfileDetailControl::ApiKeyLabel,
+        SettingsProfileDetailControl::ApiKeyInput,
+        SettingsProfileDetailControl::TimeoutLabel,
+        SettingsProfileDetailControl::TimeoutInput,
+    ] {
+        let state = states
+            .iter()
+            .find(|state| state.control == control)
+            .unwrap();
+        assert!(!state.visible, "{control:?} should be hidden for Google");
+    }
+
+    let notice = states
+        .iter()
+        .find(|state| state.control == SettingsProfileDetailControl::GoogleNotice)
+        .unwrap();
+    assert!(notice.visible);
+}
+
+#[test]
+fn profile_detail_control_states_show_non_google_network_labels_and_inputs() {
+    let settings = AppSettings::default();
+    let deepseek = SettingsViewModel::from_settings_with_selected(&settings, "deepseek");
+    let states = settings_profile_detail_control_states(&deepseek.selected_profile);
+
+    for control in [
+        SettingsProfileDetailControl::NameLabel,
+        SettingsProfileDetailControl::NameInput,
+        SettingsProfileDetailControl::BaseUrlLabel,
+        SettingsProfileDetailControl::BaseUrlInput,
+        SettingsProfileDetailControl::ModelLabel,
+        SettingsProfileDetailControl::ModelInput,
+        SettingsProfileDetailControl::ApiKeyLabel,
+        SettingsProfileDetailControl::ApiKeyInput,
+        SettingsProfileDetailControl::TimeoutLabel,
+        SettingsProfileDetailControl::TimeoutInput,
+    ] {
+        let state = states
+            .iter()
+            .find(|state| state.control == control)
+            .unwrap();
+        assert!(state.visible, "{control:?} should be visible for DeepSeek");
+    }
+
+    let notice = states
+        .iter()
+        .find(|state| state.control == SettingsProfileDetailControl::GoogleNotice)
+        .unwrap();
+    assert!(!notice.visible);
+}
+
+#[test]
+fn hidden_profile_detail_controls_have_no_visible_layout_area() {
+    let hidden = settings_profile_detail_hidden_rect();
+
+    assert_eq!(hidden.width, 0);
+    assert_eq!(hidden.height, 0);
+    assert!(hidden.x < 0);
+    assert!(hidden.y < 0);
+    assert_ne!(
+        settings_profile_detail_control_rect(SettingsProfileDetailControl::BaseUrlInput),
+        hidden
+    );
+    assert_ne!(
+        settings_profile_detail_control_rect(SettingsProfileDetailControl::GoogleNotice),
+        hidden
+    );
+}
+
+#[test]
+fn google_notice_uses_top_detail_position() {
+    assert_eq!(
+        settings_profile_detail_control_rect(SettingsProfileDetailControl::GoogleNotice),
+        ait::ui::settings_window::SettingsControlRect {
+            x: 266,
+            y: 100,
+            width: 420,
+            height: 44,
+        }
+    );
+}
+
+#[test]
+fn google_notice_explains_no_network_fields_are_needed() {
+    assert_eq!(
+        settings_profile_google_notice_text(),
+        "Google 使用内置免 Key 翻译，无需填写 Base URL、模型或 API Key。"
+    );
 }
 
 #[test]
@@ -230,6 +346,16 @@ fn settings_window_layout_places_global_settings_above_profiles() {
     assert!(layout.copy_wait.y < layout.separator.y);
     assert!(layout.profile_list.y > layout.separator.y);
     assert!(layout.name.y > layout.separator.y);
+}
+
+#[test]
+fn settings_window_erases_hidden_control_pixels() {
+    assert!(settings_window_uses_background_brush());
+}
+
+#[test]
+fn settings_static_controls_are_not_framed() {
+    assert!(!settings_static_controls_have_border());
 }
 
 #[cfg(windows)]
