@@ -353,7 +353,8 @@ pub fn apply_settings_detail_update(
     settings: &mut AppSettings,
     update: SettingsProfileDetailUpdate,
 ) -> Result<()> {
-    settings.hotkey = update.hotkey;
+    let hotkey = update.hotkey.parse::<crate::hotkey::Hotkey>()?.to_string();
+    settings.hotkey = hotkey;
 
     let profile = settings
         .profile_by_id_mut(&update.id)

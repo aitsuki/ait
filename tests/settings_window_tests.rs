@@ -398,6 +398,53 @@ fn settings_detail_update_clears_network_fields_for_google() {
 }
 
 #[test]
+fn settings_detail_update_normalizes_hotkey_before_saving() {
+    let mut settings = AppSettings::default();
+
+    apply_settings_detail_update(
+        &mut settings,
+        SettingsProfileDetailUpdate {
+            id: "google".to_string(),
+            name: "Google".to_string(),
+            provider: TranslatorProvider::Google,
+            base_url: String::new(),
+            model: String::new(),
+            api_key: SettingsApiKeyUpdate::Preserve,
+            timeout_secs: 0,
+            hotkey: " shift + ctrl + 1 ".to_string(),
+            copy_wait_ms: 300,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(settings.hotkey, "Ctrl+Shift+1");
+}
+
+#[test]
+fn settings_detail_update_rejects_invalid_hotkey() {
+    let mut settings = AppSettings::default();
+
+    let err = apply_settings_detail_update(
+        &mut settings,
+        SettingsProfileDetailUpdate {
+            id: "google".to_string(),
+            name: "Google".to_string(),
+            provider: TranslatorProvider::Google,
+            base_url: String::new(),
+            model: String::new(),
+            api_key: SettingsApiKeyUpdate::Preserve,
+            timeout_secs: 0,
+            hotkey: "not-a-hotkey".to_string(),
+            copy_wait_ms: 300,
+        },
+    )
+    .unwrap_err();
+
+    assert!(err.to_string().contains("快捷键"));
+    assert_eq!(settings.hotkey, "Ctrl+Alt+E");
+}
+
+#[test]
 fn hotkey_capture_text_formats_supported_combinations() {
     let ctrl_alt = ait::hotkey::Modifiers {
         ctrl: true,
