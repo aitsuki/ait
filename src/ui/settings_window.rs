@@ -20,8 +20,6 @@ const ID_TIMEOUT: i32 = 3107;
 #[cfg(windows)]
 const ID_HOTKEY: i32 = 3108;
 #[cfg(windows)]
-const ID_COPY_WAIT: i32 = 3109;
-#[cfg(windows)]
 const ID_GOOGLE_NOTICE: i32 = 3110;
 #[cfg(windows)]
 const ID_BASE_URL_LABEL: i32 = 3111;
@@ -301,7 +299,6 @@ pub fn apply_settings_detail_update(
     update: SettingsProfileDetailUpdate,
 ) -> Result<()> {
     settings.hotkey = update.hotkey;
-    settings.clipboard_capture.copy_wait_ms = update.copy_wait_ms;
 
     let profile = settings
         .profile_by_id_mut(&update.id)
@@ -461,17 +458,6 @@ impl SettingsWindow {
 
             create_static(hwnd, "快捷键", 18, 20, 90, 22)?;
             create_edit(hwnd, &view_model.hotkey, 118, 18, 180, 24, false, ID_HOTKEY)?;
-            create_static(hwnd, "复制等待毫秒", 318, 20, 100, 22)?;
-            create_edit(
-                hwnd,
-                &view_model.copy_wait_ms.to_string(),
-                430,
-                18,
-                90,
-                24,
-                false,
-                ID_COPY_WAIT,
-            )?;
             create_static(hwnd, "", 18, 62, 668, 1)?;
 
             create_static(hwnd, "翻译配置", 18, 74, 120, 22)?;
@@ -595,7 +581,6 @@ pub struct SettingsControlRect {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SettingsWindowLayout {
     pub hotkey: SettingsControlRect,
-    pub copy_wait: SettingsControlRect,
     pub separator: SettingsControlRect,
     pub profile_list: SettingsControlRect,
     pub name: SettingsControlRect,
@@ -607,12 +592,6 @@ pub fn settings_window_layout() -> SettingsWindowLayout {
             x: 118,
             y: 18,
             width: 180,
-            height: 24,
-        },
-        copy_wait: SettingsControlRect {
-            x: 430,
-            y: 18,
-            width: 90,
             height: 24,
         },
         separator: SettingsControlRect {
@@ -791,9 +770,7 @@ unsafe fn save_settings_from_window(hwnd: windows::Win32::Foundation::HWND) -> R
                 .parse::<u64>()
                 .unwrap_or(30),
             hotkey: read_control_text(hwnd, ID_HOTKEY)?,
-            copy_wait_ms: read_control_text(hwnd, ID_COPY_WAIT)?
-                .parse::<u64>()
-                .unwrap_or(settings.clipboard_capture.copy_wait_ms),
+            copy_wait_ms: settings.clipboard_capture.copy_wait_ms,
         },
     )?;
     refresh_profile_list(hwnd, settings)?;
@@ -865,7 +842,6 @@ fn load_profile_into_window(
         },
     )?;
     set_control_text(hwnd, ID_HOTKEY, &vm.hotkey)?;
-    set_control_text(hwnd, ID_COPY_WAIT, &vm.copy_wait_ms.to_string())?;
     apply_profile_detail_ui_state(hwnd, profile);
     Ok(())
 }

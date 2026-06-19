@@ -232,6 +232,7 @@ fn settings_edit_action_rejects_missing_profile_selection() {
 #[test]
 fn settings_detail_update_saves_selected_profile_fields() {
     let mut settings = AppSettings::default();
+    settings.clipboard_capture.copy_wait_ms = 425;
     let id = settings.add_custom_profile().id;
     settings.profile_by_id_mut(&id).unwrap().provider = TranslatorProvider::OpenAi;
 
@@ -259,7 +260,7 @@ fn settings_detail_update_saves_selected_profile_fields() {
     assert_eq!(profile.encrypted_api_key.as_deref(), Some("secret"));
     assert_eq!(profile.timeout_secs, 45);
     assert_eq!(settings.hotkey, "Ctrl+Alt+T");
-    assert_eq!(settings.clipboard_capture.copy_wait_ms, 250);
+    assert_eq!(settings.clipboard_capture.copy_wait_ms, 425);
 }
 
 #[test]
@@ -343,7 +344,6 @@ fn settings_window_layout_places_global_settings_above_profiles() {
     let layout = settings_window_layout();
 
     assert!(layout.hotkey.y < layout.separator.y);
-    assert!(layout.copy_wait.y < layout.separator.y);
     assert!(layout.profile_list.y > layout.separator.y);
     assert!(layout.name.y > layout.separator.y);
 }
