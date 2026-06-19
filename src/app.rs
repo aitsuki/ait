@@ -279,6 +279,7 @@ pub fn hotkey_action(is_translation_window_foreground: bool) -> HotkeyAction {
 pub enum TrayAction {
     ShowTranslationWindow,
     OpenSettings,
+    OpenLogDirectory,
     Exit,
     Unknown,
 }
@@ -288,6 +289,7 @@ pub fn tray_action_from_menu_id(menu_id: usize) -> TrayAction {
     match menu_id {
         crate::ui::tray::MENU_SHOW_TRANSLATION_WINDOW => TrayAction::ShowTranslationWindow,
         crate::ui::tray::MENU_SETTINGS => TrayAction::OpenSettings,
+        crate::ui::tray::MENU_OPEN_LOG_DIRECTORY => TrayAction::OpenLogDirectory,
         crate::ui::tray::MENU_EXIT => TrayAction::Exit,
         _ => TrayAction::Unknown,
     }
@@ -374,6 +376,22 @@ fn run_platform() -> Result<()> {
                             runtime_state.settings(),
                             translation_window.hwnd(),
                         );
+                    }
+                    TrayAction::OpenLogDirectory => {
+                        match crate::logging::log_dir().and_then(|dir| {
+                            std::fs::create_dir_all(&dir)?;
+                            open_directory(&dir)
+                        }) {
+                            Ok(()) => {}
+                            Err(err) => {
+                                tracing::warn!(error = %err, "open log directory failed");
+                                show_runtime_message(
+                                    translation_window.hwnd(),
+                                    "打开失败",
+                                    "无法打开日志目录，请稍后重试。",
+                                );
+                            }
+                        }
                     }
                     TrayAction::Exit => {
                         if handle_app_command(
@@ -679,6 +697,32 @@ fn show_runtime_message(owner_hwnd: windows::Win32::Foundation::HWND, caption: &
             windows::Win32::UI::WindowsAndMessaging::MB_OK,
         );
     }
+}
+
+#[cfg(windows)]
+fn open_directory(path: &std::path::Path) -> Result<()> {
+    use windows::Win32::UI::Shell::ShellExecuteW;
+    use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+    use windows::core::PCWSTR;
+
+    let operation = wide("open");
+    let file = wide(&path.to_string_lossy());
+    let result = unsafe {
+        ShellExecuteW(
+            None,
+            PCWSTR(operation.as_ptr()),
+            PCWSTR(file.as_ptr()),
+            PCWSTR::null(),
+            PCWSTR::null(),
+            SW_SHOWNORMAL,
+        )
+    };
+    if result.0 as isize <= 32 {
+        return Err(crate::error::AppError::Windows(
+            "打开日志目录失败".to_string(),
+        ));
+    }
+    Ok(())
 }
 
 #[cfg(windows)]

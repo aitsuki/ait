@@ -549,7 +549,15 @@ fn tray_show_window_menu_id_maps_to_show_window_action() {
 }
 
 #[test]
-fn removed_logs_menu_id_is_not_actionable() {
+fn tray_open_logs_menu_id_maps_to_open_log_directory_action() {
+    assert_eq!(
+        ait::app::tray_action_from_menu_id(ait::ui::tray::MENU_OPEN_LOG_DIRECTORY),
+        ait::app::TrayAction::OpenLogDirectory
+    );
+}
+
+#[test]
+fn legacy_logs_menu_id_is_not_reused() {
     assert_eq!(
         ait::app::tray_action_from_menu_id(1003),
         ait::app::TrayAction::Unknown
