@@ -1,10 +1,14 @@
 use crate::error::{AppError, Result};
 use std::path::PathBuf;
 
-pub fn init_logging() -> Result<PathBuf> {
+pub fn log_dir() -> Result<PathBuf> {
     let project_dirs = directories::ProjectDirs::from("dev", "aitsu", "ait")
         .ok_or_else(|| AppError::Config("无法定位日志目录".to_string()))?;
-    let log_dir = project_dirs.data_local_dir().join("logs");
+    Ok(project_dirs.data_local_dir().join("logs"))
+}
+
+pub fn init_logging() -> Result<PathBuf> {
+    let log_dir = log_dir()?;
     std::fs::create_dir_all(&log_dir)?;
 
     let file_appender = tracing_appender::rolling::daily(&log_dir, "ait.log");
