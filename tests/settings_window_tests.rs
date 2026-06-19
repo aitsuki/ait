@@ -611,8 +611,8 @@ fn settings_window_layout_places_auto_start_with_global_settings() {
 }
 
 #[test]
-fn app_version_text_uses_v0_1_2() {
-    assert_eq!(app_version_text(), "ait v0.1.2");
+fn app_version_text_uses_v0_1_3() {
+    assert_eq!(app_version_text(), "ait v0.1.3");
 }
 
 #[test]

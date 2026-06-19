@@ -13,7 +13,7 @@ https://github.com/aitsuki/ait/releases/latest
 推荐下载这个：
 
 ```text
-ait-v0.1.2-setup.exe
+ait-v0.1.3-setup.exe
 ```
 
 这是安装器，双击后按提示安装即可。
@@ -21,7 +21,7 @@ ait-v0.1.2-setup.exe
 如果你不想安装，也可以下载这个：
 
 ```text
-ait-v0.1.2-windows.exe
+ait-v0.1.3-windows.exe
 ```
 
 它是单文件版本，下载后直接双击运行。不需要解压。
@@ -61,6 +61,12 @@ API key 会使用 Windows DPAPI 保存在本机，不会明文写进配置文件
 
 如果你希望更稳定，可以在设置里配置自己的 OpenAI-compatible API。
 
+### 遇到问题时怎么反馈？
+
+可以先在托盘菜单点击 `打开日志目录`，找到最近的日志文件。
+
+也可以打开 `设置`，点击 `复制诊断信息`，把复制出来的内容和日志一起反馈。诊断信息不会包含 API Key、原文或译文。
+
 ### 支持 macOS 或 Linux 吗？
 
 目前只支持 Windows。
@@ -92,11 +98,11 @@ cargo test
 1. 打开 GitHub 仓库的 Actions 页面。
 2. 选择 `Release` workflow。
 3. 点击 `Run workflow`。
-4. 输入版本号，例如 `v0.1.2`。
+4. 输入版本号，例如 `v0.1.3`。
 
 也可以推送 tag 发布：
 
 ```powershell
-git tag v0.1.2
-git push origin v0.1.2
+git tag v0.1.3
+git push origin v0.1.3
 ```
