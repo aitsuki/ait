@@ -1,5 +1,6 @@
 use crate::config::{AppSettings, TranslatorProvider};
 use crate::error::{AppError, Result};
+use crate::update::latest_release_url;
 #[cfg(windows)]
 use std::sync::{Mutex, OnceLock};
 
@@ -41,6 +42,8 @@ const ID_AUTO_START: i32 = 3117;
 #[cfg(windows)]
 const ID_VERSION_LABEL: i32 = 3118;
 #[cfg(windows)]
+const ID_CHECK_UPDATE: isize = 3119;
+#[cfg(windows)]
 const EM_SET_PASSWORD_CHAR: u32 = 0x00CC;
 #[cfg(windows)]
 const EM_SETREADONLY: u32 = 0x00CF;
@@ -66,6 +69,8 @@ pub struct SettingsViewModel {
     pub copy_wait_ms: u64,
     pub auto_start_enabled: bool,
     pub version_text: String,
+    pub update_check_available: bool,
+    pub latest_release_url: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -453,7 +458,26 @@ impl SettingsViewModel {
             copy_wait_ms: settings.clipboard_capture.copy_wait_ms,
             auto_start_enabled,
             version_text: app_version_text(),
+            update_check_available: true,
+            latest_release_url: latest_release_url().to_string(),
         }
+    }
+
+    pub fn from_settings_with_update_state(
+        settings: &AppSettings,
+        selected_profile_id: &str,
+        auto_start_enabled: bool,
+        update_check_available: bool,
+        latest_release_url: String,
+    ) -> Self {
+        let mut view_model = Self::from_settings_with_selected_and_auto_start(
+            settings,
+            selected_profile_id,
+            auto_start_enabled,
+        );
+        view_model.update_check_available = update_check_available;
+        view_model.latest_release_url = latest_release_url;
+        view_model
     }
 
     pub fn from_settings_with_selected(settings: &AppSettings, selected_profile_id: &str) -> Self {
@@ -700,6 +724,15 @@ impl SettingsWindow {
             )?;
             create_button(
                 hwnd,
+                "检查更新",
+                layout.update_action.x,
+                layout.update_action.y,
+                layout.update_action.width,
+                layout.update_action.height,
+                ID_CHECK_UPDATE,
+            )?;
+            create_button(
+                hwnd,
                 "保存",
                 534,
                 382,
@@ -757,6 +790,7 @@ pub struct SettingsWindowLayout {
     pub profile_list: SettingsControlRect,
     pub name: SettingsControlRect,
     pub version: SettingsControlRect,
+    pub update_action: SettingsControlRect,
 }
 
 pub fn settings_window_layout() -> SettingsWindowLayout {
@@ -796,6 +830,12 @@ pub fn settings_window_layout() -> SettingsWindowLayout {
             y: 386,
             width: 160,
             height: 22,
+        },
+        update_action: SettingsControlRect {
+            x: 180,
+            y: 382,
+            width: 88,
+            height: 28,
         },
     }
 }
@@ -944,6 +984,14 @@ unsafe extern "system" fn default_wnd_proc(
                     show_message(hwnd, "读取失败", &err.user_summary());
                 }
             }
+            return LRESULT(0);
+        }
+        if command == ID_CHECK_UPDATE as usize {
+            crate::app::spawn_update_check_task(
+                hwnd,
+                env!("CARGO_PKG_VERSION").to_string(),
+                crate::app::UpdateCheckDisplayMode::ShowAll,
+            );
             return LRESULT(0);
         }
         if command == ID_SAVE as usize {

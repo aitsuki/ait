@@ -11,6 +11,8 @@ pub const MENU_SETTINGS: usize = 1002;
 #[cfg(windows)]
 pub const MENU_OPEN_LOG_DIRECTORY: usize = 1005;
 #[cfg(windows)]
+pub const MENU_OPEN_LATEST_RELEASE: usize = 1006;
+#[cfg(windows)]
 pub const MENU_EXIT: usize = 1004;
 
 #[cfg(windows)]
@@ -135,6 +137,12 @@ unsafe extern "system" fn tray_wnd_proc(
                 MF_STRING,
                 MENU_OPEN_LOG_DIRECTORY,
                 PCWSTR(wide("打开日志目录").as_ptr()),
+            );
+            let _ = AppendMenuW(
+                menu,
+                MF_STRING,
+                MENU_OPEN_LATEST_RELEASE,
+                PCWSTR(wide("打开最新版本页面").as_ptr()),
             );
             let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
             let _ = AppendMenuW(menu, MF_STRING, MENU_EXIT, PCWSTR(wide("退出").as_ptr()));

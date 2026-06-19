@@ -9,3 +9,4 @@ pub mod secret;
 pub mod startup;
 pub mod translator;
 pub mod ui;
+pub mod update;

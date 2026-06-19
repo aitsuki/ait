@@ -572,6 +572,15 @@ fn legacy_logs_menu_id_is_not_reused() {
 }
 
 #[test]
+fn release_workflow_mentions_checksums_and_source_transparency() {
+    let workflow = std::fs::read_to_string(".github/workflows/release.yml").unwrap();
+    assert!(workflow.contains("Write release notes"));
+    assert!(workflow.contains("SHA256"));
+    assert!(workflow.contains("GitHub Releases"));
+    assert!(workflow.contains("Release artifacts are not code-signed."));
+}
+
+#[test]
 fn edit_shortcut_action_handles_ctrl_a_and_escape() {
     assert_eq!(
         edit_shortcut_action(0x41, true),

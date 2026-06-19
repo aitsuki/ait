@@ -6,25 +6,29 @@ ait 是一个 Windows 划词翻译小工具。
 
 ## 下载
 
-打开 GitHub Releases 页面，下载最新版：
+从 GitHub Releases 页面下载最新版：
 
 https://github.com/aitsuki/ait/releases/latest
 
-推荐下载这个：
+推荐安装器：
 
 ```text
 ait-v0.1.3-setup.exe
 ```
 
-这是安装器，双击后按提示安装即可。
+这是推荐的安装包，双击后按提示安装即可。
 
-如果你不想安装，也可以下载这个：
+便携版：
 
 ```text
 ait-v0.1.3-windows.exe
 ```
 
-它是单文件版本，下载后直接双击运行。不需要解压。
+它是单文件版本，下载后直接双击运行，不需要解压。
+
+- 当前还没有代码签名。
+- 只从 GitHub Releases 官方页面下载。
+- 以附件名和 SHA256 校验值确认下载内容。
 
 ## 怎么用
 

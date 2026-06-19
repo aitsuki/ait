@@ -9,6 +9,7 @@ use ait::ui::settings_window::{
     settings_save_outcome_after_success, settings_static_controls_have_border,
     settings_window_center_position, settings_window_layout, settings_window_uses_background_brush,
 };
+use ait::update::latest_release_url;
 
 #[test]
 fn settings_view_model_hides_api_key_value() {
@@ -102,6 +103,21 @@ fn settings_view_model_includes_version_text() {
 
     assert_eq!(vm.version_text, app_version_text());
     assert!(vm.version_text.starts_with("ait v"));
+}
+
+#[test]
+fn settings_view_model_includes_update_state_defaults() {
+    let settings = AppSettings::default();
+    let vm = SettingsViewModel::from_settings_with_update_state(
+        &settings,
+        "google",
+        true,
+        false,
+        latest_release_url().to_string(),
+    );
+
+    assert!(!vm.update_check_available);
+    assert_eq!(vm.latest_release_url, latest_release_url());
 }
 
 #[test]
@@ -608,6 +624,7 @@ fn settings_window_layout_places_auto_start_with_global_settings() {
     assert!(layout.auto_start.y > layout.hotkey.y);
     assert!(layout.auto_start.y < layout.separator.y);
     assert!(layout.version.y > layout.profile_list.y);
+    assert!(layout.update_action.y >= layout.version.y);
 }
 
 #[test]

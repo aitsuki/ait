@@ -1,6 +1,7 @@
 use crate::capture::CapturedText;
 use crate::error::{AppError, Result};
 use crate::translator::{ProviderKind, TranslationRequest, TranslationResponse};
+use crate::update::{check_for_updates, latest_release_url, update_status_message, UpdateStatus};
 
 pub trait WorkflowCapture {
     fn capture(&self) -> Result<CapturedText>;
@@ -280,6 +281,7 @@ pub enum TrayAction {
     ShowTranslationWindow,
     OpenSettings,
     OpenLogDirectory,
+    OpenLatestRelease,
     Exit,
     Unknown,
 }
@@ -290,6 +292,7 @@ pub fn tray_action_from_menu_id(menu_id: usize) -> TrayAction {
         crate::ui::tray::MENU_SHOW_TRANSLATION_WINDOW => TrayAction::ShowTranslationWindow,
         crate::ui::tray::MENU_SETTINGS => TrayAction::OpenSettings,
         crate::ui::tray::MENU_OPEN_LOG_DIRECTORY => TrayAction::OpenLogDirectory,
+        crate::ui::tray::MENU_OPEN_LATEST_RELEASE => TrayAction::OpenLatestRelease,
         crate::ui::tray::MENU_EXIT => TrayAction::Exit,
         _ => TrayAction::Unknown,
     }
@@ -302,6 +305,16 @@ const WM_TRANSLATION_TASK_FINISHED: u32 = windows::Win32::UI::WindowsAndMessagin
 const WM_TRANSLATION_SOURCE_CAPTURED: u32 = windows::Win32::UI::WindowsAndMessaging::WM_APP + 61;
 
 #[cfg(windows)]
+pub const WM_UPDATE_CHECK_FINISHED: u32 = windows::Win32::UI::WindowsAndMessaging::WM_APP + 62;
+
+#[cfg(windows)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UpdateCheckDisplayMode {
+    SilentWhenUpToDate,
+    ShowAll,
+}
+
+#[cfg(windows)]
 struct TranslationTaskMessage {
     result: Result<TranslationWorkflowResult>,
 }
@@ -309,6 +322,13 @@ struct TranslationTaskMessage {
 #[cfg(windows)]
 struct TranslationSourceMessage {
     source_text: String,
+}
+
+#[cfg(windows)]
+struct UpdateCheckMessage {
+    result: Result<UpdateStatus>,
+    current_version: String,
+    display_mode: UpdateCheckDisplayMode,
 }
 
 pub fn run() -> Result<()> {
@@ -344,6 +364,11 @@ fn run_platform() -> Result<()> {
     let mut translation_window = TranslationWindow::new()?;
     translation_window
         .refresh_profiles(runtime_state.settings(), runtime_state.active_profile_id())?;
+    spawn_update_check_task(
+        translation_window.hwnd(),
+        env!("CARGO_PKG_VERSION").to_string(),
+        UpdateCheckDisplayMode::SilentWhenUpToDate,
+    );
 
     tracing::info!("registered hotkey {}", hotkey);
 
@@ -393,6 +418,13 @@ fn run_platform() -> Result<()> {
                             }
                         }
                     }
+                    TrayAction::OpenLatestRelease => {
+                        let _ = handle_app_command(
+                            crate::command::AppCommand::OpenLatestRelease,
+                            runtime_state.settings(),
+                            translation_window.hwnd(),
+                        );
+                    }
                     TrayAction::Exit => {
                         if handle_app_command(
                             crate::command::AppCommand::Exit,
@@ -417,6 +449,53 @@ fn run_platform() -> Result<()> {
                     }
                     Err(err) => {
                         let _ = translation_window.show_error(err.to_string());
+                    }
+                }
+            } else if msg.message == WM_UPDATE_CHECK_FINISHED {
+                let ptr = msg.lParam.0 as *mut UpdateCheckMessage;
+                if !ptr.is_null() {
+                    let message = Box::from_raw(ptr);
+                    match message.result {
+                        Ok(UpdateStatus::UpToDate) => {
+                            if matches!(message.display_mode, UpdateCheckDisplayMode::ShowAll) {
+                                show_runtime_message(
+                                    translation_window.hwnd(),
+                                    "检查更新",
+                                    &update_status_message(
+                                        &message.current_version,
+                                        &UpdateStatus::UpToDate,
+                                    ),
+                                );
+                            } else {
+                                tracing::info!("update check: already latest");
+                            }
+                        }
+                        Ok(UpdateStatus::UpdateAvailable {
+                            current_version,
+                            latest_version,
+                            release_url,
+                        }) => {
+                            let status = UpdateStatus::UpdateAvailable {
+                                current_version,
+                                latest_version,
+                                release_url,
+                            };
+                            show_runtime_message(
+                                translation_window.hwnd(),
+                                "发现新版本",
+                                &update_status_message(&message.current_version, &status),
+                            );
+                        }
+                        Err(err) => {
+                            tracing::warn!(error = %err, "update check failed");
+                            if matches!(message.display_mode, UpdateCheckDisplayMode::ShowAll) {
+                                show_runtime_message(
+                                    translation_window.hwnd(),
+                                    "检查更新失败",
+                                    "暂时无法检查更新，请稍后重试。",
+                                );
+                            }
+                        }
                     }
                 }
             } else if msg.message == crate::ui::settings_window::WM_SETTINGS_SAVED {
@@ -680,9 +759,44 @@ fn handle_app_command(
             crate::ui::settings_window::SettingsWindow::open(settings, owner_hwnd)?;
             Ok(false)
         }
+        crate::command::AppCommand::OpenLatestRelease => {
+            open_url(owner_hwnd, latest_release_url())?;
+            Ok(false)
+        }
         crate::command::AppCommand::Exit => Ok(true),
         _ => Ok(false),
     }
+}
+
+#[cfg(windows)]
+pub fn spawn_update_check_task(
+    notify_hwnd: windows::Win32::Foundation::HWND,
+    current_version: String,
+    display_mode: UpdateCheckDisplayMode,
+) {
+    let notify_hwnd = notify_hwnd.0 as isize;
+    std::thread::spawn(move || {
+        let result = tokio::runtime::Runtime::new()
+            .map_err(|err| AppError::Translate(format!("启动更新检查运行时失败: {err}")))
+            .and_then(|runtime| runtime.block_on(check_for_updates(&current_version)));
+        let message = Box::into_raw(Box::new(UpdateCheckMessage {
+            result,
+            current_version,
+            display_mode,
+        }));
+        let notify_hwnd = windows::Win32::Foundation::HWND(notify_hwnd as *mut core::ffi::c_void);
+        unsafe {
+            let posted = windows::Win32::UI::WindowsAndMessaging::PostMessageW(
+                Some(notify_hwnd),
+                WM_UPDATE_CHECK_FINISHED,
+                windows::Win32::Foundation::WPARAM(0),
+                windows::Win32::Foundation::LPARAM(message as isize),
+            );
+            if posted.is_err() {
+                drop(Box::from_raw(message));
+            }
+        }
+    });
 }
 
 #[cfg(windows)]
@@ -721,6 +835,30 @@ fn open_directory(path: &std::path::Path) -> Result<()> {
         return Err(crate::error::AppError::Windows(
             "打开日志目录失败".to_string(),
         ));
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn open_url(owner_hwnd: windows::Win32::Foundation::HWND, url: &str) -> Result<()> {
+    use windows::Win32::UI::Shell::ShellExecuteW;
+    use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+    use windows::core::PCWSTR;
+
+    let operation = wide("open");
+    let file = wide(url);
+    let result = unsafe {
+        ShellExecuteW(
+            Some(owner_hwnd),
+            PCWSTR(operation.as_ptr()),
+            PCWSTR(file.as_ptr()),
+            PCWSTR::null(),
+            PCWSTR::null(),
+            SW_SHOWNORMAL,
+        )
+    };
+    if result.0 as isize <= 32 {
+        return Err(AppError::Windows("打开链接失败".to_string()));
     }
     Ok(())
 }
