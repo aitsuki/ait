@@ -53,8 +53,6 @@ const ID_SAVE: isize = 3004;
 #[cfg(windows)]
 const ID_CANCEL: isize = 3005;
 #[cfg(windows)]
-const ID_COPY_DIAGNOSTICS: isize = 3006;
-#[cfg(windows)]
 pub const WM_SETTINGS_SAVED: u32 = windows::Win32::UI::WindowsAndMessaging::WM_APP + 40;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -676,14 +674,13 @@ impl SettingsWindow {
             )?;
             create_button(
                 hwnd,
-                "复制诊断信息",
-                layout.diagnostics.x,
-                layout.diagnostics.y,
-                layout.diagnostics.width,
-                layout.diagnostics.height,
-                ID_COPY_DIAGNOSTICS,
+                "保存",
+                534,
+                382,
+                72,
+                28,
+                ID_SAVE,
             )?;
-            create_button(hwnd, "保存", 534, 382, 72, 28, ID_SAVE)?;
             create_button(hwnd, "取消", 614, 382, 72, 28, ID_CANCEL)?;
             let _ = ShowWindow(hwnd, SW_SHOW);
         }
@@ -729,7 +726,6 @@ pub struct SettingsWindowLayout {
     pub profile_list: SettingsControlRect,
     pub name: SettingsControlRect,
     pub version: SettingsControlRect,
-    pub diagnostics: SettingsControlRect,
 }
 
 pub fn settings_window_layout() -> SettingsWindowLayout {
@@ -769,12 +765,6 @@ pub fn settings_window_layout() -> SettingsWindowLayout {
             y: 386,
             width: 160,
             height: 22,
-        },
-        diagnostics: SettingsControlRect {
-            x: 398,
-            y: 382,
-            width: 120,
-            height: 28,
         },
     }
 }
@@ -866,22 +856,6 @@ unsafe extern "system" fn default_wnd_proc(
             }
             return LRESULT(0);
         }
-        if command == ID_COPY_DIAGNOSTICS as usize {
-            match unsafe { copy_diagnostics_from_window(hwnd) } {
-                Ok(()) => unsafe { show_message(hwnd, "已复制", "诊断信息已复制。") },
-                Err(err) => {
-                    tracing::warn!(error = %err, "copy diagnostics failed");
-                    unsafe {
-                        show_message(
-                            hwnd,
-                            "复制失败",
-                            "复制诊断信息失败，请打开日志目录后反馈日志文件。",
-                        )
-                    };
-                }
-            }
-            return LRESULT(0);
-        }
         if command == ID_SAVE as usize {
             match unsafe { save_settings_from_window(hwnd) } {
                 Ok(_) => unsafe {
@@ -921,19 +895,6 @@ unsafe extern "system" fn default_wnd_proc(
     }
 
     unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
-}
-
-#[cfg(windows)]
-unsafe fn copy_diagnostics_from_window(hwnd: windows::Win32::Foundation::HWND) -> Result<()> {
-    use windows::Win32::UI::WindowsAndMessaging::{GWLP_USERDATA, GetWindowLongPtrW};
-
-    let ptr = unsafe { GetWindowLongPtrW(hwnd, GWLP_USERDATA) };
-    if ptr == 0 {
-        return Err(AppError::Config("设置窗口状态缺失".to_string()));
-    }
-    let settings = unsafe { &*(ptr as *const AppSettings) };
-    let text = crate::diagnostics::DiagnosticInfo::collect(settings).to_clipboard_text();
-    crate::capture::ClipboardBackend::write_text(&crate::capture::WindowsClipboardBackend, &text)
 }
 
 #[cfg(windows)]

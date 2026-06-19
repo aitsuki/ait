@@ -623,15 +623,6 @@ fn settings_window_layout_keeps_version_label_in_visible_client_area() {
 }
 
 #[test]
-fn settings_window_layout_places_diagnostics_button_near_save_actions() {
-    let layout = settings_window_layout();
-
-    assert!(layout.diagnostics.x > layout.version.x);
-    assert_eq!(layout.diagnostics.y, 382);
-    assert!(layout.diagnostics.width >= 110);
-}
-
-#[test]
 fn settings_window_erases_hidden_control_pixels() {
     assert!(settings_window_uses_background_brush());
 }

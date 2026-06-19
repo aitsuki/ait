@@ -2,7 +2,6 @@ pub mod app;
 pub mod capture;
 pub mod command;
 pub mod config;
-pub mod diagnostics;
 pub mod error;
 pub mod hotkey;
 pub mod logging;
