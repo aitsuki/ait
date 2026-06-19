@@ -214,6 +214,27 @@ pub fn translation_task_action(
     }
 }
 
+pub fn run_translation_request_with_observer<C, T, O>(
+    workflow: &TranslationWorkflow<C, T>,
+    request: TranslationRequestKind,
+    target_lang: &str,
+    observer: &mut O,
+) -> Result<TranslationWorkflowResult>
+where
+    C: WorkflowCapture,
+    T: WorkflowTranslator,
+    O: TranslationObserver,
+{
+    match request {
+        TranslationRequestKind::Selection => {
+            workflow.translate_selection_with_observer(target_lang, observer)
+        }
+        TranslationRequestKind::WindowText { source_text } => {
+            workflow.translate_text_with_observer(&source_text, target_lang, observer)
+        }
+    }
+}
+
 pub fn hotkey_action(is_translation_window_foreground: bool) -> HotkeyAction {
     if is_translation_window_foreground {
         HotkeyAction::Ignore
@@ -244,8 +265,16 @@ pub fn tray_action_from_menu_id(menu_id: usize) -> TrayAction {
 const WM_TRANSLATION_TASK_FINISHED: u32 = windows::Win32::UI::WindowsAndMessaging::WM_APP + 60;
 
 #[cfg(windows)]
+const WM_TRANSLATION_SOURCE_CAPTURED: u32 = windows::Win32::UI::WindowsAndMessaging::WM_APP + 61;
+
+#[cfg(windows)]
 struct TranslationTaskMessage {
     result: Result<TranslationWorkflowResult>,
+}
+
+#[cfg(windows)]
+struct TranslationSourceMessage {
+    source_text: String,
 }
 
 pub fn run() -> Result<()> {
@@ -326,7 +355,8 @@ fn run_platform() -> Result<()> {
             } else if msg.message == crate::ui::translate_window::WM_TRANSLATE_WINDOW_SOURCE {
                 match translation_window.source_text() {
                     Ok(source_text) => {
-                        let _ = translation_window.begin_window_text_translation(source_text.clone());
+                        let _ =
+                            translation_window.begin_window_text_translation(source_text.clone());
                         spawn_translation_task(
                             runtime_state.clone(),
                             TranslationRequestKind::WindowText { source_text },
@@ -396,6 +426,12 @@ fn run_platform() -> Result<()> {
                         }
                     }
                 }
+            } else if msg.message == WM_TRANSLATION_SOURCE_CAPTURED {
+                let ptr = msg.lParam.0 as *mut TranslationSourceMessage;
+                if !ptr.is_null() {
+                    let message = Box::from_raw(ptr);
+                    let _ = translation_window.show_loading(message.source_text);
+                }
             } else if msg.message == WM_TRANSLATION_TASK_FINISHED {
                 let ptr = msg.lParam.0 as *mut TranslationTaskMessage;
                 if !ptr.is_null() {
@@ -445,7 +481,7 @@ fn spawn_translation_task(
 ) {
     let notify_hwnd = notify_hwnd.0 as isize;
     std::thread::spawn(move || {
-        let result = run_translation_task(&state, request);
+        let result = run_translation_task(&state, request, notify_hwnd);
         let message = Box::into_raw(Box::new(TranslationTaskMessage { result }));
         let notify_hwnd = windows::Win32::Foundation::HWND(notify_hwnd as *mut core::ffi::c_void);
         unsafe {
@@ -466,15 +502,55 @@ fn spawn_translation_task(
 fn run_translation_task(
     state: &AppRuntimeState,
     request: TranslationRequestKind,
+    notify_hwnd: isize,
 ) -> Result<TranslationWorkflowResult> {
     let workflow = build_workflow(state)?;
     match request {
         TranslationRequestKind::Selection => {
-            workflow.translate_selection(&state.settings().target_language)
+            let mut observer = TranslationProgressObserver { notify_hwnd };
+            run_translation_request_with_observer(
+                &workflow,
+                TranslationRequestKind::Selection,
+                &state.settings().target_language,
+                &mut observer,
+            )
         }
         TranslationRequestKind::WindowText { source_text } => {
-            workflow.translate_text(&source_text, &state.settings().target_language)
+            run_translation_request_with_observer(
+                &workflow,
+                TranslationRequestKind::WindowText { source_text },
+                &state.settings().target_language,
+                &mut (),
+            )
         }
+    }
+}
+
+#[cfg(windows)]
+struct TranslationProgressObserver {
+    notify_hwnd: isize,
+}
+
+#[cfg(windows)]
+impl TranslationObserver for TranslationProgressObserver {
+    fn source_captured(&mut self, source_text: &str) -> Result<()> {
+        let message = Box::into_raw(Box::new(TranslationSourceMessage {
+            source_text: source_text.to_string(),
+        }));
+        let notify_hwnd =
+            windows::Win32::Foundation::HWND(self.notify_hwnd as *mut core::ffi::c_void);
+        unsafe {
+            let posted = windows::Win32::UI::WindowsAndMessaging::PostMessageW(
+                Some(notify_hwnd),
+                WM_TRANSLATION_SOURCE_CAPTURED,
+                windows::Win32::Foundation::WPARAM(0),
+                windows::Win32::Foundation::LPARAM(message as isize),
+            );
+            if posted.is_err() {
+                drop(Box::from_raw(message));
+            }
+        }
+        Ok(())
     }
 }
 

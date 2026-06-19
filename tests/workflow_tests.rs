@@ -1,7 +1,7 @@
 use ait::app::{
     HotkeyAction, TranslationObserver, TranslationRequestKind, TranslationWorkflow,
     TranslationWorkflowResult, WorkflowCapture, WorkflowTranslator, hotkey_action,
-    translation_task_action,
+    run_translation_request_with_observer, translation_task_action,
 };
 use ait::capture::CapturedText;
 use ait::config::AppSettings;
@@ -12,8 +12,8 @@ use ait::ui::translate_window::{
     edit_display_text, edit_shortcut_action, is_third_click_after_double_click,
     paragraph_selection_range_utf16, profile_selection_action, show_action,
     show_window_needs_topmost_raise, show_window_needs_topmost_reset, show_window_z_order,
-    translation_profile_combo_dropdown_height,
-    translation_window_layout, translation_window_min_client_size, window_z_order,
+    translation_profile_combo_dropdown_height, translation_window_layout,
+    translation_window_min_client_size, window_z_order,
 };
 use std::cell::RefCell;
 
@@ -196,6 +196,30 @@ fn translate_selection_captures_before_notifying_started() {
 }
 
 #[test]
+fn selection_translation_task_reports_source_before_translating() {
+    let events = RefCell::new(Vec::new());
+    let workflow = TranslationWorkflow::new(
+        RecordingCapture { events: &events },
+        RecordingTranslator { events: &events },
+    );
+    let mut observer = RecordingObserver { events: &events };
+
+    let result = run_translation_request_with_observer(
+        &workflow,
+        TranslationRequestKind::Selection,
+        "zh-CN",
+        &mut observer,
+    )
+    .unwrap();
+
+    assert_eq!(result.translated_text, "你好");
+    assert_eq!(
+        events.into_inner(),
+        vec!["capture", "started", "source", "translate", "result"]
+    );
+}
+
+#[test]
 fn translation_starting_window_does_not_take_focus() {
     assert!(!ShowMode::Starting.activates_window());
     assert!(ShowMode::Loading.activates_window());
@@ -209,7 +233,10 @@ fn translation_starting_window_is_temporarily_shown_above_foreground_app() {
         show_window_z_order(ShowMode::Starting),
         WindowZOrder::TopmostNoActivate
     );
-    assert_eq!(show_window_z_order(ShowMode::Result), WindowZOrder::NotTopmost);
+    assert_eq!(
+        show_window_z_order(ShowMode::Result),
+        WindowZOrder::NotTopmost
+    );
 }
 
 #[test]
