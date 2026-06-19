@@ -1,5 +1,7 @@
 use crate::config::{AppSettings, TranslatorProvider};
 use crate::error::{AppError, Result};
+#[cfg(windows)]
+use std::sync::{Mutex, OnceLock};
 
 const SETTINGS_WINDOW_WIDTH: i32 = 720;
 const SETTINGS_WINDOW_HEIGHT: i32 = 460;
@@ -488,11 +490,26 @@ impl SettingsWindow {
             MonitorFromPoint,
         };
         use windows::Win32::UI::WindowsAndMessaging::{
-            CreateWindowExW, GWLP_USERDATA, GetCursorPos, IDC_ARROW, LoadCursorW, RegisterClassW,
-            SW_SHOW, SetWindowLongPtrW, ShowWindow, WINDOW_EX_STYLE, WNDCLASSW, WS_CAPTION,
-            WS_OVERLAPPED, WS_SYSMENU,
+            CreateWindowExW, GWLP_USERDATA, GetCursorPos, IDC_ARROW, IsWindow, LoadCursorW,
+            RegisterClassW, SW_RESTORE, SW_SHOW, SetForegroundWindow, SetWindowLongPtrW,
+            ShowWindow, WINDOW_EX_STYLE, WNDCLASSW, WS_CAPTION, WS_OVERLAPPED, WS_SYSMENU,
         };
         use windows::core::PCWSTR;
+
+        if let Some(existing_hwnd) = {
+            let registry = settings_window_registry().lock().unwrap();
+            registry.existing_if_alive()
+        } {
+            let hwnd = windows::Win32::Foundation::HWND(existing_hwnd as *mut core::ffi::c_void);
+            if unsafe { IsWindow(Some(hwnd)).as_bool() } {
+                unsafe {
+                    let _ = ShowWindow(hwnd, SW_RESTORE);
+                    let _ = ShowWindow(hwnd, SW_SHOW);
+                    let _ = SetForegroundWindow(hwnd);
+                }
+                return Ok(());
+            }
+        }
 
         let auto_start_enabled = crate::startup::is_auto_start_enabled().unwrap_or_else(|err| {
             tracing::warn!(error = %err, "read startup setting failed");
@@ -547,6 +564,15 @@ impl SettingsWindow {
                 None,
             )
             .map_err(|err| AppError::Windows(format!("创建设置窗口失败: {err}")))?;
+            struct SettingsWindowInitGuard(windows::Win32::Foundation::HWND);
+            impl Drop for SettingsWindowInitGuard {
+                fn drop(&mut self) {
+                    unsafe {
+                        let _ = windows::Win32::UI::WindowsAndMessaging::DestroyWindow(self.0);
+                    }
+                }
+            }
+            let init_guard = SettingsWindowInitGuard(hwnd);
             let settings_ptr = Box::into_raw(Box::new(settings.clone()));
             let _ = SetWindowLongPtrW(hwnd, GWLP_USERDATA, settings_ptr as isize);
 
@@ -682,6 +708,11 @@ impl SettingsWindow {
                 ID_SAVE,
             )?;
             create_button(hwnd, "取消", 614, 382, 72, 28, ID_CANCEL)?;
+            {
+                let mut registry = settings_window_registry().lock().unwrap();
+                registry.set(hwnd.0 as isize);
+            }
+            std::mem::forget(init_guard);
             let _ = ShowWindow(hwnd, SW_SHOW);
         }
 
@@ -775,6 +806,65 @@ pub fn settings_window_uses_background_brush() -> bool {
 
 pub fn settings_static_controls_have_border() -> bool {
     false
+}
+
+#[cfg(windows)]
+#[derive(Default)]
+struct SettingsWindowRegistry {
+    hwnd: Option<isize>,
+}
+
+#[cfg(windows)]
+impl SettingsWindowRegistry {
+    fn existing_if_alive(&self) -> Option<isize> {
+        let hwnd = self.hwnd?;
+        if is_window_alive(hwnd) {
+            Some(hwnd)
+        } else {
+            None
+        }
+    }
+
+    fn set(&mut self, hwnd: isize) {
+        self.hwnd = Some(hwnd);
+    }
+
+    fn clear_if_current(&mut self, hwnd: isize) {
+        if self.hwnd == Some(hwnd) {
+            self.hwnd = None;
+        }
+    }
+}
+
+#[cfg(windows)]
+fn settings_window_registry() -> &'static Mutex<SettingsWindowRegistry> {
+    static REGISTRY: OnceLock<Mutex<SettingsWindowRegistry>> = OnceLock::new();
+    REGISTRY.get_or_init(|| Mutex::new(SettingsWindowRegistry::default()))
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    use super::SettingsWindowRegistry;
+
+    #[test]
+    fn settings_window_registry_reuses_existing_window() {
+        let mut registry = SettingsWindowRegistry::default();
+
+        assert!(registry.existing_if_alive().is_none());
+        registry.set(101);
+
+        assert_eq!(registry.existing_if_alive(), Some(101));
+    }
+
+    #[test]
+    fn settings_window_registry_clears_closed_window() {
+        let mut registry = SettingsWindowRegistry::default();
+
+        registry.set(101);
+        registry.clear_if_current(101);
+
+        assert!(registry.existing_if_alive().is_none());
+    }
 }
 
 #[cfg(windows)]
@@ -885,6 +975,10 @@ unsafe extern "system" fn default_wnd_proc(
         }
     }
     if msg == WM_NCDESTROY {
+        {
+            let mut registry = settings_window_registry().lock().unwrap();
+            registry.clear_if_current(hwnd.0 as isize);
+        }
         let ptr = unsafe { GetWindowLongPtrW(hwnd, GWLP_USERDATA) };
         if ptr != 0 {
             unsafe {
@@ -1628,4 +1722,12 @@ fn create_control(
 #[cfg(windows)]
 fn wide(text: &str) -> Vec<u16> {
     text.encode_utf16().chain(Some(0)).collect()
+}
+
+#[cfg(windows)]
+fn is_window_alive(hwnd: isize) -> bool {
+    use windows::Win32::UI::WindowsAndMessaging::IsWindow;
+
+    let hwnd = windows::Win32::Foundation::HWND(hwnd as *mut core::ffi::c_void);
+    unsafe { IsWindow(Some(hwnd)).as_bool() }
 }
