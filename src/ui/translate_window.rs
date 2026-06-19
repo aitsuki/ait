@@ -46,6 +46,12 @@ impl TranslationWindowState {
         self.error = Some(message);
         self
     }
+
+    pub fn with_app_error(mut self, err: &crate::error::AppError) -> Self {
+        self.loading = false;
+        self.error = Some(err.user_summary());
+        self
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -517,7 +523,10 @@ impl TranslationWindow {
     ) -> Result<()> {
         match result {
             Ok(result) => self.show_result(&result),
-            Err(err) => self.show_error(err.to_string()),
+            Err(err) => {
+                tracing::warn!(error = %err, "show translation error summary");
+                self.show_error(err.user_summary())
+            }
         }
     }
 

@@ -498,6 +498,44 @@ fn profile_switch_action_preserves_source_on_error() {
 }
 
 #[test]
+fn app_error_user_summaries_are_actionable() {
+    assert_eq!(
+        ait::error::AppError::Capture("clipboard busy".to_string()).user_summary(),
+        "没有取到选中文本，可以手动粘贴文本后重试。"
+    );
+    assert_eq!(
+        ait::error::AppError::Network("timeout".to_string()).user_summary(),
+        "网络连接失败，请检查网络或代理设置后重试。"
+    );
+    assert_eq!(
+        ait::error::AppError::Secret("decrypt failed".to_string()).user_summary(),
+        "API Key 读取失败，请重新保存接口配置。"
+    );
+    assert_eq!(
+        ait::error::AppError::Translate("API Key 缺失".to_string()).user_summary(),
+        "翻译失败：API Key 缺失，请在设置中填写 API Key。"
+    );
+}
+
+#[test]
+fn translation_window_state_uses_user_summary_for_app_error() {
+    let state = TranslationWindowState {
+        source_text: "hello".to_string(),
+        translated_text: String::new(),
+        loading: true,
+        error: None,
+    };
+
+    let next = state.with_app_error(&ait::error::AppError::Network("timeout".to_string()));
+
+    assert!(!next.loading);
+    assert_eq!(
+        next.error.as_deref(),
+        Some("网络连接失败，请检查网络或代理设置后重试。")
+    );
+}
+
+#[test]
 fn translation_window_has_minimum_resizable_client_area() {
     assert_eq!(translation_window_min_client_size(), (420, 300));
 }
