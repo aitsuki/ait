@@ -473,6 +473,8 @@ impl TranslationWindow {
             let update_button =
                 create_button(hwnd, "有新版本", 314, 12, 86, 26, ID_UPDATE_BUTTON as isize)?;
             hide_window(update_button);
+            apply_multiline_edit_padding(source_edit)?;
+            apply_multiline_edit_padding(translated_edit)?;
             install_edit_subclass(source_edit)?;
             install_edit_subclass(translated_edit)?;
 
@@ -635,11 +637,13 @@ impl TranslationWindow {
             )?;
             move_window(self.source_label, layout.source_label)?;
             move_window(self.source_edit, edit_content_rect(layout.source_edit))?;
+            apply_multiline_edit_padding(self.source_edit)?;
             move_window(self.translated_label, layout.translated_label)?;
             move_window(
                 self.translated_edit,
                 edit_content_rect(layout.translated_edit),
             )?;
+            apply_multiline_edit_padding(self.translated_edit)?;
             move_window(self.status_text, layout.status_text)?;
             move_window(self.translate_button, layout.translate_button)?;
             move_window(self.update_button, layout.update_button)?;
@@ -976,14 +980,15 @@ fn create_edit(
         style_bits |= ES_READONLY as u32;
     }
     let style = WINDOW_STYLE(style_bits);
+    let rect = crate::ui::edit::modern_edit_child_rect(x, y, width, height);
     create_control(
         parent,
         "EDIT",
         "",
-        x + crate::ui::edit::EDIT_FRAME_THICKNESS,
-        y + crate::ui::edit::EDIT_FRAME_THICKNESS,
-        (width - crate::ui::edit::EDIT_FRAME_THICKNESS * 2).max(1),
-        (height - crate::ui::edit::EDIT_FRAME_THICKNESS * 2).max(1),
+        rect.x,
+        rect.y,
+        rect.width,
+        rect.height,
         id,
         style,
         crate::ui::edit::edit_uses_native_border(id as usize),
@@ -1124,13 +1129,57 @@ fn move_window(hwnd: windows::Win32::Foundation::HWND, rect: ControlRect) -> Res
 
 #[cfg(windows)]
 fn edit_content_rect(rect: ControlRect) -> ControlRect {
-    let inset = crate::ui::edit::EDIT_FRAME_THICKNESS;
+    let content = crate::ui::edit::modern_edit_child_rect(rect.x, rect.y, rect.width, rect.height);
     ControlRect {
-        x: rect.x + inset,
-        y: rect.y + inset,
-        width: (rect.width - inset * 2).max(1),
-        height: (rect.height - inset * 2).max(1),
+        x: content.x,
+        y: content.y,
+        width: content.width,
+        height: content.height,
     }
+}
+
+#[cfg(windows)]
+fn apply_multiline_edit_padding(hwnd: windows::Win32::Foundation::HWND) -> Result<()> {
+    use windows::Win32::Foundation::{LPARAM, RECT, WPARAM};
+    use windows::Win32::Graphics::Gdi::InvalidateRect;
+    use windows::Win32::UI::WindowsAndMessaging::{GetClientRect, SendMessageW};
+
+    const EM_SETRECT: u32 = 0x00B3;
+    const EM_SETMARGINS: u32 = 0x00D3;
+    const EC_LEFTMARGIN: usize = 0x0001;
+    const EC_RIGHTMARGIN: usize = 0x0002;
+
+    unsafe {
+        let mut client = RECT::default();
+        GetClientRect(hwnd, &mut client)
+            .map_err(|err| AppError::Windows(format!("获取编辑框尺寸失败: {err}")))?;
+        let text_rect = crate::ui::edit::multiline_edit_text_rect(
+            client.right - client.left,
+            client.bottom - client.top,
+        );
+        let mut rect = RECT {
+            left: text_rect.left,
+            top: text_rect.top,
+            right: text_rect.right,
+            bottom: text_rect.bottom,
+        };
+        let margin = crate::ui::edit::MULTILINE_EDIT_HORIZONTAL_PADDING as u16 as u32;
+        let packed_margins = margin | (margin << 16);
+        let _ = SendMessageW(
+            hwnd,
+            EM_SETMARGINS,
+            Some(WPARAM(EC_LEFTMARGIN | EC_RIGHTMARGIN)),
+            Some(LPARAM(packed_margins as isize)),
+        );
+        let _ = SendMessageW(
+            hwnd,
+            EM_SETRECT,
+            Some(WPARAM(0)),
+            Some(LPARAM((&mut rect as *mut RECT) as isize)),
+        );
+        let _ = InvalidateRect(Some(hwnd), None, true);
+    }
+    Ok(())
 }
 
 #[cfg(windows)]

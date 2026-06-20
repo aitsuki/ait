@@ -264,69 +264,69 @@ pub fn settings_profile_detail_control_rect(
     match control {
         SettingsProfileDetailControl::NameLabel => SettingsControlRect {
             x: 266,
-            y: 102,
+            y: 104,
             width: 90,
-            height: 22,
+            height: 24,
         },
         SettingsProfileDetailControl::NameInput => SettingsControlRect {
             x: 370,
             y: 100,
             width: 240,
-            height: 24,
+            height: 32,
         },
         SettingsProfileDetailControl::BaseUrlLabel => SettingsControlRect {
             x: 266,
-            y: 136,
+            y: 150,
             width: 90,
-            height: 22,
+            height: 24,
         },
         SettingsProfileDetailControl::BaseUrlInput => SettingsControlRect {
             x: 370,
-            y: 134,
+            y: 146,
             width: 300,
-            height: 24,
+            height: 32,
         },
         SettingsProfileDetailControl::ModelLabel => SettingsControlRect {
             x: 266,
-            y: 170,
+            y: 196,
             width: 90,
-            height: 22,
+            height: 24,
         },
         SettingsProfileDetailControl::ModelInput => SettingsControlRect {
             x: 370,
-            y: 168,
+            y: 192,
             width: 240,
-            height: 24,
+            height: 32,
         },
         SettingsProfileDetailControl::ApiKeyLabel => SettingsControlRect {
             x: 266,
-            y: 204,
+            y: 242,
             width: 90,
-            height: 22,
+            height: 24,
         },
         SettingsProfileDetailControl::ApiKeyInput => SettingsControlRect {
             x: 370,
-            y: 202,
+            y: 238,
             width: 240,
-            height: 24,
+            height: 32,
         },
         SettingsProfileDetailControl::TimeoutLabel => SettingsControlRect {
             x: 266,
-            y: 238,
+            y: 288,
             width: 90,
-            height: 22,
+            height: 24,
         },
         SettingsProfileDetailControl::TimeoutInput => SettingsControlRect {
             x: 370,
-            y: 236,
+            y: 284,
             width: 90,
-            height: 24,
+            height: 32,
         },
         SettingsProfileDetailControl::GoogleNotice => SettingsControlRect {
             x: 266,
             y: 100,
             width: 420,
-            height: 44,
+            height: 60,
         },
     }
 }
@@ -341,6 +341,31 @@ pub fn settings_profile_detail_hidden_rect() -> SettingsControlRect {
         y: -32000,
         width: 0,
         height: 0,
+    }
+}
+
+pub fn settings_edit_child_rect(
+    id: usize,
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+) -> SettingsControlRect {
+    if crate::ui::edit::is_modern_edit(id) {
+        let rect = crate::ui::edit::modern_edit_child_rect(x, y, width, height);
+        SettingsControlRect {
+            x: rect.x,
+            y: rect.y,
+            width: rect.width,
+            height: rect.height,
+        }
+    } else {
+        SettingsControlRect {
+            x,
+            y,
+            width,
+            height,
+        }
     }
 }
 
@@ -638,70 +663,139 @@ impl SettingsWindow {
             let delete_button = create_button(hwnd, "删除", 90, 342, 64, 28, ID_DELETE_PROFILE)?;
             create_button(hwnd, "设为默认", 162, 342, 76, 28, ID_SET_DEFAULT)?;
 
-            create_static_with_id(hwnd, "名称", 266, 102, 90, 22, ID_NAME_LABEL)?;
+            let name_label_rect =
+                settings_profile_detail_control_rect(SettingsProfileDetailControl::NameLabel);
+            create_static_with_id(
+                hwnd,
+                "名称",
+                name_label_rect.x,
+                name_label_rect.y,
+                name_label_rect.width,
+                name_label_rect.height,
+                ID_NAME_LABEL,
+            )?;
+            let name_rect =
+                settings_profile_detail_control_rect(SettingsProfileDetailControl::NameInput);
             create_edit(
                 hwnd,
                 &view_model.selected_profile.name,
-                370,
-                100,
-                240,
-                24,
+                name_rect.x,
+                name_rect.y,
+                name_rect.width,
+                name_rect.height,
                 false,
                 ID_NAME,
             )?;
-            create_static_with_id(hwnd, "Base URL", 266, 136, 90, 22, ID_BASE_URL_LABEL)?;
+            let base_url_label_rect =
+                settings_profile_detail_control_rect(SettingsProfileDetailControl::BaseUrlLabel);
+            create_static_with_id(
+                hwnd,
+                "Base URL",
+                base_url_label_rect.x,
+                base_url_label_rect.y,
+                base_url_label_rect.width,
+                base_url_label_rect.height,
+                ID_BASE_URL_LABEL,
+            )?;
+            let base_url_rect =
+                settings_profile_detail_control_rect(SettingsProfileDetailControl::BaseUrlInput);
             create_edit(
                 hwnd,
                 &view_model.selected_profile.base_url,
-                370,
-                134,
-                300,
-                24,
+                base_url_rect.x,
+                base_url_rect.y,
+                base_url_rect.width,
+                base_url_rect.height,
                 false,
                 ID_BASE_URL,
             )?;
-            create_static_with_id(hwnd, "模型", 266, 170, 90, 22, ID_MODEL_LABEL)?;
+            let model_label_rect =
+                settings_profile_detail_control_rect(SettingsProfileDetailControl::ModelLabel);
+            create_static_with_id(
+                hwnd,
+                "模型",
+                model_label_rect.x,
+                model_label_rect.y,
+                model_label_rect.width,
+                model_label_rect.height,
+                ID_MODEL_LABEL,
+            )?;
+            let model_rect =
+                settings_profile_detail_control_rect(SettingsProfileDetailControl::ModelInput);
             create_edit(
                 hwnd,
                 &view_model.selected_profile.model,
-                370,
-                168,
-                240,
-                24,
+                model_rect.x,
+                model_rect.y,
+                model_rect.width,
+                model_rect.height,
                 false,
                 ID_MODEL,
             )?;
-            create_static_with_id(hwnd, "API Key", 266, 204, 90, 22, ID_API_KEY_LABEL)?;
+            let api_key_label_rect =
+                settings_profile_detail_control_rect(SettingsProfileDetailControl::ApiKeyLabel);
+            create_static_with_id(
+                hwnd,
+                "API Key",
+                api_key_label_rect.x,
+                api_key_label_rect.y,
+                api_key_label_rect.width,
+                api_key_label_rect.height,
+                ID_API_KEY_LABEL,
+            )?;
+            let api_key_rect =
+                settings_profile_detail_control_rect(SettingsProfileDetailControl::ApiKeyInput);
             create_edit(
                 hwnd,
                 settings_api_key_input_text(view_model.selected_profile.has_api_key),
-                370,
-                202,
-                240,
-                24,
+                api_key_rect.x,
+                api_key_rect.y,
+                api_key_rect.width,
+                api_key_rect.height,
                 true,
                 ID_API_KEY,
             )?;
-            let api_key_visibility_button =
-                create_button(hwnd, "显示", 618, 200, 52, 28, ID_API_KEY_VISIBILITY)?;
-            create_static_with_id(hwnd, "超时秒数", 266, 238, 90, 22, ID_TIMEOUT_LABEL)?;
+            let api_key_visibility_button = create_button(
+                hwnd,
+                "显示",
+                api_key_rect.x + api_key_rect.width + 12,
+                api_key_rect.y,
+                52,
+                32,
+                ID_API_KEY_VISIBILITY,
+            )?;
+            let timeout_label_rect =
+                settings_profile_detail_control_rect(SettingsProfileDetailControl::TimeoutLabel);
+            create_static_with_id(
+                hwnd,
+                "超时秒数",
+                timeout_label_rect.x,
+                timeout_label_rect.y,
+                timeout_label_rect.width,
+                timeout_label_rect.height,
+                ID_TIMEOUT_LABEL,
+            )?;
+            let timeout_rect =
+                settings_profile_detail_control_rect(SettingsProfileDetailControl::TimeoutInput);
             create_edit(
                 hwnd,
                 &view_model.selected_profile.timeout_secs.to_string(),
-                370,
-                236,
-                90,
-                24,
+                timeout_rect.x,
+                timeout_rect.y,
+                timeout_rect.width,
+                timeout_rect.height,
                 false,
                 ID_TIMEOUT,
             )?;
+            let google_notice_rect =
+                settings_profile_detail_control_rect(SettingsProfileDetailControl::GoogleNotice);
             create_static_with_id(
                 hwnd,
                 GOOGLE_NOTICE_TEXT,
-                266,
-                278,
-                390,
-                36,
+                google_notice_rect.x,
+                google_notice_rect.y,
+                google_notice_rect.width,
+                google_notice_rect.height,
                 ID_GOOGLE_NOTICE,
             )?;
             apply_profile_detail_ui_state(hwnd, &view_model.selected_profile);
@@ -791,17 +885,17 @@ pub fn settings_window_layout() -> SettingsWindowLayout {
             x: 118,
             y: 18,
             width: 180,
-            height: 24,
+            height: 32,
         },
         auto_start: SettingsControlRect {
             x: 320,
-            y: 42,
+            y: 25,
             width: 100,
-            height: 18,
+            height: 24,
         },
         separator: SettingsControlRect {
             x: 18,
-            y: 62,
+            y: 64,
             width: 668,
             height: 1,
         },
@@ -1346,11 +1440,13 @@ fn apply_profile_detail_ui_state(
         unsafe {
             let _ = EnableWindow(api_key_visibility_button, profile.has_api_key);
             let rect = if profile.network_fields_visible {
+                let api_key_rect =
+                    settings_profile_detail_control_rect(SettingsProfileDetailControl::ApiKeyInput);
                 SettingsControlRect {
-                    x: 618,
-                    y: 200,
+                    x: api_key_rect.x + api_key_rect.width + 12,
+                    y: api_key_rect.y,
                     width: 52,
-                    height: 28,
+                    height: api_key_rect.height,
                 }
             } else {
                 settings_profile_detail_hidden_rect()
@@ -1385,11 +1481,20 @@ fn apply_profile_detail_ui_state(
         };
         if let Ok(child) = control(hwnd, id) {
             unsafe {
-                let rect = if state.visible {
+                let mut rect = if state.visible {
                     settings_profile_detail_control_rect(state.control)
                 } else {
                     settings_profile_detail_hidden_rect()
                 };
+                if state.visible && crate::ui::edit::is_modern_edit(id as usize) {
+                    rect = settings_edit_child_rect(
+                        id as usize,
+                        rect.x,
+                        rect.y,
+                        rect.width,
+                        rect.height,
+                    );
+                }
                 let _ = MoveWindow(child, rect.x, rect.y, rect.width, rect.height, true);
                 let visibility_flag = if state.visible {
                     SWP_SHOWWINDOW
@@ -1760,14 +1865,15 @@ fn create_edit(
     } else {
         ES_AUTOHSCROLL
     };
+    let rect = settings_edit_child_rect(id as usize, x, y, width, height);
     let hwnd = create_control(
         parent,
         "EDIT",
         text,
-        x,
-        y,
-        width,
-        height,
+        rect.x,
+        rect.y,
+        rect.width,
+        rect.height,
         id as isize,
         WINDOW_STYLE(style as u32),
         crate::ui::edit::edit_uses_native_border(id as usize),

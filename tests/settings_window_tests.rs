@@ -4,10 +4,11 @@ use ait::ui::settings_window::{
     SettingsProfileDetailUpdate, SettingsSaveOutcome, SettingsViewModel, api_key_placeholder_text,
     app_version_text, apply_settings_detail_update, apply_settings_edit_action,
     hotkey_capture_text, settings_api_key_input_text, settings_api_key_update_from_input,
-    settings_profile_detail_control_rect, settings_profile_detail_control_states,
-    settings_profile_detail_hidden_rect, settings_profile_google_notice_text,
-    settings_save_outcome_after_success, settings_static_controls_have_border,
-    settings_window_center_position, settings_window_layout, settings_window_uses_background_brush,
+    settings_edit_child_rect, settings_profile_detail_control_rect,
+    settings_profile_detail_control_states, settings_profile_detail_hidden_rect,
+    settings_profile_google_notice_text, settings_save_outcome_after_success,
+    settings_static_controls_have_border, settings_window_center_position, settings_window_layout,
+    settings_window_uses_background_brush,
 };
 use ait::update::latest_release_url;
 
@@ -239,7 +240,7 @@ fn google_notice_uses_top_detail_position() {
             x: 266,
             y: 100,
             width: 420,
-            height: 44,
+            height: 60,
         }
     );
 }
@@ -648,6 +649,45 @@ fn settings_edit_controls_use_modern_border() {
     for id in [3102, 3104, 3105, 3106, 3107, 3108] {
         assert!(!ait::ui::edit::edit_uses_native_border(id));
     }
+}
+
+#[test]
+fn settings_modern_edit_controls_leave_room_for_parent_drawn_border() {
+    let layout = settings_window_layout();
+    let rect = settings_edit_child_rect(
+        3108,
+        layout.hotkey.x,
+        layout.hotkey.y,
+        layout.hotkey.width,
+        layout.hotkey.height,
+    );
+
+    assert_eq!(layout.hotkey.height, 32);
+    assert_eq!(rect.x, 122);
+    assert_eq!(rect.y, 22);
+    assert_eq!(rect.width, 172);
+    assert_eq!(rect.height, 24);
+}
+
+#[test]
+fn settings_profile_detail_layout_gives_single_line_edits_full_content_height() {
+    let name = settings_profile_detail_control_rect(SettingsProfileDetailControl::NameInput);
+    let base_url = settings_profile_detail_control_rect(SettingsProfileDetailControl::BaseUrlInput);
+    let model = settings_profile_detail_control_rect(SettingsProfileDetailControl::ModelInput);
+    let api_key = settings_profile_detail_control_rect(SettingsProfileDetailControl::ApiKeyInput);
+    let timeout = settings_profile_detail_control_rect(SettingsProfileDetailControl::TimeoutInput);
+
+    for rect in [name, base_url, model, api_key, timeout] {
+        assert_eq!(rect.height, 32);
+        assert_eq!(
+            settings_edit_child_rect(3102, rect.x, rect.y, rect.width, rect.height).height,
+            24
+        );
+    }
+    assert!(base_url.y - name.y >= 44);
+    assert!(model.y - base_url.y >= 44);
+    assert!(api_key.y - model.y >= 44);
+    assert!(timeout.y - api_key.y >= 44);
 }
 
 #[cfg(windows)]

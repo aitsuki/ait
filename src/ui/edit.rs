@@ -42,6 +42,22 @@ pub struct EditPalette {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EditRect {
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EditTextRect {
+    pub left: i32,
+    pub top: i32,
+    pub right: i32,
+    pub bottom: i32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EditBorderPaintTarget {
     ParentFrame,
 }
@@ -92,6 +108,41 @@ pub fn is_modern_edit(id: usize) -> bool {
 
 pub fn edit_uses_native_border(id: usize) -> bool {
     !is_modern_edit(id)
+}
+
+pub fn modern_edit_color_query_invalidates_border() -> bool {
+    false
+}
+
+pub const EDIT_FRAME_GUTTER: i32 = 4;
+pub const MULTILINE_EDIT_HORIZONTAL_PADDING: i32 = 8;
+pub const MULTILINE_EDIT_VERTICAL_PADDING: i32 = 6;
+
+pub fn modern_edit_child_rect(x: i32, y: i32, width: i32, height: i32) -> EditRect {
+    EditRect {
+        x: x + EDIT_FRAME_GUTTER,
+        y: y + EDIT_FRAME_GUTTER,
+        width: (width - EDIT_FRAME_GUTTER * 2).max(1),
+        height: (height - EDIT_FRAME_GUTTER * 2).max(1),
+    }
+}
+
+pub fn modern_edit_frame_rect(left: i32, top: i32, right: i32, bottom: i32) -> EditTextRect {
+    EditTextRect {
+        left: left - EDIT_FRAME_GUTTER,
+        top: top - EDIT_FRAME_GUTTER,
+        right: right + EDIT_FRAME_GUTTER,
+        bottom: bottom + EDIT_FRAME_GUTTER,
+    }
+}
+
+pub fn multiline_edit_text_rect(width: i32, height: i32) -> EditTextRect {
+    EditTextRect {
+        left: MULTILINE_EDIT_HORIZONTAL_PADDING,
+        top: MULTILINE_EDIT_VERTICAL_PADDING,
+        right: (width - MULTILINE_EDIT_HORIZONTAL_PADDING).max(MULTILINE_EDIT_HORIZONTAL_PADDING),
+        bottom: (height - MULTILINE_EDIT_VERTICAL_PADDING).max(MULTILINE_EDIT_VERTICAL_PADDING),
+    }
 }
 
 #[cfg(windows)]
@@ -183,10 +234,11 @@ pub unsafe fn paint_modern_edit_border(parent: windows::Win32::Foundation::HWND,
     unsafe {
         let _ = MapWindowPoints(None, Some(parent), &mut points);
     }
-    rect.left = points[0].x - EDIT_FRAME_THICKNESS;
-    rect.top = points[0].y - EDIT_FRAME_THICKNESS;
-    rect.right = points[1].x + EDIT_FRAME_THICKNESS;
-    rect.bottom = points[1].y + EDIT_FRAME_THICKNESS;
+    let frame = modern_edit_frame_rect(points[0].x, points[0].y, points[1].x, points[1].y);
+    rect.left = frame.left;
+    rect.top = frame.top;
+    rect.right = frame.right;
+    rect.bottom = frame.bottom;
 
     let hdc = unsafe { GetDC(Some(parent)) };
     if hdc.is_invalid() {
@@ -221,11 +273,9 @@ pub unsafe fn paint_modern_edit_border(parent: windows::Win32::Foundation::HWND,
     }
 }
 
-pub const EDIT_FRAME_THICKNESS: i32 = 1;
-
 #[cfg(windows)]
 pub unsafe fn handle_modern_edit_color(
-    parent: windows::Win32::Foundation::HWND,
+    _parent: windows::Win32::Foundation::HWND,
     wparam: windows::Win32::Foundation::WPARAM,
     lparam: windows::Win32::Foundation::LPARAM,
     readonly: bool,
@@ -250,7 +300,6 @@ pub unsafe fn handle_modern_edit_color(
     unsafe {
         let _ = SetTextColor(hdc, palette.text.colorref());
         let _ = SetBkColor(hdc, palette.background.colorref());
-        invalidate_edit_border(parent, child);
     }
     Some(windows::Win32::Foundation::LRESULT(
         modern_edit_brush_for_state(state).0 as isize,
@@ -304,10 +353,11 @@ unsafe fn invalidate_edit_border(
         unsafe {
             let _ = MapWindowPoints(None, Some(parent), &mut points);
         }
-        rect.left = points[0].x - EDIT_FRAME_THICKNESS;
-        rect.top = points[0].y - EDIT_FRAME_THICKNESS;
-        rect.right = points[1].x + EDIT_FRAME_THICKNESS;
-        rect.bottom = points[1].y + EDIT_FRAME_THICKNESS;
+        let frame = modern_edit_frame_rect(points[0].x, points[0].y, points[1].x, points[1].y);
+        rect.left = frame.left;
+        rect.top = frame.top;
+        rect.right = frame.right;
+        rect.bottom = frame.bottom;
         unsafe {
             let _ = InvalidateRect(Some(parent), Some(&rect), false);
         }
@@ -354,6 +404,8 @@ mod tests {
     use super::{
         EditBorderPaintTarget, EditKind, EditVisualState, RgbColor, edit_border_paint_target,
         edit_kind_for_control, edit_palette, edit_uses_native_border, is_modern_edit,
+        modern_edit_child_rect, modern_edit_color_query_invalidates_border,
+        multiline_edit_text_rect,
     };
 
     #[test]
@@ -418,5 +470,32 @@ mod tests {
             edit_border_paint_target(),
             EditBorderPaintTarget::ParentFrame
         );
+    }
+
+    #[test]
+    fn color_query_does_not_schedule_border_repaint() {
+        assert!(!modern_edit_color_query_invalidates_border());
+    }
+
+    #[test]
+    fn modern_multiline_edit_leaves_space_for_parent_drawn_rounded_border() {
+        let rect = modern_edit_child_rect(16, 38, 572, 96);
+
+        assert!(rect.x > 16);
+        assert!(rect.y > 38);
+        assert!(rect.x - 16 >= 4);
+        assert!(rect.y - 38 >= 4);
+        assert_eq!(rect.width, 572 - (rect.x - 16) * 2);
+        assert_eq!(rect.height, 96 - (rect.y - 38) * 2);
+    }
+
+    #[test]
+    fn multiline_edit_text_rect_adds_readable_inner_padding() {
+        let rect = multiline_edit_text_rect(564, 88);
+
+        assert_eq!(rect.left, 8);
+        assert_eq!(rect.top, 6);
+        assert_eq!(rect.right, 564 - 8);
+        assert_eq!(rect.bottom, 88 - 6);
     }
 }
