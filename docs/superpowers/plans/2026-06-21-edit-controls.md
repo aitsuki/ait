@@ -754,13 +754,15 @@ If `WM_PAINT` handling causes the white window background not to erase, switch t
 
 - [ ] **Step 6: Run translation behavior tests**
 
-Run:
+Run the full workflow integration test binary, because Cargo accepts only one test
+filter argument:
 
 ```powershell
-cargo test --test workflow_tests edit_display_text edit_shortcut_action edit_char_action paragraph_selection_range third_click translation_multiline_edit_controls_use_modern_border
+cargo test --test workflow_tests
 ```
 
-Expected: all targeted workflow tests pass.
+Expected: all workflow tests pass, including the edit display, shortcut, paragraph selection,
+third-click, and modern border coverage tests.
 
 - [ ] **Step 7: Run compile check**
 

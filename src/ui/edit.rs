@@ -150,11 +150,11 @@ pub unsafe fn paint_modern_edit_border(
     readonly: bool,
     hdc: windows::Win32::Graphics::Gdi::HDC,
 ) {
+    use windows::Win32::Graphics::Gdi::MapWindowPoints;
     use windows::Win32::Graphics::Gdi::{
         CreatePen, DeleteObject, GetStockObject, NULL_BRUSH, PS_SOLID, Rectangle, SelectObject,
     };
     use windows::Win32::UI::Input::KeyboardAndMouse::{GetFocus, IsWindowEnabled};
-    use windows::Win32::Graphics::Gdi::MapWindowPoints;
     use windows::Win32::UI::WindowsAndMessaging::{GetDlgItem, GetWindowRect};
 
     let Ok(child) = (unsafe { GetDlgItem(Some(parent), control_id) }) else {

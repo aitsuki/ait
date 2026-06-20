@@ -125,10 +125,10 @@ pub unsafe fn draw_owner_draw_button(
     draw_item: *const windows::Win32::UI::Controls::DRAWITEMSTRUCT,
 ) -> bool {
     use windows::Win32::Graphics::Gdi::{
-        BACKGROUND_MODE, CreatePen, CreateSolidBrush, DT_CENTER, DT_SINGLELINE, DT_VCENTER,
-        CreateRoundRectRgn, DeleteObject, DrawTextW, FillRect, GetBkMode, GetStockObject,
-        GetTextColor, HGDIOBJ, NULL_BRUSH, PS_SOLID, RoundRect, SelectClipRgn, SelectObject,
-        SetBkMode, SetTextColor, TRANSPARENT,
+        BACKGROUND_MODE, CreatePen, CreateRoundRectRgn, CreateSolidBrush, DT_CENTER, DT_SINGLELINE,
+        DT_VCENTER, DeleteObject, DrawTextW, FillRect, GetBkMode, GetStockObject, GetTextColor,
+        HGDIOBJ, NULL_BRUSH, PS_SOLID, RoundRect, SelectClipRgn, SelectObject, SetBkMode,
+        SetTextColor, TRANSPARENT,
     };
     use windows::Win32::UI::Controls::{ODS_DISABLED, ODS_FOCUS, ODS_HOTLIGHT, ODS_SELECTED};
 
@@ -336,8 +336,8 @@ unsafe extern "system" fn owner_draw_button_subclass_proc(
 #[cfg(test)]
 mod tests {
     use super::{
-        ButtonRole, ButtonVisualState, RgbColor, button_palette, button_role_for_control,
-        button_draws_inner_focus_ring, button_uses_native_border, is_owner_draw_button,
+        ButtonRole, ButtonVisualState, RgbColor, button_draws_inner_focus_ring, button_palette,
+        button_role_for_control, button_uses_native_border, is_owner_draw_button,
     };
     #[cfg(windows)]
     use super::{is_button_hot, set_button_hot};

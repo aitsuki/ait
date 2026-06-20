@@ -673,9 +673,8 @@ unsafe extern "system" fn default_wnd_proc(
     use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
     use windows::Win32::Graphics::Gdi::{GetDC, InvalidateRect, ReleaseDC};
     use windows::Win32::UI::WindowsAndMessaging::{
-        DefWindowProcW, PostMessageW, SW_HIDE, ShowWindow, WM_CLOSE, WM_COMMAND,
-        WM_CTLCOLORSTATIC, WM_CTLCOLOREDIT, WM_DRAWITEM, WM_GETMINMAXINFO, WM_KEYDOWN, WM_PAINT,
-        WM_SIZE,
+        DefWindowProcW, PostMessageW, SW_HIDE, ShowWindow, WM_CLOSE, WM_COMMAND, WM_CTLCOLOREDIT,
+        WM_CTLCOLORSTATIC, WM_DRAWITEM, WM_GETMINMAXINFO, WM_KEYDOWN, WM_PAINT, WM_SIZE,
     };
 
     if msg == WM_CLOSE {
@@ -746,12 +745,7 @@ unsafe extern "system" fn default_wnd_proc(
         let hdc = unsafe { GetDC(Some(hwnd)) };
         if !hdc.is_invalid() {
             unsafe {
-                crate::ui::edit::paint_modern_edit_border(
-                    hwnd,
-                    ID_SOURCE_EDIT as i32,
-                    false,
-                    hdc,
-                );
+                crate::ui::edit::paint_modern_edit_border(hwnd, ID_SOURCE_EDIT as i32, false, hdc);
                 crate::ui::edit::paint_modern_edit_border(
                     hwnd,
                     ID_TRANSLATED_EDIT as i32,
