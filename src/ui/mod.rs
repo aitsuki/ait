@@ -1,6 +1,8 @@
 #[cfg(windows)]
 pub mod button;
 #[cfg(windows)]
+pub mod combo;
+#[cfg(windows)]
 pub mod edit;
 #[cfg(windows)]
 pub mod font;
