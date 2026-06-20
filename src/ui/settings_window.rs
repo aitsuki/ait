@@ -919,7 +919,8 @@ unsafe extern "system" fn default_wnd_proc(
     use windows::Win32::Foundation::LRESULT;
     use windows::Win32::UI::WindowsAndMessaging::{
         DefWindowProcW, DestroyWindow, GWLP_USERDATA, GetWindowLongPtrW, SetWindowLongPtrW,
-        WM_CLOSE, WM_COMMAND, WM_DRAWITEM, WM_NCDESTROY,
+        WM_CLOSE, WM_COMMAND, WM_CTLCOLORSTATIC, WM_CTLCOLOREDIT, WM_DRAWITEM, WM_NCDESTROY,
+        WM_PAINT,
     };
 
     if msg == WM_CLOSE {
@@ -1014,6 +1015,31 @@ unsafe extern "system" fn default_wnd_proc(
             return LRESULT(0);
         }
     }
+    if msg == WM_CTLCOLOREDIT {
+        if let Some(result) =
+            unsafe { crate::ui::edit::handle_modern_edit_color(hwnd, wparam, lparam, false) }
+        {
+            return result;
+        }
+    }
+    if msg == WM_CTLCOLORSTATIC {
+        let child = windows::Win32::Foundation::HWND(lparam.0 as *mut core::ffi::c_void);
+        let id = unsafe { windows::Win32::UI::WindowsAndMessaging::GetDlgCtrlID(child) };
+        if crate::ui::edit::is_modern_edit(id as usize) {
+            if let Some(result) =
+                unsafe { crate::ui::edit::handle_modern_edit_color(hwnd, wparam, lparam, true) }
+            {
+                return result;
+            }
+        }
+    }
+    if msg == WM_PAINT {
+        let result = unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) };
+        unsafe {
+            paint_settings_edit_borders(hwnd);
+        }
+        return result;
+    }
     if msg == WM_DRAWITEM {
         if unsafe { crate::ui::button::draw_owner_draw_button(lparam.0 as _) } {
             return LRESULT(1);
@@ -1034,6 +1060,31 @@ unsafe extern "system" fn default_wnd_proc(
     }
 
     unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
+}
+
+#[cfg(windows)]
+unsafe fn paint_settings_edit_borders(hwnd: windows::Win32::Foundation::HWND) {
+    use windows::Win32::Graphics::Gdi::{GetDC, ReleaseDC};
+
+    let hdc = unsafe { GetDC(Some(hwnd)) };
+    if hdc.is_invalid() {
+        return;
+    }
+    for (id, readonly) in [
+        (ID_NAME, false),
+        (ID_BASE_URL, false),
+        (ID_MODEL, false),
+        (ID_API_KEY, false),
+        (ID_TIMEOUT, false),
+        (ID_HOTKEY, true),
+    ] {
+        unsafe {
+            crate::ui::edit::paint_modern_edit_border(hwnd, id, readonly, hdc);
+        }
+    }
+    unsafe {
+        let _ = ReleaseDC(Some(hwnd), hdc);
+    }
 }
 
 #[cfg(windows)]
@@ -1718,7 +1769,7 @@ fn create_edit(
     } else {
         ES_AUTOHSCROLL
     };
-    create_control(
+    let hwnd = create_control(
         parent,
         "EDIT",
         text,
@@ -1728,8 +1779,12 @@ fn create_edit(
         height,
         id as isize,
         WINDOW_STYLE(style as u32),
-        true,
-    )
+        crate::ui::edit::edit_uses_native_border(id as usize),
+    )?;
+    if crate::ui::edit::is_modern_edit(id as usize) {
+        crate::ui::edit::install_modern_edit_focus_tracking(hwnd)?;
+    }
+    Ok(hwnd)
 }
 
 #[cfg(windows)]

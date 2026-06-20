@@ -643,6 +643,13 @@ fn settings_static_controls_are_not_framed() {
     assert!(!settings_static_controls_have_border());
 }
 
+#[test]
+fn settings_edit_controls_use_modern_border() {
+    for id in [3102, 3104, 3105, 3106, 3107, 3108] {
+        assert!(!ait::ui::edit::edit_uses_native_border(id));
+    }
+}
+
 #[cfg(windows)]
 #[test]
 fn settings_window_allows_existing_window_class() {
