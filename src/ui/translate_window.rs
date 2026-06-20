@@ -634,9 +634,12 @@ impl TranslationWindow {
                 },
             )?;
             move_window(self.source_label, layout.source_label)?;
-            move_window(self.source_edit, layout.source_edit)?;
+            move_window(self.source_edit, edit_content_rect(layout.source_edit))?;
             move_window(self.translated_label, layout.translated_label)?;
-            move_window(self.translated_edit, layout.translated_edit)?;
+            move_window(
+                self.translated_edit,
+                edit_content_rect(layout.translated_edit),
+            )?;
             move_window(self.status_text, layout.status_text)?;
             move_window(self.translate_button, layout.translate_button)?;
             move_window(self.update_button, layout.update_button)?;
@@ -786,7 +789,7 @@ unsafe extern "system" fn edit_subclass_proc(
     use windows::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass};
     use windows::Win32::UI::WindowsAndMessaging::{
         GetMessageTime, GetParent, PostMessageW, SendMessageW, WM_CHAR, WM_CLOSE, WM_KEYDOWN,
-        WM_KILLFOCUS, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_NCDESTROY, WM_PAINT, WM_SETFOCUS,
+        WM_KILLFOCUS, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_NCDESTROY, WM_SETFOCUS,
     };
 
     let state_ptr = ref_data as *mut EditSubclassState;
@@ -845,13 +848,7 @@ unsafe extern "system" fn edit_subclass_proc(
         }
     }
 
-    let result = unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) };
-    if msg == WM_PAINT {
-        unsafe {
-            crate::ui::edit::paint_modern_edit_border_for_child(hwnd);
-        }
-    }
-    result
+    unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) }
 }
 
 #[cfg(windows)]
@@ -983,10 +980,10 @@ fn create_edit(
         parent,
         "EDIT",
         "",
-        x,
-        y,
-        width,
-        height,
+        x + crate::ui::edit::EDIT_FRAME_THICKNESS,
+        y + crate::ui::edit::EDIT_FRAME_THICKNESS,
+        (width - crate::ui::edit::EDIT_FRAME_THICKNESS * 2).max(1),
+        (height - crate::ui::edit::EDIT_FRAME_THICKNESS * 2).max(1),
         id,
         style,
         crate::ui::edit::edit_uses_native_border(id as usize),
@@ -1126,6 +1123,17 @@ fn move_window(hwnd: windows::Win32::Foundation::HWND, rect: ControlRect) -> Res
 }
 
 #[cfg(windows)]
+fn edit_content_rect(rect: ControlRect) -> ControlRect {
+    let inset = crate::ui::edit::EDIT_FRAME_THICKNESS;
+    ControlRect {
+        x: rect.x + inset,
+        y: rect.y + inset,
+        width: (rect.width - inset * 2).max(1),
+        height: (rect.height - inset * 2).max(1),
+    }
+}
+
+#[cfg(windows)]
 fn translation_window_style() -> windows::Win32::UI::WindowsAndMessaging::WINDOW_STYLE {
     use windows::Win32::UI::WindowsAndMessaging::{
         WS_CAPTION, WS_CLIPCHILDREN, WS_OVERLAPPED, WS_SYSMENU, WS_THICKFRAME,
@@ -1219,9 +1227,9 @@ fn resize_translation_window(hwnd: windows::Win32::Foundation::HWND) -> Result<(
             },
         )?;
         move_window(source_label, layout.source_label)?;
-        move_window(source_edit, layout.source_edit)?;
+        move_window(source_edit, edit_content_rect(layout.source_edit))?;
         move_window(translated_label, layout.translated_label)?;
-        move_window(translated_edit, layout.translated_edit)?;
+        move_window(translated_edit, edit_content_rect(layout.translated_edit))?;
         move_window(status_text, layout.status_text)?;
         move_window(translate_button, layout.translate_button)?;
         move_window(update_button, layout.update_button)?;

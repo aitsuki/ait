@@ -43,11 +43,11 @@ pub struct EditPalette {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EditBorderPaintTarget {
-    ControlWindow,
+    ParentFrame,
 }
 
 pub fn edit_border_paint_target() -> EditBorderPaintTarget {
-    EditBorderPaintTarget::ControlWindow
+    EditBorderPaintTarget::ParentFrame
 }
 
 pub fn edit_palette(state: EditVisualState) -> EditPalette {
@@ -154,31 +154,41 @@ pub fn modern_edit_brush_for_state(
 
 #[cfg(windows)]
 pub unsafe fn paint_modern_edit_border(parent: windows::Win32::Foundation::HWND, control_id: i32) {
-    use windows::Win32::UI::WindowsAndMessaging::GetDlgItem;
+    use windows::Win32::Graphics::Gdi::MapWindowPoints;
+    use windows::Win32::Graphics::Gdi::{
+        CreatePen, DeleteObject, GetDC, GetStockObject, NULL_BRUSH, PS_SOLID, ReleaseDC, RoundRect,
+        SelectObject,
+    };
+    use windows::Win32::UI::WindowsAndMessaging::{GetDlgItem, GetWindowRect};
 
     let Ok(child) = (unsafe { GetDlgItem(Some(parent), control_id) }) else {
         return;
     };
-    unsafe {
-        paint_modern_edit_border_for_child(child);
-    }
-}
-
-#[cfg(windows)]
-pub unsafe fn paint_modern_edit_border_for_child(hwnd: windows::Win32::Foundation::HWND) {
-    use windows::Win32::Graphics::Gdi::{
-        CreatePen, DeleteObject, GetDC, GetStockObject, NULL_BRUSH, PS_SOLID, Rectangle, ReleaseDC,
-        SelectObject,
-    };
-    use windows::Win32::UI::WindowsAndMessaging::GetClientRect;
-
-    let state = unsafe { edit_visual_state_for_child(hwnd) };
+    let state = unsafe { edit_visual_state_for_child(child) };
     let palette = edit_palette(state);
     let mut rect = windows::Win32::Foundation::RECT::default();
-    if unsafe { GetClientRect(hwnd, &mut rect).is_err() } {
+    if unsafe { GetWindowRect(child, &mut rect).is_err() } {
         return;
     }
-    let hdc = unsafe { GetDC(Some(hwnd)) };
+    let mut points = [
+        windows::Win32::Foundation::POINT {
+            x: rect.left,
+            y: rect.top,
+        },
+        windows::Win32::Foundation::POINT {
+            x: rect.right,
+            y: rect.bottom,
+        },
+    ];
+    unsafe {
+        let _ = MapWindowPoints(None, Some(parent), &mut points);
+    }
+    rect.left = points[0].x - EDIT_FRAME_THICKNESS;
+    rect.top = points[0].y - EDIT_FRAME_THICKNESS;
+    rect.right = points[1].x + EDIT_FRAME_THICKNESS;
+    rect.bottom = points[1].y + EDIT_FRAME_THICKNESS;
+
+    let hdc = unsafe { GetDC(Some(parent)) };
     if hdc.is_invalid() {
         return;
     }
@@ -186,14 +196,14 @@ pub unsafe fn paint_modern_edit_border_for_child(hwnd: windows::Win32::Foundatio
     let pen = unsafe { CreatePen(PS_SOLID, 1, palette.border.colorref()) };
     if pen.is_invalid() {
         unsafe {
-            let _ = ReleaseDC(Some(hwnd), hdc);
+            let _ = ReleaseDC(Some(parent), hdc);
         }
         return;
     }
     let old_pen = unsafe { SelectObject(hdc, pen.into()) };
     let old_brush = unsafe { SelectObject(hdc, GetStockObject(NULL_BRUSH)) };
     unsafe {
-        let _ = Rectangle(hdc, rect.left, rect.top, rect.right, rect.bottom);
+        let _ = RoundRect(hdc, rect.left, rect.top, rect.right, rect.bottom, 7, 7);
     }
     if !old_brush.is_invalid() {
         unsafe {
@@ -207,9 +217,11 @@ pub unsafe fn paint_modern_edit_border_for_child(hwnd: windows::Win32::Foundatio
     }
     unsafe {
         let _ = DeleteObject(pen.into());
-        let _ = ReleaseDC(Some(hwnd), hdc);
+        let _ = ReleaseDC(Some(parent), hdc);
     }
 }
+
+pub const EDIT_FRAME_THICKNESS: i32 = 1;
 
 #[cfg(windows)]
 pub unsafe fn handle_modern_edit_color(
@@ -292,10 +304,10 @@ unsafe fn invalidate_edit_border(
         unsafe {
             let _ = MapWindowPoints(None, Some(parent), &mut points);
         }
-        rect.left = points[0].x;
-        rect.top = points[0].y;
-        rect.right = points[1].x;
-        rect.bottom = points[1].y;
+        rect.left = points[0].x - EDIT_FRAME_THICKNESS;
+        rect.top = points[0].y - EDIT_FRAME_THICKNESS;
+        rect.right = points[1].x + EDIT_FRAME_THICKNESS;
+        rect.bottom = points[1].y + EDIT_FRAME_THICKNESS;
         unsafe {
             let _ = InvalidateRect(Some(parent), Some(&rect), false);
         }
@@ -316,7 +328,7 @@ unsafe extern "system" fn modern_edit_subclass_proc(
 ) -> windows::Win32::Foundation::LRESULT {
     use windows::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass};
     use windows::Win32::UI::WindowsAndMessaging::{
-        GetParent, WM_ENABLE, WM_KILLFOCUS, WM_NCDESTROY, WM_PAINT, WM_SETFOCUS,
+        GetParent, WM_ENABLE, WM_KILLFOCUS, WM_NCDESTROY, WM_SETFOCUS,
     };
 
     if msg == WM_SETFOCUS || msg == WM_KILLFOCUS || msg == WM_ENABLE {
@@ -334,13 +346,7 @@ unsafe extern "system" fn modern_edit_subclass_proc(
         }
     }
 
-    let result = unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) };
-    if msg == WM_PAINT {
-        unsafe {
-            paint_modern_edit_border_for_child(hwnd);
-        }
-    }
-    result
+    unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) }
 }
 
 #[cfg(test)]
@@ -410,7 +416,7 @@ mod tests {
     fn edit_border_is_painted_on_control_window() {
         assert_eq!(
             edit_border_paint_target(),
-            EditBorderPaintTarget::ControlWindow
+            EditBorderPaintTarget::ParentFrame
         );
     }
 }
