@@ -11,7 +11,7 @@ const ID_TRANSLATED_LABEL: isize = 2104;
 #[cfg(windows)]
 const ID_STATUS_TEXT: isize = 2105;
 #[cfg(windows)]
-const ID_PROFILE_COMBO: isize = 2106;
+pub(crate) const ID_PROFILE_COMBO: isize = 2106;
 #[cfg(windows)]
 const ID_TRANSLATE: usize = 2001;
 #[cfg(windows)]
@@ -718,6 +718,42 @@ unsafe extern "system" fn default_wnd_proc(
             command
                 if command == ID_PROFILE_COMBO as usize
                     && notification
+                        == windows::Win32::UI::WindowsAndMessaging::CBN_DROPDOWN as usize =>
+            {
+                if let Ok(combo) = unsafe {
+                    windows::Win32::UI::WindowsAndMessaging::GetDlgItem(
+                        Some(hwnd),
+                        ID_PROFILE_COMBO as i32,
+                    )
+                } {
+                    crate::ui::combo::set_combo_dropped(combo, true);
+                    unsafe {
+                        crate::ui::combo::invalidate_modern_combo_for_child(hwnd, combo);
+                    }
+                }
+                return LRESULT(0);
+            }
+            command
+                if command == ID_PROFILE_COMBO as usize
+                    && notification
+                        == windows::Win32::UI::WindowsAndMessaging::CBN_CLOSEUP as usize =>
+            {
+                if let Ok(combo) = unsafe {
+                    windows::Win32::UI::WindowsAndMessaging::GetDlgItem(
+                        Some(hwnd),
+                        ID_PROFILE_COMBO as i32,
+                    )
+                } {
+                    crate::ui::combo::set_combo_dropped(combo, false);
+                    unsafe {
+                        crate::ui::combo::invalidate_modern_combo_for_child(hwnd, combo);
+                    }
+                }
+                return LRESULT(0);
+            }
+            command
+                if command == ID_PROFILE_COMBO as usize
+                    && notification
                         == windows::Win32::UI::WindowsAndMessaging::CBN_SELCHANGE as usize =>
             {
                 unsafe {
@@ -752,6 +788,7 @@ unsafe extern "system" fn default_wnd_proc(
         unsafe {
             crate::ui::edit::paint_modern_edit_border(hwnd, ID_SOURCE_EDIT as i32);
             crate::ui::edit::paint_modern_edit_border(hwnd, ID_TRANSLATED_EDIT as i32);
+            crate::ui::combo::paint_modern_combo_border(hwnd, ID_PROFILE_COMBO as i32);
         }
         return result;
     }
@@ -1005,7 +1042,7 @@ fn create_combo(
     id: isize,
 ) -> Result<windows::Win32::Foundation::HWND> {
     use windows::Win32::UI::WindowsAndMessaging::{CBS_DROPDOWNLIST, WINDOW_STYLE, WS_VSCROLL};
-    create_control(
+    let hwnd = create_control(
         parent,
         "COMBOBOX",
         "",
@@ -1015,8 +1052,12 @@ fn create_combo(
         height,
         id,
         WINDOW_STYLE(CBS_DROPDOWNLIST as u32 | WS_VSCROLL.0),
-        true,
-    )
+        crate::ui::combo::combo_uses_native_border(id as usize),
+    )?;
+    if crate::ui::combo::is_modern_combo(id as usize) {
+        crate::ui::combo::install_modern_combo_tracking(hwnd)?;
+    }
+    Ok(hwnd)
 }
 
 #[cfg(windows)]
