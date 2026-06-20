@@ -7,6 +7,7 @@ use ait::app::{
 use ait::capture::CapturedText;
 use ait::config::AppSettings;
 use ait::translator::{ProviderKind, TranslationRequest, TranslationResponse};
+use ait::update::{UpdateStatus, latest_release_url};
 use ait::ui::translate_window::{
     EditCharAction, EditShortcutAction, ProfileSelectionAction, ShowAction, ShowMode,
     TranslationProfileOption, TranslationWindowState, WindowZOrder, edit_char_action,
@@ -14,7 +15,7 @@ use ait::ui::translate_window::{
     paragraph_selection_range_utf16, profile_selection_action, show_action,
     show_window_needs_topmost_raise, show_window_needs_topmost_reset, show_window_z_order,
     translation_profile_combo_dropdown_height, translation_window_layout,
-    translation_window_min_client_size, window_z_order,
+    translation_window_min_client_size, translation_window_update_button_visible, window_z_order,
 };
 use std::cell::RefCell;
 
@@ -435,6 +436,22 @@ fn translation_profile_combo_keeps_dropdown_height() {
 
     assert_eq!(layout.profile_combo.height, 26);
     assert_eq!(translation_profile_combo_dropdown_height(), 220);
+}
+
+#[test]
+fn translation_window_update_button_is_hidden_without_update_status() {
+    assert!(!translation_window_update_button_visible(None));
+}
+
+#[test]
+fn translation_window_update_button_is_visible_when_update_is_available() {
+    let status = UpdateStatus::UpdateAvailable {
+        current_version: "v0.1.4".to_string(),
+        latest_version: "v0.1.5".to_string(),
+        release_url: latest_release_url().to_string(),
+    };
+
+    assert!(translation_window_update_button_visible(Some(&status)));
 }
 
 #[test]
