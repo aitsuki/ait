@@ -1064,26 +1064,17 @@ unsafe extern "system" fn default_wnd_proc(
 
 #[cfg(windows)]
 unsafe fn paint_settings_edit_borders(hwnd: windows::Win32::Foundation::HWND) {
-    use windows::Win32::Graphics::Gdi::{GetDC, ReleaseDC};
-
-    let hdc = unsafe { GetDC(Some(hwnd)) };
-    if hdc.is_invalid() {
-        return;
-    }
-    for (id, readonly) in [
-        (ID_NAME, false),
-        (ID_BASE_URL, false),
-        (ID_MODEL, false),
-        (ID_API_KEY, false),
-        (ID_TIMEOUT, false),
-        (ID_HOTKEY, true),
+    for id in [
+        ID_NAME,
+        ID_BASE_URL,
+        ID_MODEL,
+        ID_API_KEY,
+        ID_TIMEOUT,
+        ID_HOTKEY,
     ] {
         unsafe {
-            crate::ui::edit::paint_modern_edit_border(hwnd, id, readonly, hdc);
+            crate::ui::edit::paint_modern_edit_border(hwnd, id);
         }
-    }
-    unsafe {
-        let _ = ReleaseDC(Some(hwnd), hdc);
     }
 }
 

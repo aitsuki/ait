@@ -41,6 +41,15 @@ pub struct EditPalette {
     pub text: RgbColor,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EditBorderPaintTarget {
+    ControlWindow,
+}
+
+pub fn edit_border_paint_target() -> EditBorderPaintTarget {
+    EditBorderPaintTarget::ControlWindow
+}
+
 pub fn edit_palette(state: EditVisualState) -> EditPalette {
     if state.disabled {
         return EditPalette {
@@ -144,52 +153,41 @@ pub fn modern_edit_brush_for_state(
 }
 
 #[cfg(windows)]
-pub unsafe fn paint_modern_edit_border(
-    parent: windows::Win32::Foundation::HWND,
-    control_id: i32,
-    readonly: bool,
-    hdc: windows::Win32::Graphics::Gdi::HDC,
-) {
-    use windows::Win32::Graphics::Gdi::MapWindowPoints;
-    use windows::Win32::Graphics::Gdi::{
-        CreatePen, DeleteObject, GetStockObject, NULL_BRUSH, PS_SOLID, Rectangle, SelectObject,
-    };
-    use windows::Win32::UI::Input::KeyboardAndMouse::{GetFocus, IsWindowEnabled};
-    use windows::Win32::UI::WindowsAndMessaging::{GetDlgItem, GetWindowRect};
+pub unsafe fn paint_modern_edit_border(parent: windows::Win32::Foundation::HWND, control_id: i32) {
+    use windows::Win32::UI::WindowsAndMessaging::GetDlgItem;
 
     let Ok(child) = (unsafe { GetDlgItem(Some(parent), control_id) }) else {
         return;
     };
-    let state = EditVisualState {
-        focused: unsafe { GetFocus() } == child,
-        readonly,
-        disabled: !unsafe { IsWindowEnabled(child).as_bool() },
+    unsafe {
+        paint_modern_edit_border_for_child(child);
+    }
+}
+
+#[cfg(windows)]
+pub unsafe fn paint_modern_edit_border_for_child(hwnd: windows::Win32::Foundation::HWND) {
+    use windows::Win32::Graphics::Gdi::{
+        CreatePen, DeleteObject, GetDC, GetStockObject, NULL_BRUSH, PS_SOLID, Rectangle, ReleaseDC,
+        SelectObject,
     };
+    use windows::Win32::UI::WindowsAndMessaging::GetClientRect;
+
+    let state = unsafe { edit_visual_state_for_child(hwnd) };
     let palette = edit_palette(state);
     let mut rect = windows::Win32::Foundation::RECT::default();
-    if unsafe { GetWindowRect(child, &mut rect).is_err() } {
+    if unsafe { GetClientRect(hwnd, &mut rect).is_err() } {
         return;
     }
-    let mut points = [
-        windows::Win32::Foundation::POINT {
-            x: rect.left,
-            y: rect.top,
-        },
-        windows::Win32::Foundation::POINT {
-            x: rect.right,
-            y: rect.bottom,
-        },
-    ];
-    unsafe {
-        let _ = MapWindowPoints(None, Some(parent), &mut points);
+    let hdc = unsafe { GetDC(Some(hwnd)) };
+    if hdc.is_invalid() {
+        return;
     }
-    rect.left = points[0].x;
-    rect.top = points[0].y;
-    rect.right = points[1].x;
-    rect.bottom = points[1].y;
 
     let pen = unsafe { CreatePen(PS_SOLID, 1, palette.border.colorref()) };
     if pen.is_invalid() {
+        unsafe {
+            let _ = ReleaseDC(Some(hwnd), hdc);
+        }
         return;
     }
     let old_pen = unsafe { SelectObject(hdc, pen.into()) };
@@ -209,6 +207,7 @@ pub unsafe fn paint_modern_edit_border(
     }
     unsafe {
         let _ = DeleteObject(pen.into());
+        let _ = ReleaseDC(Some(hwnd), hdc);
     }
 }
 
@@ -244,6 +243,19 @@ pub unsafe fn handle_modern_edit_color(
     Some(windows::Win32::Foundation::LRESULT(
         modern_edit_brush_for_state(state).0 as isize,
     ))
+}
+
+#[cfg(windows)]
+unsafe fn edit_visual_state_for_child(hwnd: windows::Win32::Foundation::HWND) -> EditVisualState {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{GetFocus, IsWindowEnabled};
+    use windows::Win32::UI::WindowsAndMessaging::{ES_READONLY, GWL_STYLE, GetWindowLongW};
+
+    let style = unsafe { GetWindowLongW(hwnd, GWL_STYLE) } as u32;
+    EditVisualState {
+        focused: unsafe { GetFocus() } == hwnd,
+        readonly: (style & ES_READONLY as u32) != 0,
+        disabled: !unsafe { IsWindowEnabled(hwnd).as_bool() },
+    }
 }
 
 #[cfg(windows)]
@@ -304,7 +316,7 @@ unsafe extern "system" fn modern_edit_subclass_proc(
 ) -> windows::Win32::Foundation::LRESULT {
     use windows::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass};
     use windows::Win32::UI::WindowsAndMessaging::{
-        GetParent, WM_ENABLE, WM_KILLFOCUS, WM_NCDESTROY, WM_SETFOCUS,
+        GetParent, WM_ENABLE, WM_KILLFOCUS, WM_NCDESTROY, WM_PAINT, WM_SETFOCUS,
     };
 
     if msg == WM_SETFOCUS || msg == WM_KILLFOCUS || msg == WM_ENABLE {
@@ -322,14 +334,20 @@ unsafe extern "system" fn modern_edit_subclass_proc(
         }
     }
 
-    unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) }
+    let result = unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) };
+    if msg == WM_PAINT {
+        unsafe {
+            paint_modern_edit_border_for_child(hwnd);
+        }
+    }
+    result
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        EditKind, EditVisualState, RgbColor, edit_kind_for_control, edit_palette,
-        edit_uses_native_border, is_modern_edit,
+        EditBorderPaintTarget, EditKind, EditVisualState, RgbColor, edit_border_paint_target,
+        edit_kind_for_control, edit_palette, edit_uses_native_border, is_modern_edit,
     };
 
     #[test]
@@ -386,5 +404,13 @@ mod tests {
         assert_eq!(disabled.background, RgbColor::new(243, 244, 246));
         assert_eq!(disabled.text, RgbColor::new(156, 163, 175));
         assert_ne!(readonly, disabled);
+    }
+
+    #[test]
+    fn edit_border_is_painted_on_control_window() {
+        assert_eq!(
+            edit_border_paint_target(),
+            EditBorderPaintTarget::ControlWindow
+        );
     }
 }

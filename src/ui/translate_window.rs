@@ -671,7 +671,7 @@ unsafe extern "system" fn default_wnd_proc(
     lparam: windows::Win32::Foundation::LPARAM,
 ) -> windows::Win32::Foundation::LRESULT {
     use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
-    use windows::Win32::Graphics::Gdi::{GetDC, InvalidateRect, ReleaseDC};
+    use windows::Win32::Graphics::Gdi::InvalidateRect;
     use windows::Win32::UI::WindowsAndMessaging::{
         DefWindowProcW, PostMessageW, SW_HIDE, ShowWindow, WM_CLOSE, WM_COMMAND, WM_CTLCOLOREDIT,
         WM_CTLCOLORSTATIC, WM_DRAWITEM, WM_GETMINMAXINFO, WM_KEYDOWN, WM_PAINT, WM_SIZE,
@@ -742,18 +742,9 @@ unsafe extern "system" fn default_wnd_proc(
     }
     if msg == WM_PAINT {
         let result = unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) };
-        let hdc = unsafe { GetDC(Some(hwnd)) };
-        if !hdc.is_invalid() {
-            unsafe {
-                crate::ui::edit::paint_modern_edit_border(hwnd, ID_SOURCE_EDIT as i32, false, hdc);
-                crate::ui::edit::paint_modern_edit_border(
-                    hwnd,
-                    ID_TRANSLATED_EDIT as i32,
-                    true,
-                    hdc,
-                );
-                let _ = ReleaseDC(Some(hwnd), hdc);
-            }
+        unsafe {
+            crate::ui::edit::paint_modern_edit_border(hwnd, ID_SOURCE_EDIT as i32);
+            crate::ui::edit::paint_modern_edit_border(hwnd, ID_TRANSLATED_EDIT as i32);
         }
         return result;
     }
@@ -795,7 +786,7 @@ unsafe extern "system" fn edit_subclass_proc(
     use windows::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass};
     use windows::Win32::UI::WindowsAndMessaging::{
         GetMessageTime, GetParent, PostMessageW, SendMessageW, WM_CHAR, WM_CLOSE, WM_KEYDOWN,
-        WM_KILLFOCUS, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_NCDESTROY, WM_SETFOCUS,
+        WM_KILLFOCUS, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_NCDESTROY, WM_PAINT, WM_SETFOCUS,
     };
 
     let state_ptr = ref_data as *mut EditSubclassState;
@@ -854,7 +845,13 @@ unsafe extern "system" fn edit_subclass_proc(
         }
     }
 
-    unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) }
+    let result = unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) };
+    if msg == WM_PAINT {
+        unsafe {
+            crate::ui::edit::paint_modern_edit_border_for_child(hwnd);
+        }
+    }
+    result
 }
 
 #[cfg(windows)]
