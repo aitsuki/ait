@@ -456,7 +456,7 @@ fn translation_window_update_button_is_hidden_without_update_status() {
 #[test]
 fn translation_window_update_button_is_visible_when_update_is_available() {
     let status = UpdateStatus::UpdateAvailable {
-        current_version: "v0.1.4".to_string(),
+        current_version: "v0.1.6".to_string(),
         latest_version: "v0.1.5".to_string(),
         release_url: latest_release_url().to_string(),
     };
@@ -508,7 +508,7 @@ fn runtime_select_profile_updates_default_profile() {
 #[test]
 fn silent_update_check_shows_button_instead_of_dialog_when_update_available() {
     let status = UpdateStatus::UpdateAvailable {
-        current_version: "v0.1.4".to_string(),
+        current_version: "v0.1.6".to_string(),
         latest_version: "v0.1.5".to_string(),
         release_url: latest_release_url().to_string(),
     };
@@ -522,7 +522,7 @@ fn silent_update_check_shows_button_instead_of_dialog_when_update_available() {
 #[test]
 fn explicit_update_check_still_shows_dialog_when_update_available() {
     let status = UpdateStatus::UpdateAvailable {
-        current_version: "v0.1.4".to_string(),
+        current_version: "v0.1.6".to_string(),
         latest_version: "v0.1.5".to_string(),
         release_url: latest_release_url().to_string(),
     };

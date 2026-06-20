@@ -13,7 +13,7 @@ https://github.com/aitsuki/ait/releases/latest
 推荐安装器：
 
 ```text
-ait-v0.1.4-setup.exe
+ait-v0.1.6-setup.exe
 ```
 
 这是推荐的安装包，双击后按提示安装即可。
@@ -21,7 +21,7 @@ ait-v0.1.4-setup.exe
 便携版：
 
 ```text
-ait-v0.1.4-windows.exe
+ait-v0.1.6-windows.exe
 ```
 
 它是单文件版本，下载后直接双击运行，不需要解压。
@@ -100,11 +100,11 @@ cargo test
 1. 打开 GitHub 仓库的 Actions 页面。
 2. 选择 `Release` workflow。
 3. 点击 `Run workflow`。
-4. 输入版本号，例如 `v0.1.4`。
+4. 输入版本号，例如 `v0.1.6`。
 
 也可以推送 tag 发布：
 
 ```powershell
-git tag v0.1.4
-git push origin v0.1.4
+git tag v0.1.6
+git push origin v0.1.6
 ```
