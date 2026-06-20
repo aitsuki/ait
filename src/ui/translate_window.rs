@@ -110,7 +110,10 @@ pub fn translation_profile_combo_dropdown_height() -> i32 {
 pub fn translation_window_update_button_visible(
     status: Option<&crate::update::UpdateStatus>,
 ) -> bool {
-    matches!(status, Some(crate::update::UpdateStatus::UpdateAvailable { .. }))
+    matches!(
+        status,
+        Some(crate::update::UpdateStatus::UpdateAvailable { .. })
+    )
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

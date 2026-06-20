@@ -507,7 +507,8 @@ fn run_platform() -> Result<()> {
                                     "发现新版本",
                                     &update_status_message(&message.current_version, &status),
                                 );
-                            } else if let Err(err) = translation_window.show_update_available(status)
+                            } else if let Err(err) =
+                                translation_window.show_update_available(status)
                             {
                                 tracing::warn!(error = %err, "show update button failed");
                             }
@@ -524,8 +525,7 @@ fn run_platform() -> Result<()> {
                         }
                     }
                 }
-            } else if msg.message
-                == crate::ui::translate_window::WM_TRANSLATE_WINDOW_UPDATE_CLICKED
+            } else if msg.message == crate::ui::translate_window::WM_TRANSLATE_WINDOW_UPDATE_CLICKED
             {
                 if let Some(status) = translation_window.update_status() {
                     show_runtime_message(

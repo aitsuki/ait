@@ -1,13 +1,12 @@
 use ait::app::{
     HotkeyAction, HotkeyRegistrationUpdate, TranslationObserver, TranslationRequestKind,
     TranslationWorkflow, TranslationWorkflowResult, UpdateCheckAction, WorkflowCapture,
-    WorkflowTranslator, hotkey_action, hotkey_registration_update, run_translation_request_with_observer,
-    translation_task_action, update_check_action,
+    WorkflowTranslator, hotkey_action, hotkey_registration_update,
+    run_translation_request_with_observer, translation_task_action, update_check_action,
 };
 use ait::capture::CapturedText;
 use ait::config::AppSettings;
 use ait::translator::{ProviderKind, TranslationRequest, TranslationResponse};
-use ait::update::{UpdateStatus, latest_release_url};
 use ait::ui::translate_window::{
     EditCharAction, EditShortcutAction, ProfileSelectionAction, ShowAction, ShowMode,
     TranslationProfileOption, TranslationWindowState, WindowZOrder, edit_char_action,
@@ -17,6 +16,7 @@ use ait::ui::translate_window::{
     translation_profile_combo_dropdown_height, translation_window_layout,
     translation_window_min_client_size, translation_window_update_button_visible, window_z_order,
 };
+use ait::update::{UpdateStatus, latest_release_url};
 use std::cell::RefCell;
 
 struct FakeCapture;
