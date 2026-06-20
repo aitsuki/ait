@@ -1038,6 +1038,14 @@ unsafe extern "system" fn default_wnd_proc(
             }
             return LRESULT(0);
         }
+        if command == ID_AUTO_START as usize
+            && notification == windows::Win32::UI::WindowsAndMessaging::BN_CLICKED as usize
+        {
+            if let Err(err) = toggle_checkbox_checked(hwnd, ID_AUTO_START) {
+                tracing::warn!(error = %err, "toggle auto start checkbox failed");
+            }
+            return LRESULT(0);
+        }
         if command == ID_NEW_PROFILE as usize {
             if let Err(err) =
                 unsafe { edit_settings_profiles(hwnd, SettingsEditAction::NewProfile) }
@@ -1143,6 +1151,9 @@ unsafe extern "system" fn default_wnd_proc(
     }
     if msg == WM_DRAWITEM {
         if unsafe { crate::ui::combo::draw_owner_draw_combo_item(lparam.0 as _) } {
+            return LRESULT(1);
+        }
+        if unsafe { crate::ui::checkbox::draw_owner_draw_checkbox(lparam.0 as _) } {
             return LRESULT(1);
         }
         if unsafe { crate::ui::button::draw_owner_draw_button(lparam.0 as _) } {
@@ -1642,10 +1653,14 @@ fn set_checkbox_checked(
     checked: bool,
 ) -> Result<()> {
     use windows::Win32::Foundation::{LPARAM, WPARAM};
+    use windows::Win32::Graphics::Gdi::InvalidateRect;
     use windows::Win32::UI::Controls::{BST_CHECKED, BST_UNCHECKED};
     use windows::Win32::UI::WindowsAndMessaging::{BM_SETCHECK, SendMessageW};
 
     let child = control(hwnd, id)?;
+    if crate::ui::checkbox::is_modern_checkbox(id as usize) {
+        crate::ui::checkbox::set_owner_draw_checkbox_checked(child, checked);
+    }
     let state = if checked { BST_CHECKED } else { BST_UNCHECKED };
     unsafe {
         let _ = SendMessageW(
@@ -1654,8 +1669,19 @@ fn set_checkbox_checked(
             Some(WPARAM(state.0 as usize)),
             Some(LPARAM(0)),
         );
+        let _ = InvalidateRect(Some(child), None, true);
     }
     Ok(())
+}
+
+#[cfg(windows)]
+fn toggle_checkbox_checked(hwnd: windows::Win32::Foundation::HWND, id: i32) -> Result<()> {
+    let checked = is_checkbox_checked(hwnd, id)?;
+    set_checkbox_checked(
+        hwnd,
+        id,
+        crate::ui::checkbox::checkbox_toggled_state(checked),
+    )
 }
 
 #[cfg(windows)]
@@ -1665,6 +1691,9 @@ fn is_checkbox_checked(hwnd: windows::Win32::Foundation::HWND, id: i32) -> Resul
     use windows::Win32::UI::WindowsAndMessaging::{BM_GETCHECK, SendMessageW};
 
     let child = control(hwnd, id)?;
+    if crate::ui::checkbox::is_modern_checkbox(id as usize) {
+        return Ok(crate::ui::checkbox::owner_draw_checkbox_checked(child));
+    }
     let state = unsafe { SendMessageW(child, BM_GETCHECK, Some(WPARAM(0)), Some(LPARAM(0))) };
     Ok(state.0 as u32 == BST_CHECKED.0)
 }
@@ -1861,8 +1890,14 @@ fn create_checkbox(
     height: i32,
     id: i32,
 ) -> Result<windows::Win32::Foundation::HWND> {
-    use windows::Win32::UI::WindowsAndMessaging::{BS_AUTOCHECKBOX, WINDOW_STYLE};
-    create_control(
+    use windows::Win32::UI::WindowsAndMessaging::{BS_AUTOCHECKBOX, BS_OWNERDRAW, WINDOW_STYLE};
+    let owner_draw = crate::ui::checkbox::is_modern_checkbox(id as usize);
+    let style = if owner_draw {
+        WINDOW_STYLE((BS_AUTOCHECKBOX | BS_OWNERDRAW) as u32)
+    } else {
+        WINDOW_STYLE(BS_AUTOCHECKBOX as u32)
+    };
+    let hwnd = create_control(
         parent,
         "BUTTON",
         text,
@@ -1871,9 +1906,13 @@ fn create_checkbox(
         width,
         height,
         id as isize,
-        WINDOW_STYLE(BS_AUTOCHECKBOX as u32),
-        true,
-    )
+        style,
+        crate::ui::checkbox::checkbox_uses_native_border(id as usize),
+    )?;
+    if owner_draw {
+        crate::ui::checkbox::install_owner_draw_checkbox_hover(hwnd)?;
+    }
+    Ok(hwnd)
 }
 
 #[cfg(windows)]

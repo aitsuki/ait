@@ -661,6 +661,12 @@ fn settings_edit_controls_use_modern_border() {
 }
 
 #[test]
+fn settings_auto_start_checkbox_uses_modern_drawing() {
+    assert!(ait::ui::checkbox::is_modern_checkbox(3117));
+    assert!(!ait::ui::checkbox::checkbox_uses_native_border(3117));
+}
+
+#[test]
 fn settings_modern_edit_controls_leave_room_for_parent_drawn_border() {
     let layout = settings_window_layout();
     let rect = settings_edit_child_rect(
