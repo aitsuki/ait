@@ -919,7 +919,7 @@ unsafe extern "system" fn default_wnd_proc(
     use windows::Win32::Foundation::LRESULT;
     use windows::Win32::UI::WindowsAndMessaging::{
         DefWindowProcW, DestroyWindow, GWLP_USERDATA, GetWindowLongPtrW, SetWindowLongPtrW,
-        WM_CLOSE, WM_COMMAND, WM_NCDESTROY,
+        WM_CLOSE, WM_COMMAND, WM_DRAWITEM, WM_NCDESTROY,
     };
 
     if msg == WM_CLOSE {
@@ -1012,6 +1012,11 @@ unsafe extern "system" fn default_wnd_proc(
                 let _ = DestroyWindow(hwnd);
             }
             return LRESULT(0);
+        }
+    }
+    if msg == WM_DRAWITEM {
+        if unsafe { crate::ui::button::draw_owner_draw_button(lparam.0 as _) } {
+            return LRESULT(1);
         }
     }
     if msg == WM_NCDESTROY {
@@ -1644,8 +1649,14 @@ fn create_button(
     height: i32,
     id: isize,
 ) -> Result<windows::Win32::Foundation::HWND> {
-    use windows::Win32::UI::WindowsAndMessaging::{BS_PUSHBUTTON, WINDOW_STYLE};
-    create_control(
+    use windows::Win32::UI::WindowsAndMessaging::{BS_OWNERDRAW, BS_PUSHBUTTON, WINDOW_STYLE};
+    let owner_draw = crate::ui::button::is_owner_draw_button(id as usize);
+    let style = if owner_draw {
+        WINDOW_STYLE((BS_PUSHBUTTON | BS_OWNERDRAW) as u32)
+    } else {
+        WINDOW_STYLE(BS_PUSHBUTTON as u32)
+    };
+    let hwnd = create_control(
         parent,
         "BUTTON",
         text,
@@ -1654,9 +1665,13 @@ fn create_button(
         width,
         height,
         id,
-        WINDOW_STYLE(BS_PUSHBUTTON as u32),
-        true,
-    )
+        style,
+        crate::ui::button::button_uses_native_border(id as usize),
+    )?;
+    if owner_draw {
+        crate::ui::button::install_owner_draw_button_hover(hwnd)?;
+    }
+    Ok(hwnd)
 }
 
 #[cfg(windows)]

@@ -673,8 +673,8 @@ unsafe extern "system" fn default_wnd_proc(
     use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
     use windows::Win32::Graphics::Gdi::InvalidateRect;
     use windows::Win32::UI::WindowsAndMessaging::{
-        DefWindowProcW, PostMessageW, SW_HIDE, ShowWindow, WM_CLOSE, WM_COMMAND, WM_GETMINMAXINFO,
-        WM_KEYDOWN, WM_SIZE,
+        DefWindowProcW, PostMessageW, SW_HIDE, ShowWindow, WM_CLOSE, WM_COMMAND, WM_DRAWITEM,
+        WM_GETMINMAXINFO, WM_KEYDOWN, WM_SIZE,
     };
 
     if msg == WM_CLOSE {
@@ -724,6 +724,11 @@ unsafe extern "system" fn default_wnd_proc(
                 return LRESULT(0);
             }
             _ => {}
+        }
+    }
+    if msg == WM_DRAWITEM {
+        if unsafe { crate::ui::button::draw_owner_draw_button(lparam.0 as _) } {
+            return LRESULT(1);
         }
     }
     if msg == WM_SIZE {
@@ -881,6 +886,7 @@ fn create_static(
         height,
         id,
         Default::default(),
+        false,
     )
 }
 
@@ -894,8 +900,14 @@ fn create_button(
     height: i32,
     id: isize,
 ) -> Result<windows::Win32::Foundation::HWND> {
-    use windows::Win32::UI::WindowsAndMessaging::{BS_PUSHBUTTON, WINDOW_STYLE};
-    create_control(
+    use windows::Win32::UI::WindowsAndMessaging::{BS_OWNERDRAW, BS_PUSHBUTTON, WINDOW_STYLE};
+    let owner_draw = crate::ui::button::is_owner_draw_button(id as usize);
+    let style = if owner_draw {
+        WINDOW_STYLE((BS_PUSHBUTTON | BS_OWNERDRAW) as u32)
+    } else {
+        WINDOW_STYLE(BS_PUSHBUTTON as u32)
+    };
+    let hwnd = create_control(
         parent,
         "BUTTON",
         text,
@@ -904,8 +916,13 @@ fn create_button(
         width,
         height,
         id,
-        WINDOW_STYLE(BS_PUSHBUTTON as u32),
-    )
+        style,
+        crate::ui::button::button_uses_native_border(id as usize),
+    )?;
+    if owner_draw {
+        crate::ui::button::install_owner_draw_button_hover(hwnd)?;
+    }
+    Ok(hwnd)
 }
 
 #[cfg(windows)]
@@ -927,7 +944,7 @@ fn create_edit(
         style_bits |= ES_READONLY as u32;
     }
     let style = WINDOW_STYLE(style_bits);
-    create_control(parent, "EDIT", "", x, y, width, height, id, style)
+    create_control(parent, "EDIT", "", x, y, width, height, id, style, true)
 }
 
 #[cfg(windows)]
@@ -950,6 +967,7 @@ fn create_combo(
         height,
         id,
         WINDOW_STYLE(CBS_DROPDOWNLIST as u32 | WS_VSCROLL.0),
+        true,
     )
 }
 
@@ -966,6 +984,7 @@ fn create_control(
     height: i32,
     id: isize,
     extra_style: windows::Win32::UI::WindowsAndMessaging::WINDOW_STYLE,
+    bordered: bool,
 ) -> Result<windows::Win32::Foundation::HWND> {
     use windows::Win32::UI::WindowsAndMessaging::{
         CreateWindowExW, HMENU, WINDOW_EX_STYLE, WS_BORDER, WS_CHILD, WS_VISIBLE,
@@ -977,7 +996,14 @@ fn create_control(
             WINDOW_EX_STYLE::default(),
             PCWSTR(wide(class_name).as_ptr()),
             PCWSTR(wide(text).as_ptr()),
-            WS_CHILD | WS_VISIBLE | WS_BORDER | extra_style,
+            WS_CHILD
+                | WS_VISIBLE
+                | if bordered {
+                    WS_BORDER
+                } else {
+                    windows::Win32::UI::WindowsAndMessaging::WINDOW_STYLE(0)
+                }
+                | extra_style,
             x,
             y,
             width,
