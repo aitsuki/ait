@@ -1150,6 +1150,9 @@ unsafe extern "system" fn default_wnd_proc(
         return result;
     }
     if msg == WM_DRAWITEM {
+        if unsafe { crate::ui::listbox::draw_owner_draw_listbox_item(lparam.0 as _) } {
+            return LRESULT(1);
+        }
         if unsafe { crate::ui::combo::draw_owner_draw_combo_item(lparam.0 as _) } {
             return LRESULT(1);
         }
@@ -1161,7 +1164,8 @@ unsafe extern "system" fn default_wnd_proc(
         }
     }
     if msg == WM_MEASUREITEM
-        && unsafe { crate::ui::combo::measure_owner_draw_combo_item(lparam.0 as _) }
+        && (unsafe { crate::ui::listbox::measure_owner_draw_listbox_item(lparam.0 as _) }
+            || unsafe { crate::ui::combo::measure_owner_draw_combo_item(lparam.0 as _) })
     {
         return LRESULT(1);
     }
@@ -1830,8 +1834,14 @@ fn create_listbox(
     height: i32,
     id: i32,
 ) -> Result<windows::Win32::Foundation::HWND> {
-    use windows::Win32::UI::WindowsAndMessaging::{LBS_NOTIFY, WINDOW_STYLE, WS_VSCROLL};
-    create_control(
+    use windows::Win32::UI::WindowsAndMessaging::{
+        LBS_HASSTRINGS, LBS_NOTIFY, LBS_OWNERDRAWFIXED, WINDOW_STYLE, WS_VSCROLL,
+    };
+    let mut style_bits = LBS_NOTIFY as u32 | WS_VSCROLL.0;
+    if crate::ui::listbox::is_modern_listbox(id as usize) {
+        style_bits |= (LBS_OWNERDRAWFIXED | LBS_HASSTRINGS) as u32;
+    }
+    let hwnd = create_control(
         parent,
         "LISTBOX",
         "",
@@ -1840,9 +1850,13 @@ fn create_listbox(
         width,
         height,
         id as isize,
-        WINDOW_STYLE(LBS_NOTIFY as u32) | WS_VSCROLL,
-        true,
-    )
+        WINDOW_STYLE(style_bits),
+        crate::ui::listbox::listbox_uses_native_border(id as usize),
+    )?;
+    if crate::ui::listbox::is_modern_listbox(id as usize) {
+        crate::ui::listbox::install_modern_listbox_tracking(hwnd)?;
+    }
+    Ok(hwnd)
 }
 
 #[cfg(windows)]

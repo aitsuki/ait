@@ -8,6 +8,8 @@ pub mod combo;
 pub mod edit;
 #[cfg(windows)]
 pub mod font;
+#[cfg(windows)]
+pub mod listbox;
 pub mod settings_window;
 pub mod translate_window;
 pub mod tray;
