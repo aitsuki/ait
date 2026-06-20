@@ -671,10 +671,11 @@ unsafe extern "system" fn default_wnd_proc(
     lparam: windows::Win32::Foundation::LPARAM,
 ) -> windows::Win32::Foundation::LRESULT {
     use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
-    use windows::Win32::Graphics::Gdi::InvalidateRect;
+    use windows::Win32::Graphics::Gdi::{GetDC, InvalidateRect, ReleaseDC};
     use windows::Win32::UI::WindowsAndMessaging::{
-        DefWindowProcW, PostMessageW, SW_HIDE, ShowWindow, WM_CLOSE, WM_COMMAND, WM_DRAWITEM,
-        WM_GETMINMAXINFO, WM_KEYDOWN, WM_SIZE,
+        DefWindowProcW, PostMessageW, SW_HIDE, ShowWindow, WM_CLOSE, WM_COMMAND,
+        WM_CTLCOLORSTATIC, WM_CTLCOLOREDIT, WM_DRAWITEM, WM_GETMINMAXINFO, WM_KEYDOWN, WM_PAINT,
+        WM_SIZE,
     };
 
     if msg == WM_CLOSE {
@@ -726,6 +727,42 @@ unsafe extern "system" fn default_wnd_proc(
             _ => {}
         }
     }
+    if msg == WM_CTLCOLOREDIT {
+        if let Some(result) =
+            unsafe { crate::ui::edit::handle_modern_edit_color(hwnd, wparam, lparam, false) }
+        {
+            return result;
+        }
+    }
+    if msg == WM_CTLCOLORSTATIC {
+        if let Some(result) =
+            unsafe { crate::ui::edit::handle_modern_edit_color(hwnd, wparam, lparam, true) }
+        {
+            return result;
+        }
+    }
+    if msg == WM_PAINT {
+        let result = unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) };
+        let hdc = unsafe { GetDC(Some(hwnd)) };
+        if !hdc.is_invalid() {
+            unsafe {
+                crate::ui::edit::paint_modern_edit_border(
+                    hwnd,
+                    ID_SOURCE_EDIT as i32,
+                    false,
+                    hdc,
+                );
+                crate::ui::edit::paint_modern_edit_border(
+                    hwnd,
+                    ID_TRANSLATED_EDIT as i32,
+                    true,
+                    hdc,
+                );
+                let _ = ReleaseDC(Some(hwnd), hdc);
+            }
+        }
+        return result;
+    }
     if msg == WM_DRAWITEM {
         if unsafe { crate::ui::button::draw_owner_draw_button(lparam.0 as _) } {
             return LRESULT(1);
@@ -764,11 +801,18 @@ unsafe extern "system" fn edit_subclass_proc(
     use windows::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass};
     use windows::Win32::UI::WindowsAndMessaging::{
         GetMessageTime, GetParent, PostMessageW, SendMessageW, WM_CHAR, WM_CLOSE, WM_KEYDOWN,
-        WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_NCDESTROY,
+        WM_KILLFOCUS, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_NCDESTROY, WM_SETFOCUS,
     };
 
     let state_ptr = ref_data as *mut EditSubclassState;
 
+    if msg == WM_SETFOCUS || msg == WM_KILLFOCUS {
+        if let Ok(parent) = unsafe { GetParent(hwnd) } {
+            unsafe {
+                crate::ui::edit::invalidate_modern_edit_for_child(parent, hwnd);
+            }
+        }
+    }
     if msg == WM_KEYDOWN {
         let ctrl_down = unsafe { GetKeyState(VK_CONTROL.0 as i32) } < 0;
         match edit_shortcut_action(wparam.0 as u32, ctrl_down) {
@@ -944,7 +988,18 @@ fn create_edit(
         style_bits |= ES_READONLY as u32;
     }
     let style = WINDOW_STYLE(style_bits);
-    create_control(parent, "EDIT", "", x, y, width, height, id, style, true)
+    create_control(
+        parent,
+        "EDIT",
+        "",
+        x,
+        y,
+        width,
+        height,
+        id,
+        style,
+        crate::ui::edit::edit_uses_native_border(id as usize),
+    )
 }
 
 #[cfg(windows)]

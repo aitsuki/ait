@@ -449,6 +449,12 @@ fn translation_window_layout_places_update_button_before_profile_combo() {
 }
 
 #[test]
+fn translation_multiline_edit_controls_use_modern_border() {
+    assert!(!ait::ui::edit::edit_uses_native_border(2101));
+    assert!(!ait::ui::edit::edit_uses_native_border(2102));
+}
+
+#[test]
 fn translation_window_update_button_is_hidden_without_update_status() {
     assert!(!translation_window_update_button_visible(None));
 }
