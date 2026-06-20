@@ -29,8 +29,7 @@ impl TrayIcon {
             NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NOTIFYICONDATAW, Shell_NotifyIconW,
         };
         use windows::Win32::UI::WindowsAndMessaging::{
-            CreateWindowExW, HICON, IDI_APPLICATION, LoadIconW, RegisterClassW, WINDOW_EX_STYLE,
-            WINDOW_STYLE, WNDCLASSW,
+            CreateWindowExW, RegisterClassW, WINDOW_EX_STYLE, WINDOW_STYLE, WNDCLASSW,
         };
         use windows::core::PCWSTR;
 
@@ -62,7 +61,7 @@ impl TrayIcon {
             )
             .map_err(|err| AppError::Windows(format!("创建托盘窗口失败: {err}")))?;
 
-            let icon = LoadIconW(None, IDI_APPLICATION).unwrap_or(HICON::default());
+            let icon = load_tray_icon();
             let mut data = NOTIFYICONDATAW {
                 cbSize: std::mem::size_of::<NOTIFYICONDATAW>() as u32,
                 hWnd: hwnd,
@@ -165,6 +164,36 @@ unsafe extern "system" fn tray_wnd_proc(
     }
 
     unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
+}
+
+#[cfg(windows)]
+unsafe fn load_tray_icon() -> windows::Win32::UI::WindowsAndMessaging::HICON {
+    use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetSystemMetrics, HICON, IDI_APPLICATION, IMAGE_ICON, LR_DEFAULTCOLOR, LR_SHARED,
+        LoadIconW, LoadImageW, SM_CXSMICON, SM_CYSMICON,
+    };
+    use windows::core::PCWSTR;
+
+    unsafe {
+        let icon_width = GetSystemMetrics(SM_CXSMICON);
+        let icon_height = GetSystemMetrics(SM_CYSMICON);
+
+        GetModuleHandleW(None)
+            .and_then(|module| {
+                LoadImageW(
+                    Some(windows::Win32::Foundation::HINSTANCE(module.0)),
+                    PCWSTR(1 as *const u16),
+                    IMAGE_ICON,
+                    icon_width,
+                    icon_height,
+                    LR_DEFAULTCOLOR | LR_SHARED,
+                )
+            })
+            .map(|handle| HICON(handle.0))
+            .or_else(|_| LoadIconW(None, IDI_APPLICATION))
+            .unwrap_or(HICON::default())
+    }
 }
 
 #[cfg(windows)]

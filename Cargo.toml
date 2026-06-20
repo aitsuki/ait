@@ -28,8 +28,12 @@ windows = { version = "0.62.2", features = [
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
     "Win32_Graphics_Gdi",
+    "Win32_System_LibraryLoader",
 ] }
 
 [dev-dependencies]
 httpmock = "0.8.3"
 tempfile = "3.27.0"
+
+[build-dependencies]
+embed-resource = "3.0.6"
