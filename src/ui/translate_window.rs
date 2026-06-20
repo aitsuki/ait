@@ -161,6 +161,7 @@ pub struct ControlRect {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TranslationWindowLayout {
     pub profile_combo: ControlRect,
+    pub update_button: ControlRect,
     pub source_label: ControlRect,
     pub source_edit: ControlRect,
     pub translated_label: ControlRect,
@@ -176,6 +177,7 @@ pub fn translation_window_layout(client_width: i32, client_height: i32) -> Trans
     const STATUS_HEIGHT: i32 = 22;
     const BUTTON_WIDTH: i32 = 52;
     const BUTTON_HEIGHT: i32 = 28;
+    const UPDATE_BUTTON_WIDTH: i32 = 86;
     const MIN_EDIT_HEIGHT: i32 = 64;
     const MAX_SOURCE_EDIT_HEIGHT: i32 = 200;
 
@@ -198,12 +200,23 @@ pub fn translation_window_layout(client_width: i32, client_height: i32) -> Trans
         width: combo_width,
         height: combo_height,
     };
-
     let source_label = ControlRect {
         x: content_x,
         y: 14.min(usable_height - label_height),
         width: 80.min(content_width),
         height: label_height,
+    };
+    let update_button_width = UPDATE_BUTTON_WIDTH
+        .min((profile_combo.x - content_x - GAP).max(1))
+        .max(1);
+    let update_button_x = (profile_combo.x - GAP - update_button_width)
+        .max(content_x + source_label.width + GAP)
+        .min(usable_width - update_button_width);
+    let update_button = ControlRect {
+        x: update_button_x,
+        y: profile_combo.y,
+        width: update_button_width,
+        height: combo_height,
     };
     let source_edit_y = (source_label.y + label_height + 4).min(usable_height - 1);
     let edit_area_bottom = (bottom_y - GAP).max(source_edit_y + 1);
@@ -223,6 +236,7 @@ pub fn translation_window_layout(client_width: i32, client_height: i32) -> Trans
 
     TranslationWindowLayout {
         profile_combo,
+        update_button,
         source_label,
         source_edit: ControlRect {
             x: content_x,

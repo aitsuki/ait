@@ -439,6 +439,16 @@ fn translation_profile_combo_keeps_dropdown_height() {
 }
 
 #[test]
+fn translation_window_layout_places_update_button_before_profile_combo() {
+    let layout = translation_window_layout(620, 420);
+
+    assert_eq!(layout.update_button.height, layout.profile_combo.height);
+    assert!(layout.update_button.y <= layout.profile_combo.y + 2);
+    assert!(layout.update_button.x + layout.update_button.width < layout.profile_combo.x);
+    assert!(layout.update_button.x > layout.source_label.x + layout.source_label.width);
+}
+
+#[test]
 fn translation_window_update_button_is_hidden_without_update_status() {
     assert!(!translation_window_update_button_visible(None));
 }
