@@ -13,8 +13,9 @@ use ait::ui::translate_window::{
     edit_display_text, edit_shortcut_action, is_third_click_after_double_click,
     paragraph_selection_range_utf16, profile_selection_action, show_action,
     show_window_needs_topmost_raise, show_window_needs_topmost_reset, show_window_z_order,
-    translation_profile_combo_dropdown_height, translation_window_layout,
-    translation_window_min_client_size, translation_window_update_button_visible, window_z_order,
+    translation_profile_combo_dropdown_height, translation_static_text_uses_window_background,
+    translation_window_layout, translation_window_min_client_size,
+    translation_window_update_button_visible, window_z_order,
 };
 use ait::update::{UpdateStatus, latest_release_url};
 use std::cell::RefCell;
@@ -439,6 +440,14 @@ fn translation_profile_combo_keeps_dropdown_height() {
 }
 
 #[test]
+fn translation_window_layout_keeps_source_edit_below_top_controls() {
+    let layout = translation_window_layout(620, 420);
+
+    assert!(layout.source_edit.y >= layout.profile_combo.y + layout.profile_combo.height + 6);
+    assert!(layout.source_edit.y >= layout.update_button.y + layout.update_button.height + 6);
+}
+
+#[test]
 fn translation_window_layout_places_update_button_before_profile_combo() {
     let layout = translation_window_layout(620, 420);
 
@@ -452,6 +461,14 @@ fn translation_window_layout_places_update_button_before_profile_combo() {
 fn translation_multiline_edit_controls_use_modern_border() {
     assert!(!ait::ui::edit::edit_uses_native_border(2101));
     assert!(!ait::ui::edit::edit_uses_native_border(2102));
+}
+
+#[test]
+fn translation_static_text_controls_use_window_background() {
+    assert!(translation_static_text_uses_window_background(2103));
+    assert!(translation_static_text_uses_window_background(2104));
+    assert!(translation_static_text_uses_window_background(2105));
+    assert!(!translation_static_text_uses_window_background(2101));
 }
 
 #[test]

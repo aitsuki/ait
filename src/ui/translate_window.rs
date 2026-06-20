@@ -107,6 +107,10 @@ pub fn translation_profile_combo_dropdown_height() -> i32 {
     220
 }
 
+pub fn translation_static_text_uses_window_background(control_id: usize) -> bool {
+    matches!(control_id, 2103..=2105)
+}
+
 pub fn translation_window_update_button_visible(
     status: Option<&crate::update::UpdateStatus>,
 ) -> bool {
@@ -226,7 +230,13 @@ pub fn translation_window_layout(client_width: i32, client_height: i32) -> Trans
         width: update_button_width,
         height: combo_height,
     };
-    let source_edit_y = (source_label.y + label_height + 4).min(usable_height - 1);
+    let top_row_bottom = profile_combo
+        .y
+        .max(update_button.y)
+        .saturating_add(profile_combo.height.max(update_button.height));
+    let source_edit_y = (source_label.y + label_height + 4)
+        .max(top_row_bottom + 6)
+        .min(usable_height - 1);
     let edit_area_bottom = (bottom_y - GAP).max(source_edit_y + 1);
     let fixed_between_edits = GAP + label_height + 4;
     let available_edit_height = (edit_area_bottom - source_edit_y - fixed_between_edits).max(2);
@@ -681,7 +691,8 @@ unsafe extern "system" fn default_wnd_proc(
     use windows::Win32::Graphics::Gdi::InvalidateRect;
     use windows::Win32::UI::WindowsAndMessaging::{
         DefWindowProcW, PostMessageW, SW_HIDE, ShowWindow, WM_CLOSE, WM_COMMAND, WM_CTLCOLOREDIT,
-        WM_CTLCOLORSTATIC, WM_DRAWITEM, WM_GETMINMAXINFO, WM_KEYDOWN, WM_PAINT, WM_SIZE,
+        WM_CTLCOLORSTATIC, WM_DRAWITEM, WM_GETMINMAXINFO, WM_KEYDOWN, WM_MEASUREITEM, WM_PAINT,
+        WM_SIZE,
     };
 
     if msg == WM_CLOSE {
@@ -728,6 +739,7 @@ unsafe extern "system" fn default_wnd_proc(
                 } {
                     crate::ui::combo::set_combo_dropped(combo, true);
                     unsafe {
+                        crate::ui::combo::prepare_modern_combo_dropdown(combo);
                         crate::ui::combo::invalidate_modern_combo_for_child(hwnd, combo);
                     }
                 }
@@ -777,10 +789,17 @@ unsafe extern "system" fn default_wnd_proc(
         }
     }
     if msg == WM_CTLCOLORSTATIC {
-        if let Some(result) =
-            unsafe { crate::ui::edit::handle_modern_edit_color(hwnd, wparam, lparam, true) }
-        {
-            return result;
+        let child = windows::Win32::Foundation::HWND(lparam.0 as *mut core::ffi::c_void);
+        let id = unsafe { windows::Win32::UI::WindowsAndMessaging::GetDlgCtrlID(child) };
+        if crate::ui::edit::is_modern_edit(id as usize) {
+            if let Some(result) =
+                unsafe { crate::ui::edit::handle_modern_edit_color(hwnd, wparam, lparam, true) }
+            {
+                return result;
+            }
+        }
+        if translation_static_text_uses_window_background(id as usize) {
+            return unsafe { handle_static_text_color(wparam) };
         }
     }
     if msg == WM_PAINT {
@@ -788,14 +807,21 @@ unsafe extern "system" fn default_wnd_proc(
         unsafe {
             crate::ui::edit::paint_modern_edit_border(hwnd, ID_SOURCE_EDIT as i32);
             crate::ui::edit::paint_modern_edit_border(hwnd, ID_TRANSLATED_EDIT as i32);
-            crate::ui::combo::paint_modern_combo_border(hwnd, ID_PROFILE_COMBO as i32);
         }
         return result;
     }
     if msg == WM_DRAWITEM {
+        if unsafe { crate::ui::combo::draw_owner_draw_combo_item(lparam.0 as _) } {
+            return LRESULT(1);
+        }
         if unsafe { crate::ui::button::draw_owner_draw_button(lparam.0 as _) } {
             return LRESULT(1);
         }
+    }
+    if msg == WM_MEASUREITEM
+        && unsafe { crate::ui::combo::measure_owner_draw_combo_item(lparam.0 as _) }
+    {
+        return LRESULT(1);
     }
     if msg == WM_SIZE {
         let _ = resize_translation_window(hwnd);
@@ -964,6 +990,21 @@ fn create_static(
 }
 
 #[cfg(windows)]
+unsafe fn handle_static_text_color(
+    wparam: windows::Win32::Foundation::WPARAM,
+) -> windows::Win32::Foundation::LRESULT {
+    use windows::Win32::Graphics::Gdi::{
+        COLOR_WINDOW, GetSysColorBrush, HDC, SetBkMode, TRANSPARENT,
+    };
+
+    let hdc = HDC(wparam.0 as *mut core::ffi::c_void);
+    unsafe {
+        let _ = SetBkMode(hdc, TRANSPARENT);
+    }
+    windows::Win32::Foundation::LRESULT(unsafe { GetSysColorBrush(COLOR_WINDOW) }.0 as isize)
+}
+
+#[cfg(windows)]
 fn create_button(
     parent: windows::Win32::Foundation::HWND,
     text: &str,
@@ -1041,13 +1082,19 @@ fn create_combo(
     height: i32,
     id: isize,
 ) -> Result<windows::Win32::Foundation::HWND> {
-    use windows::Win32::UI::WindowsAndMessaging::{CBS_DROPDOWNLIST, WINDOW_STYLE, WS_VSCROLL};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        CBS_DROPDOWNLIST, CBS_HASSTRINGS, CBS_OWNERDRAWFIXED, WINDOW_STYLE, WS_VSCROLL,
+    };
     let rect = combo_content_rect(ControlRect {
         x,
         y,
         width,
         height,
     });
+    let mut style_bits = CBS_DROPDOWNLIST as u32 | WS_VSCROLL.0;
+    if crate::ui::combo::is_modern_combo(id as usize) {
+        style_bits |= (CBS_OWNERDRAWFIXED | CBS_HASSTRINGS) as u32;
+    }
     let hwnd = create_control(
         parent,
         "COMBOBOX",
@@ -1057,7 +1104,7 @@ fn create_combo(
         rect.width,
         rect.height,
         id,
-        WINDOW_STYLE(CBS_DROPDOWNLIST as u32 | WS_VSCROLL.0),
+        WINDOW_STYLE(style_bits),
         crate::ui::combo::combo_uses_native_border(id as usize),
     )?;
     if crate::ui::combo::is_modern_combo(id as usize) {

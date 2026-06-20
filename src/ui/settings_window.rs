@@ -934,6 +934,10 @@ pub fn settings_static_controls_have_border() -> bool {
     false
 }
 
+pub fn settings_static_text_uses_window_background(control_id: usize) -> bool {
+    matches!(control_id, 0 | 3110..=3115 | 3118)
+}
+
 #[cfg(windows)]
 #[derive(Default)]
 struct SettingsWindowRegistry {
@@ -1013,8 +1017,8 @@ unsafe extern "system" fn default_wnd_proc(
     use windows::Win32::Foundation::LRESULT;
     use windows::Win32::UI::WindowsAndMessaging::{
         DefWindowProcW, DestroyWindow, GWLP_USERDATA, GetWindowLongPtrW, SetWindowLongPtrW,
-        WM_CLOSE, WM_COMMAND, WM_CTLCOLOREDIT, WM_CTLCOLORSTATIC, WM_DRAWITEM, WM_NCDESTROY,
-        WM_PAINT,
+        WM_CLOSE, WM_COMMAND, WM_CTLCOLOREDIT, WM_CTLCOLORSTATIC, WM_DRAWITEM, WM_MEASUREITEM,
+        WM_NCDESTROY, WM_PAINT,
     };
 
     if msg == WM_CLOSE {
@@ -1126,6 +1130,9 @@ unsafe extern "system" fn default_wnd_proc(
                 return result;
             }
         }
+        if settings_static_text_uses_window_background(id as usize) {
+            return unsafe { handle_static_text_color(wparam) };
+        }
     }
     if msg == WM_PAINT {
         let result = unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) };
@@ -1135,9 +1142,17 @@ unsafe extern "system" fn default_wnd_proc(
         return result;
     }
     if msg == WM_DRAWITEM {
+        if unsafe { crate::ui::combo::draw_owner_draw_combo_item(lparam.0 as _) } {
+            return LRESULT(1);
+        }
         if unsafe { crate::ui::button::draw_owner_draw_button(lparam.0 as _) } {
             return LRESULT(1);
         }
+    }
+    if msg == WM_MEASUREITEM
+        && unsafe { crate::ui::combo::measure_owner_draw_combo_item(lparam.0 as _) }
+    {
+        return LRESULT(1);
     }
     if msg == WM_NCDESTROY {
         {
@@ -1736,6 +1751,21 @@ fn create_static(
         Default::default(),
         false,
     )
+}
+
+#[cfg(windows)]
+unsafe fn handle_static_text_color(
+    wparam: windows::Win32::Foundation::WPARAM,
+) -> windows::Win32::Foundation::LRESULT {
+    use windows::Win32::Graphics::Gdi::{
+        COLOR_WINDOW, GetSysColorBrush, HDC, SetBkMode, TRANSPARENT,
+    };
+
+    let hdc = HDC(wparam.0 as *mut core::ffi::c_void);
+    unsafe {
+        let _ = SetBkMode(hdc, TRANSPARENT);
+    }
+    windows::Win32::Foundation::LRESULT(unsafe { GetSysColorBrush(COLOR_WINDOW) }.0 as isize)
 }
 
 #[cfg(windows)]

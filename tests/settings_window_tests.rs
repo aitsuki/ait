@@ -7,8 +7,8 @@ use ait::ui::settings_window::{
     settings_edit_child_rect, settings_profile_detail_control_rect,
     settings_profile_detail_control_states, settings_profile_detail_hidden_rect,
     settings_profile_google_notice_text, settings_save_outcome_after_success,
-    settings_static_controls_have_border, settings_window_center_position, settings_window_layout,
-    settings_window_uses_background_brush,
+    settings_static_controls_have_border, settings_static_text_uses_window_background,
+    settings_window_center_position, settings_window_layout, settings_window_uses_background_brush,
 };
 use ait::update::latest_release_url;
 
@@ -642,6 +642,15 @@ fn settings_window_erases_hidden_control_pixels() {
 #[test]
 fn settings_static_controls_are_not_framed() {
     assert!(!settings_static_controls_have_border());
+}
+
+#[test]
+fn settings_static_text_controls_use_window_background() {
+    assert!(settings_static_text_uses_window_background(0));
+    assert!(settings_static_text_uses_window_background(3110));
+    assert!(settings_static_text_uses_window_background(3111));
+    assert!(settings_static_text_uses_window_background(3118));
+    assert!(!settings_static_text_uses_window_background(3102));
 }
 
 #[test]
