@@ -630,10 +630,10 @@ impl TranslationWindow {
             let layout = translation_window_layout(rect.right - rect.left, rect.bottom - rect.top);
             move_window(
                 self.profile_combo,
-                ControlRect {
+                combo_content_rect(ControlRect {
                     height: translation_profile_combo_dropdown_height(),
                     ..layout.profile_combo
-                },
+                }),
             )?;
             move_window(self.source_label, layout.source_label)?;
             move_window(self.source_edit, edit_content_rect(layout.source_edit))?;
@@ -1042,14 +1042,20 @@ fn create_combo(
     id: isize,
 ) -> Result<windows::Win32::Foundation::HWND> {
     use windows::Win32::UI::WindowsAndMessaging::{CBS_DROPDOWNLIST, WINDOW_STYLE, WS_VSCROLL};
-    let hwnd = create_control(
-        parent,
-        "COMBOBOX",
-        "",
+    let rect = combo_content_rect(ControlRect {
         x,
         y,
         width,
         height,
+    });
+    let hwnd = create_control(
+        parent,
+        "COMBOBOX",
+        "",
+        rect.x,
+        rect.y,
+        rect.width,
+        rect.height,
         id,
         WINDOW_STYLE(CBS_DROPDOWNLIST as u32 | WS_VSCROLL.0),
         crate::ui::combo::combo_uses_native_border(id as usize),
@@ -1171,6 +1177,22 @@ fn move_window(hwnd: windows::Win32::Foundation::HWND, rect: ControlRect) -> Res
 #[cfg(windows)]
 fn edit_content_rect(rect: ControlRect) -> ControlRect {
     let content = crate::ui::edit::modern_edit_child_rect(rect.x, rect.y, rect.width, rect.height);
+    ControlRect {
+        x: content.x,
+        y: content.y,
+        width: content.width,
+        height: content.height,
+    }
+}
+
+fn combo_content_rect(rect: ControlRect) -> ControlRect {
+    let content = crate::ui::combo::modern_combo_child_rect(
+        ID_PROFILE_COMBO as usize,
+        rect.x,
+        rect.y,
+        rect.width,
+        rect.height,
+    );
     ControlRect {
         x: content.x,
         y: content.y,
@@ -1311,10 +1333,10 @@ fn resize_translation_window(hwnd: windows::Win32::Foundation::HWND) -> Result<(
         .map_err(|err| AppError::Windows(format!("获取更新按钮失败: {err}")))?;
         move_window(
             profile_combo,
-            ControlRect {
+            combo_content_rect(ControlRect {
                 height: translation_profile_combo_dropdown_height(),
                 ..layout.profile_combo
-            },
+            }),
         )?;
         move_window(source_label, layout.source_label)?;
         move_window(source_edit, edit_content_rect(layout.source_edit))?;

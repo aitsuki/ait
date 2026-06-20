@@ -43,6 +43,14 @@ pub struct ComboTextRect {
     pub bottom: i32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ComboRect {
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
+}
+
 pub fn combo_palette(state: ComboVisualState) -> ComboPalette {
     if state.disabled {
         return ComboPalette {
@@ -71,14 +79,35 @@ pub fn combo_uses_native_border(id: usize) -> bool {
     !is_modern_combo(id)
 }
 
-pub fn modern_combo_frame_rect(left: i32, top: i32, right: i32, bottom: i32) -> ComboTextRect {
+pub fn modern_combo_frame_rect(left: i32, top: i32, right: i32, _bottom: i32) -> ComboTextRect {
     ComboTextRect {
-        left,
-        top,
-        right,
-        bottom,
+        left: left - MODERN_COMBO_FRAME_GUTTER,
+        top: top - MODERN_COMBO_FRAME_GUTTER,
+        right: right + MODERN_COMBO_FRAME_GUTTER,
+        bottom: top - MODERN_COMBO_FRAME_GUTTER + MODERN_COMBO_VISIBLE_HEIGHT,
     }
 }
+
+pub fn modern_combo_child_rect(id: usize, x: i32, y: i32, width: i32, height: i32) -> ComboRect {
+    if is_modern_combo(id) {
+        return ComboRect {
+            x: x + MODERN_COMBO_FRAME_GUTTER,
+            y: y + MODERN_COMBO_FRAME_GUTTER,
+            width: (width - MODERN_COMBO_FRAME_GUTTER * 2).max(1),
+            height,
+        };
+    }
+
+    ComboRect {
+        x,
+        y,
+        width,
+        height,
+    }
+}
+
+pub const MODERN_COMBO_FRAME_GUTTER: i32 = 2;
+pub const MODERN_COMBO_VISIBLE_HEIGHT: i32 = 26;
 
 #[cfg(windows)]
 impl RgbColor {
@@ -293,7 +322,7 @@ unsafe extern "system" fn modern_combo_subclass_proc(
 mod tests {
     use super::{
         ComboVisualState, RgbColor, combo_palette, combo_uses_native_border, is_modern_combo,
-        modern_combo_frame_rect,
+        modern_combo_child_rect, modern_combo_frame_rect,
     };
 
     #[test]
@@ -351,11 +380,21 @@ mod tests {
 
     #[test]
     fn frame_rect_matches_control_bounds() {
-        let rect = modern_combo_frame_rect(408, 12, 588, 38);
+        let rect = modern_combo_frame_rect(410, 14, 586, 234);
         assert_eq!(rect.left, 408);
         assert_eq!(rect.top, 12);
         assert_eq!(rect.right, 588);
         assert_eq!(rect.bottom, 38);
+    }
+
+    #[test]
+    fn modern_combo_child_rect_leaves_room_for_parent_drawn_visible_frame() {
+        let rect = modern_combo_child_rect(2106, 408, 12, 180, 220);
+
+        assert!(rect.x > 408);
+        assert!(rect.y > 12);
+        assert!(rect.width < 180);
+        assert_eq!(rect.height, 220);
     }
 
     #[cfg(windows)]
