@@ -15,10 +15,15 @@ const ID_PROFILE_COMBO: isize = 2106;
 #[cfg(windows)]
 const ID_TRANSLATE: usize = 2001;
 #[cfg(windows)]
+const ID_UPDATE_BUTTON: usize = 2002;
+#[cfg(windows)]
 pub const WM_TRANSLATE_WINDOW_SOURCE: u32 = windows::Win32::UI::WindowsAndMessaging::WM_APP + 30;
 #[cfg(windows)]
 pub const WM_TRANSLATE_WINDOW_PROFILE_CHANGED: u32 =
     windows::Win32::UI::WindowsAndMessaging::WM_APP + 31;
+#[cfg(windows)]
+pub const WM_TRANSLATE_WINDOW_UPDATE_CLICKED: u32 =
+    windows::Win32::UI::WindowsAndMessaging::WM_APP + 32;
 
 #[derive(Debug, Clone)]
 pub struct TranslationWindowState {
@@ -406,8 +411,10 @@ pub struct TranslationWindow {
     status_text: windows::Win32::Foundation::HWND,
     translate_button: windows::Win32::Foundation::HWND,
     profile_combo: windows::Win32::Foundation::HWND,
+    update_button: windows::Win32::Foundation::HWND,
     profile_options: Vec<TranslationProfileOption>,
     state: TranslationWindowState,
+    update_status: Option<crate::update::UpdateStatus>,
 }
 
 #[cfg(windows)]
@@ -460,6 +467,9 @@ impl TranslationWindow {
             let translate_button =
                 create_button(hwnd, "翻译", 534, 322, 52, 28, ID_TRANSLATE as isize)?;
             let profile_combo = create_combo(hwnd, 408, 12, 180, 220, ID_PROFILE_COMBO)?;
+            let update_button =
+                create_button(hwnd, "有新版本", 314, 12, 86, 26, ID_UPDATE_BUTTON as isize)?;
+            hide_window(update_button);
             install_edit_subclass(source_edit)?;
             install_edit_subclass(translated_edit)?;
 
@@ -472,6 +482,7 @@ impl TranslationWindow {
                 status_text,
                 translate_button,
                 profile_combo,
+                update_button,
                 profile_options: Vec::new(),
                 state: TranslationWindowState {
                     source_text: String::new(),
@@ -479,6 +490,7 @@ impl TranslationWindow {
                     loading: false,
                     error: None,
                 },
+                update_status: None,
             };
             this.apply_layout()?;
 
@@ -568,6 +580,19 @@ impl TranslationWindow {
         get_text(self.source_edit)
     }
 
+    pub fn show_update_available(&mut self, status: crate::update::UpdateStatus) -> Result<()> {
+        self.update_status = Some(status);
+        set_window_visible(
+            self.update_button,
+            translation_window_update_button_visible(self.update_status.as_ref()),
+        );
+        Ok(())
+    }
+
+    pub fn update_status(&self) -> Option<&crate::update::UpdateStatus> {
+        self.update_status.as_ref()
+    }
+
     pub fn hwnd(&self) -> windows::Win32::Foundation::HWND {
         self.hwnd
     }
@@ -611,6 +636,7 @@ impl TranslationWindow {
             move_window(self.translated_edit, layout.translated_edit)?;
             move_window(self.status_text, layout.status_text)?;
             move_window(self.translate_button, layout.translate_button)?;
+            move_window(self.update_button, layout.update_button)?;
         }
         Ok(())
     }
@@ -668,6 +694,15 @@ unsafe extern "system" fn default_wnd_proc(
         match command {
             ID_TRANSLATE => unsafe {
                 let _ = PostMessageW(Some(hwnd), WM_TRANSLATE_WINDOW_SOURCE, WPARAM(0), LPARAM(0));
+                return LRESULT(0);
+            },
+            ID_UPDATE_BUTTON => unsafe {
+                let _ = PostMessageW(
+                    Some(hwnd),
+                    WM_TRANSLATE_WINDOW_UPDATE_CLICKED,
+                    WPARAM(0),
+                    LPARAM(0),
+                );
                 return LRESULT(0);
             },
             command
@@ -1096,6 +1131,11 @@ fn resize_translation_window(hwnd: windows::Win32::Foundation::HWND) -> Result<(
         let translate_button =
             windows::Win32::UI::WindowsAndMessaging::GetDlgItem(Some(hwnd), ID_TRANSLATE as i32)
                 .map_err(|err| AppError::Windows(format!("获取翻译按钮失败: {err}")))?;
+        let update_button = windows::Win32::UI::WindowsAndMessaging::GetDlgItem(
+            Some(hwnd),
+            ID_UPDATE_BUTTON as i32,
+        )
+        .map_err(|err| AppError::Windows(format!("获取更新按钮失败: {err}")))?;
         move_window(
             profile_combo,
             ControlRect {
@@ -1109,7 +1149,30 @@ fn resize_translation_window(hwnd: windows::Win32::Foundation::HWND) -> Result<(
         move_window(translated_edit, layout.translated_edit)?;
         move_window(status_text, layout.status_text)?;
         move_window(translate_button, layout.translate_button)?;
+        move_window(update_button, layout.update_button)?;
         Ok(())
+    }
+}
+
+#[cfg(windows)]
+fn hide_window(hwnd: windows::Win32::Foundation::HWND) {
+    unsafe {
+        let _ = windows::Win32::UI::WindowsAndMessaging::ShowWindow(
+            hwnd,
+            windows::Win32::UI::WindowsAndMessaging::SW_HIDE,
+        );
+    }
+}
+
+#[cfg(windows)]
+fn set_window_visible(hwnd: windows::Win32::Foundation::HWND, visible: bool) {
+    let command = if visible {
+        windows::Win32::UI::WindowsAndMessaging::SW_SHOW
+    } else {
+        windows::Win32::UI::WindowsAndMessaging::SW_HIDE
+    };
+    unsafe {
+        let _ = windows::Win32::UI::WindowsAndMessaging::ShowWindow(hwnd, command);
     }
 }
 
