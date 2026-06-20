@@ -277,6 +277,27 @@ pub fn hotkey_action(is_translation_window_foreground: bool) -> HotkeyAction {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UpdateCheckAction {
+    Ignore,
+    ShowDialog,
+    ShowUpdateButton,
+}
+
+pub fn update_check_action(
+    result: std::result::Result<UpdateStatus, String>,
+    show_all: bool,
+) -> UpdateCheckAction {
+    match result {
+        Ok(UpdateStatus::UpdateAvailable { .. }) if show_all => UpdateCheckAction::ShowDialog,
+        Ok(UpdateStatus::UpdateAvailable { .. }) => UpdateCheckAction::ShowUpdateButton,
+        Ok(UpdateStatus::UpToDate) if show_all => UpdateCheckAction::ShowDialog,
+        Ok(UpdateStatus::UpToDate) => UpdateCheckAction::Ignore,
+        Err(_) if show_all => UpdateCheckAction::ShowDialog,
+        Err(_) => UpdateCheckAction::Ignore,
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TrayAction {
     ShowTranslationWindow,
     OpenSettings,

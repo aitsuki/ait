@@ -1,8 +1,8 @@
 use ait::app::{
     HotkeyAction, HotkeyRegistrationUpdate, TranslationObserver, TranslationRequestKind,
-    TranslationWorkflow, TranslationWorkflowResult, WorkflowCapture, WorkflowTranslator,
-    hotkey_action, hotkey_registration_update, run_translation_request_with_observer,
-    translation_task_action,
+    TranslationWorkflow, TranslationWorkflowResult, UpdateCheckAction, WorkflowCapture,
+    WorkflowTranslator, hotkey_action, hotkey_registration_update, run_translation_request_with_observer,
+    translation_task_action, update_check_action,
 };
 use ait::capture::CapturedText;
 use ait::config::AppSettings;
@@ -503,6 +503,46 @@ fn runtime_select_profile_updates_default_profile() {
 
     assert_eq!(state.active_profile_id(), "deepseek");
     assert_eq!(state.settings().default_profile_id, "deepseek");
+}
+
+#[test]
+fn silent_update_check_shows_button_instead_of_dialog_when_update_available() {
+    let status = UpdateStatus::UpdateAvailable {
+        current_version: "v0.1.4".to_string(),
+        latest_version: "v0.1.5".to_string(),
+        release_url: latest_release_url().to_string(),
+    };
+
+    assert_eq!(
+        update_check_action(Ok(status), false),
+        UpdateCheckAction::ShowUpdateButton
+    );
+}
+
+#[test]
+fn explicit_update_check_still_shows_dialog_when_update_available() {
+    let status = UpdateStatus::UpdateAvailable {
+        current_version: "v0.1.4".to_string(),
+        latest_version: "v0.1.5".to_string(),
+        release_url: latest_release_url().to_string(),
+    };
+
+    assert_eq!(
+        update_check_action(Ok(status), true),
+        UpdateCheckAction::ShowDialog
+    );
+}
+
+#[test]
+fn silent_update_check_ignores_up_to_date_and_errors() {
+    assert_eq!(
+        update_check_action(Ok(UpdateStatus::UpToDate), false),
+        UpdateCheckAction::Ignore
+    );
+    assert_eq!(
+        update_check_action(Err("network".to_string()), false),
+        UpdateCheckAction::Ignore
+    );
 }
 
 #[test]
