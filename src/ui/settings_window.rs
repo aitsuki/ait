@@ -261,6 +261,13 @@ pub fn settings_profile_detail_control_states(
 pub fn settings_profile_detail_control_rect(
     control: SettingsProfileDetailControl,
 ) -> SettingsControlRect {
+    const DETAIL_INPUT_X: i32 = 370;
+    const DETAIL_INPUT_WIDTH: i32 = 300;
+    const API_KEY_VISIBILITY_GAP: i32 = 12;
+    const API_KEY_VISIBILITY_WIDTH: i32 = 52;
+    const API_KEY_INPUT_WIDTH: i32 =
+        DETAIL_INPUT_WIDTH - API_KEY_VISIBILITY_GAP - API_KEY_VISIBILITY_WIDTH;
+
     match control {
         SettingsProfileDetailControl::NameLabel => SettingsControlRect {
             x: 266,
@@ -269,9 +276,9 @@ pub fn settings_profile_detail_control_rect(
             height: 24,
         },
         SettingsProfileDetailControl::NameInput => SettingsControlRect {
-            x: 370,
+            x: DETAIL_INPUT_X,
             y: 100,
-            width: 240,
+            width: DETAIL_INPUT_WIDTH,
             height: 32,
         },
         SettingsProfileDetailControl::BaseUrlLabel => SettingsControlRect {
@@ -281,9 +288,9 @@ pub fn settings_profile_detail_control_rect(
             height: 24,
         },
         SettingsProfileDetailControl::BaseUrlInput => SettingsControlRect {
-            x: 370,
+            x: DETAIL_INPUT_X,
             y: 146,
-            width: 300,
+            width: DETAIL_INPUT_WIDTH,
             height: 32,
         },
         SettingsProfileDetailControl::ModelLabel => SettingsControlRect {
@@ -293,9 +300,9 @@ pub fn settings_profile_detail_control_rect(
             height: 24,
         },
         SettingsProfileDetailControl::ModelInput => SettingsControlRect {
-            x: 370,
+            x: DETAIL_INPUT_X,
             y: 192,
-            width: 240,
+            width: DETAIL_INPUT_WIDTH,
             height: 32,
         },
         SettingsProfileDetailControl::ApiKeyLabel => SettingsControlRect {
@@ -305,9 +312,9 @@ pub fn settings_profile_detail_control_rect(
             height: 24,
         },
         SettingsProfileDetailControl::ApiKeyInput => SettingsControlRect {
-            x: 370,
+            x: DETAIL_INPUT_X,
             y: 238,
-            width: 240,
+            width: API_KEY_INPUT_WIDTH,
             height: 32,
         },
         SettingsProfileDetailControl::TimeoutLabel => SettingsControlRect {
@@ -317,9 +324,9 @@ pub fn settings_profile_detail_control_rect(
             height: 24,
         },
         SettingsProfileDetailControl::TimeoutInput => SettingsControlRect {
-            x: 370,
+            x: DETAIL_INPUT_X,
             y: 284,
-            width: 90,
+            width: DETAIL_INPUT_WIDTH,
             height: 32,
         },
         SettingsProfileDetailControl::GoogleNotice => SettingsControlRect {
@@ -625,7 +632,14 @@ impl SettingsWindow {
             let settings_ptr = Box::into_raw(Box::new(settings.clone()));
             let _ = SetWindowLongPtrW(hwnd, GWLP_USERDATA, settings_ptr as isize);
 
-            create_static(hwnd, "快捷键", 18, 20, 90, 22)?;
+            create_static(
+                hwnd,
+                "快捷键",
+                layout.hotkey_label.x,
+                layout.hotkey_label.y,
+                layout.hotkey_label.width,
+                layout.hotkey_label.height,
+            )?;
             let hotkey_edit = create_edit(
                 hwnd,
                 &view_model.hotkey,
@@ -656,12 +670,50 @@ impl SettingsWindow {
                 layout.separator.height,
             )?;
 
-            create_static(hwnd, "翻译配置", 18, 74, 120, 22)?;
-            let profile_list = create_listbox(hwnd, 18, 100, 220, 228, ID_PROFILE_LIST)?;
+            create_static(
+                hwnd,
+                "翻译配置",
+                layout.profile_title.x,
+                layout.profile_title.y,
+                layout.profile_title.width,
+                layout.profile_title.height,
+            )?;
+            let profile_list = create_listbox(
+                hwnd,
+                layout.profile_list.x,
+                layout.profile_list.y,
+                layout.profile_list.width,
+                layout.profile_list.height,
+                ID_PROFILE_LIST,
+            )?;
             reset_profile_list(profile_list, &view_model)?;
-            create_button(hwnd, "新增", 18, 342, 64, 28, ID_NEW_PROFILE)?;
-            let delete_button = create_button(hwnd, "删除", 90, 342, 64, 28, ID_DELETE_PROFILE)?;
-            create_button(hwnd, "设为默认", 162, 342, 76, 28, ID_SET_DEFAULT)?;
+            create_button(
+                hwnd,
+                "新增",
+                layout.new_profile.x,
+                layout.new_profile.y,
+                layout.new_profile.width,
+                layout.new_profile.height,
+                ID_NEW_PROFILE,
+            )?;
+            let delete_button = create_button(
+                hwnd,
+                "删除",
+                layout.delete_profile.x,
+                layout.delete_profile.y,
+                layout.delete_profile.width,
+                layout.delete_profile.height,
+                ID_DELETE_PROFILE,
+            )?;
+            create_button(
+                hwnd,
+                "设为默认",
+                layout.set_default_profile.x,
+                layout.set_default_profile.y,
+                layout.set_default_profile.width,
+                layout.set_default_profile.height,
+                ID_SET_DEFAULT,
+            )?;
 
             let name_label_rect =
                 settings_profile_detail_control_rect(SettingsProfileDetailControl::NameLabel);
@@ -825,8 +877,24 @@ impl SettingsWindow {
                 layout.update_action.height,
                 ID_CHECK_UPDATE,
             )?;
-            create_button(hwnd, "保存", 534, 382, 72, 28, ID_SAVE)?;
-            create_button(hwnd, "取消", 614, 382, 72, 28, ID_CANCEL)?;
+            create_button(
+                hwnd,
+                "保存",
+                layout.save_action.x,
+                layout.save_action.y,
+                layout.save_action.width,
+                layout.save_action.height,
+                ID_SAVE,
+            )?;
+            create_button(
+                hwnd,
+                "取消",
+                layout.cancel_action.x,
+                layout.cancel_action.y,
+                layout.cancel_action.width,
+                layout.cancel_action.height,
+                ID_CANCEL,
+            )?;
             {
                 let mut registry = settings_window_registry().lock().unwrap();
                 registry.set(hwnd.0 as isize);
@@ -870,17 +938,30 @@ pub struct SettingsControlRect {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SettingsWindowLayout {
+    pub hotkey_label: SettingsControlRect,
     pub hotkey: SettingsControlRect,
     pub auto_start: SettingsControlRect,
     pub separator: SettingsControlRect,
+    pub profile_title: SettingsControlRect,
     pub profile_list: SettingsControlRect,
+    pub new_profile: SettingsControlRect,
+    pub delete_profile: SettingsControlRect,
+    pub set_default_profile: SettingsControlRect,
     pub name: SettingsControlRect,
     pub version: SettingsControlRect,
     pub update_action: SettingsControlRect,
+    pub save_action: SettingsControlRect,
+    pub cancel_action: SettingsControlRect,
 }
 
 pub fn settings_window_layout() -> SettingsWindowLayout {
     SettingsWindowLayout {
+        hotkey_label: SettingsControlRect {
+            x: 18,
+            y: 22,
+            width: 90,
+            height: 24,
+        },
         hotkey: SettingsControlRect {
             x: 118,
             y: 18,
@@ -889,9 +970,9 @@ pub fn settings_window_layout() -> SettingsWindowLayout {
         },
         auto_start: SettingsControlRect {
             x: 320,
-            y: 25,
+            y: 18,
             width: 100,
-            height: 24,
+            height: 32,
         },
         separator: SettingsControlRect {
             x: 18,
@@ -899,11 +980,35 @@ pub fn settings_window_layout() -> SettingsWindowLayout {
             width: 668,
             height: 1,
         },
+        profile_title: SettingsControlRect {
+            x: 18,
+            y: 74,
+            width: 120,
+            height: 22,
+        },
         profile_list: SettingsControlRect {
             x: 18,
             y: 100,
             width: 220,
             height: 228,
+        },
+        new_profile: SettingsControlRect {
+            x: 18,
+            y: 342,
+            width: 64,
+            height: 28,
+        },
+        delete_profile: SettingsControlRect {
+            x: 90,
+            y: 342,
+            width: 64,
+            height: 28,
+        },
+        set_default_profile: SettingsControlRect {
+            x: 162,
+            y: 342,
+            width: 76,
+            height: 28,
         },
         name: SettingsControlRect {
             x: 370,
@@ -913,14 +1018,26 @@ pub fn settings_window_layout() -> SettingsWindowLayout {
         },
         version: SettingsControlRect {
             x: 18,
-            y: 386,
+            y: 385,
             width: 160,
             height: 22,
         },
         update_action: SettingsControlRect {
             x: 180,
-            y: 386,
+            y: 382,
             width: 88,
+            height: 28,
+        },
+        save_action: SettingsControlRect {
+            x: 534,
+            y: 382,
+            width: 72,
+            height: 28,
+        },
+        cancel_action: SettingsControlRect {
+            x: 614,
+            y: 382,
+            width: 72,
             height: 28,
         },
     }

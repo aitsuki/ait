@@ -607,6 +607,14 @@ fn successful_settings_save_keeps_window_open() {
 fn settings_window_layout_places_global_settings_above_profiles() {
     let layout = settings_window_layout();
 
+    assert_eq!(
+        layout.hotkey_label.y + layout.hotkey_label.height / 2,
+        layout.hotkey.y + layout.hotkey.height / 2
+    );
+    assert_eq!(
+        layout.auto_start.y + layout.auto_start.height / 2,
+        layout.hotkey.y + layout.hotkey.height / 2
+    );
     assert!(layout.hotkey.y < layout.separator.y);
     assert!(layout.profile_list.y > layout.separator.y);
     assert!(layout.name.y > layout.separator.y);
@@ -616,10 +624,11 @@ fn settings_window_layout_places_global_settings_above_profiles() {
 fn settings_window_layout_places_auto_start_with_global_settings() {
     let layout = settings_window_layout();
 
-    assert!(layout.auto_start.y > layout.hotkey.y);
+    assert_eq!(layout.auto_start.y, layout.hotkey.y);
     assert!(layout.auto_start.y < layout.separator.y);
     assert!(layout.version.y > layout.profile_list.y);
-    assert!(layout.update_action.y >= layout.version.y);
+    assert_eq!(layout.update_action.y, layout.save_action.y);
+    assert_eq!(layout.cancel_action.y, layout.save_action.y);
 }
 
 #[test]
@@ -632,6 +641,19 @@ fn settings_window_layout_keeps_version_label_in_visible_client_area() {
     let layout = settings_window_layout();
 
     assert!(layout.version.y + layout.version.height <= 410);
+    assert!(layout.update_action.y + layout.update_action.height <= 410);
+    assert!(layout.save_action.y + layout.save_action.height <= 410);
+    assert!(layout.cancel_action.y + layout.cancel_action.height <= 410);
+}
+
+#[test]
+fn settings_window_layout_keeps_bottom_actions_on_one_baseline() {
+    let layout = settings_window_layout();
+
+    assert_eq!(layout.update_action.y, layout.save_action.y);
+    assert_eq!(layout.cancel_action.y, layout.save_action.y);
+    assert_eq!(layout.update_action.height, layout.save_action.height);
+    assert_eq!(layout.cancel_action.height, layout.save_action.height);
 }
 
 #[test]
@@ -709,6 +731,21 @@ fn settings_profile_detail_layout_gives_single_line_edits_full_content_height() 
     assert!(model.y - base_url.y >= 44);
     assert!(api_key.y - model.y >= 44);
     assert!(timeout.y - api_key.y >= 44);
+}
+
+#[test]
+fn settings_profile_detail_inputs_share_one_right_edge() {
+    let name = settings_profile_detail_control_rect(SettingsProfileDetailControl::NameInput);
+    let base_url = settings_profile_detail_control_rect(SettingsProfileDetailControl::BaseUrlInput);
+    let model = settings_profile_detail_control_rect(SettingsProfileDetailControl::ModelInput);
+    let api_key = settings_profile_detail_control_rect(SettingsProfileDetailControl::ApiKeyInput);
+    let timeout = settings_profile_detail_control_rect(SettingsProfileDetailControl::TimeoutInput);
+    let right_edge = base_url.x + base_url.width;
+
+    assert_eq!(name.x + name.width, right_edge);
+    assert_eq!(model.x + model.width, right_edge);
+    assert_eq!(timeout.x + timeout.width, right_edge);
+    assert_eq!(api_key.x + api_key.width + 12 + 52, right_edge);
 }
 
 #[cfg(windows)]
