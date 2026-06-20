@@ -501,11 +501,16 @@ fn run_platform() -> Result<()> {
                                 latest_version,
                                 release_url,
                             };
-                            show_runtime_message(
-                                translation_window.hwnd(),
-                                "发现新版本",
-                                &update_status_message(&message.current_version, &status),
-                            );
+                            if matches!(message.display_mode, UpdateCheckDisplayMode::ShowAll) {
+                                show_runtime_message(
+                                    translation_window.hwnd(),
+                                    "发现新版本",
+                                    &update_status_message(&message.current_version, &status),
+                                );
+                            } else if let Err(err) = translation_window.show_update_available(status)
+                            {
+                                tracing::warn!(error = %err, "show update button failed");
+                            }
                         }
                         Err(err) => {
                             tracing::warn!(error = %err, "update check failed");
@@ -518,6 +523,16 @@ fn run_platform() -> Result<()> {
                             }
                         }
                     }
+                }
+            } else if msg.message
+                == crate::ui::translate_window::WM_TRANSLATE_WINDOW_UPDATE_CLICKED
+            {
+                if let Some(status) = translation_window.update_status() {
+                    show_runtime_message(
+                        translation_window.hwnd(),
+                        "发现新版本",
+                        &update_status_message(env!("CARGO_PKG_VERSION"), status),
+                    );
                 }
             } else if msg.message == crate::ui::settings_window::WM_SETTINGS_SAVED {
                 match SettingsStore::new(settings_dir.clone()).load() {
