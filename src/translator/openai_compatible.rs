@@ -56,6 +56,7 @@ impl OpenAiCompatibleTranslator {
                 },
             ],
             temperature: 0.2,
+            thinking: deepseek_thinking_config(self.config.provider),
         };
 
         let response = self
@@ -131,12 +132,29 @@ struct ChatRequest {
     model: String,
     messages: Vec<ChatMessage>,
     temperature: f32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    thinking: Option<ChatThinking>,
+}
+
+#[derive(Debug, Serialize)]
+struct ChatThinking {
+    r#type: String,
 }
 
 #[derive(Debug, Serialize)]
 struct ChatMessage {
     role: String,
     content: String,
+}
+
+fn deepseek_thinking_config(provider: ProviderKind) -> Option<ChatThinking> {
+    if provider == ProviderKind::DeepSeek {
+        Some(ChatThinking {
+            r#type: "disabled".to_string(),
+        })
+    } else {
+        None
+    }
 }
 
 #[derive(Debug, Deserialize)]
