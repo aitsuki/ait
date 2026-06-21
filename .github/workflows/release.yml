@@ -84,13 +84,6 @@ jobs:
 
           - `${{ steps.version.outputs.setup_name }}`: recommended for most users.
           - `${{ steps.version.outputs.portable_name }}`: portable single-file executable.
-
-          ## Notes
-
-          - Release builds run as a Windows GUI app and no longer open a console window.
-          - Windows only.
-          - The built-in no-key Google translation provider may be rate-limited or break.
-          - OpenAI-compatible providers can be configured in settings.
           '@ | Set-Content -Path release-notes.md -Encoding UTF8
 
       - name: Publish GitHub Release
