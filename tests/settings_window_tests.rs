@@ -596,10 +596,10 @@ fn settings_window_center_position_uses_work_area_center() {
 }
 
 #[test]
-fn successful_settings_save_keeps_window_open() {
+fn successful_settings_save_closes_window() {
     assert_eq!(
         settings_save_outcome_after_success(),
-        SettingsSaveOutcome::KeepOpen
+        SettingsSaveOutcome::CloseWindow
     );
 }
 

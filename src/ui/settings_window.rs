@@ -921,11 +921,11 @@ pub fn settings_window_center_position(
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettingsSaveOutcome {
-    KeepOpen,
+    CloseWindow,
 }
 
 pub fn settings_save_outcome_after_success() -> SettingsSaveOutcome {
-    SettingsSaveOutcome::KeepOpen
+    SettingsSaveOutcome::CloseWindow
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1220,6 +1220,9 @@ unsafe extern "system" fn default_wnd_proc(
                             windows::Win32::Foundation::WPARAM(0),
                             windows::Win32::Foundation::LPARAM(0),
                         );
+                    }
+                    if settings_save_outcome_after_success() == SettingsSaveOutcome::CloseWindow {
+                        let _ = DestroyWindow(hwnd);
                     }
                 },
                 Err(err) => {
