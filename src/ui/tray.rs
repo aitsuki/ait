@@ -5,6 +5,8 @@ pub const WM_TRAY_COMMAND: u32 = windows::Win32::UI::WindowsAndMessaging::WM_APP
 #[cfg(windows)]
 const WM_TRAY_ICON: u32 = windows::Win32::UI::WindowsAndMessaging::WM_APP + 21;
 #[cfg(windows)]
+pub const TRAY_WINDOW_CLASS_NAME: &str = "ait_tray_window";
+#[cfg(windows)]
 pub const MENU_SHOW_TRANSLATION_WINDOW: usize = 1001;
 #[cfg(windows)]
 pub const MENU_SETTINGS: usize = 1002;
@@ -33,7 +35,7 @@ impl TrayIcon {
         };
         use windows::core::PCWSTR;
 
-        let class_name = wide("ait_tray_window");
+        let class_name = wide(TRAY_WINDOW_CLASS_NAME);
         unsafe {
             let class = WNDCLASSW {
                 lpfnWndProc: Some(tray_wnd_proc),
@@ -109,9 +111,18 @@ unsafe extern "system" fn tray_wnd_proc(
     use windows::Win32::Foundation::{LPARAM, LRESULT, POINT, WPARAM};
     use windows::Win32::UI::WindowsAndMessaging::{
         AppendMenuW, CreatePopupMenu, DefWindowProcW, DestroyMenu, GetCursorPos, MF_SEPARATOR,
-        MF_STRING, PostMessageW, SetForegroundWindow, TPM_RETURNCMD, TrackPopupMenu, WM_RBUTTONUP,
+        MF_STRING, PostMessageW, PostQuitMessage, SetForegroundWindow, TPM_RETURNCMD,
+        TrackPopupMenu, WM_CLOSE, WM_RBUTTONUP,
     };
     use windows::core::PCWSTR;
+
+    if msg == WM_CLOSE {
+        tracing::info!("tray window close requested");
+        unsafe {
+            PostQuitMessage(0);
+        }
+        return LRESULT(0);
+    }
 
     if msg == WM_TRAY_ICON && lparam.0 as u32 == WM_RBUTTONUP {
         let menu = match unsafe { CreatePopupMenu() } {

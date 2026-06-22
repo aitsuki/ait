@@ -655,6 +655,14 @@ fn tray_open_logs_menu_id_maps_to_open_log_directory_action() {
 }
 
 #[test]
+fn tray_exit_menu_id_maps_to_exit_action() {
+    assert_eq!(
+        ait::app::tray_action_from_menu_id(ait::ui::tray::MENU_EXIT),
+        ait::app::TrayAction::Exit
+    );
+}
+
+#[test]
 fn legacy_logs_menu_id_is_not_reused() {
     assert_eq!(
         ait::app::tray_action_from_menu_id(1003),
