@@ -29,6 +29,9 @@ fn defaults_include_builtin_translator_profiles() {
         ]
     );
     assert!(settings.profile_by_id("google").unwrap().built_in);
+    let deepseek = settings.profile_by_id("deepseek").unwrap();
+    assert_eq!(deepseek.base_url, "https://api.deepseek.com");
+    assert_eq!(deepseek.model, "deepseek-v4-flash");
     assert_eq!(settings.hotkey, "Ctrl+Alt+E");
     assert!(settings.clipboard_capture.enabled);
     assert!(settings.clipboard_capture.open_manual_input_on_failure);
