@@ -502,10 +502,10 @@ fn run_platform() -> Result<()> {
                                 release_url,
                             };
                             if matches!(message.display_mode, UpdateCheckDisplayMode::ShowAll) {
-                                show_runtime_message(
+                                show_update_available_message(
                                     translation_window.hwnd(),
-                                    "发现新版本",
-                                    &update_status_message(&message.current_version, &status),
+                                    &message.current_version,
+                                    &status,
                                 );
                             } else if let Err(err) =
                                 translation_window.show_update_available(status)
@@ -528,10 +528,10 @@ fn run_platform() -> Result<()> {
             } else if msg.message == crate::ui::translate_window::WM_TRANSLATE_WINDOW_UPDATE_CLICKED
             {
                 if let Some(status) = translation_window.update_status() {
-                    show_runtime_message(
+                    show_update_available_message(
                         translation_window.hwnd(),
-                        "发现新版本",
-                        &update_status_message(env!("CARGO_PKG_VERSION"), status),
+                        env!("CARGO_PKG_VERSION"),
+                        status,
                     );
                 }
             } else if msg.message == crate::ui::settings_window::WM_SETTINGS_SAVED {
@@ -836,16 +836,55 @@ pub fn spawn_update_check_task(
 }
 
 #[cfg(windows)]
-fn show_runtime_message(owner_hwnd: windows::Win32::Foundation::HWND, caption: &str, text: &str) {
+fn show_runtime_message(
+    owner_hwnd: windows::Win32::Foundation::HWND,
+    caption: &str,
+    text: &str,
+) -> bool {
     let caption = wide(caption);
     let text = wide(text);
-    unsafe {
-        let _ = windows::Win32::UI::WindowsAndMessaging::MessageBoxW(
+    let result = unsafe {
+        windows::Win32::UI::WindowsAndMessaging::MessageBoxW(
             Some(owner_hwnd),
             windows::core::PCWSTR(text.as_ptr()),
             windows::core::PCWSTR(caption.as_ptr()),
             windows::Win32::UI::WindowsAndMessaging::MB_OK,
-        );
+        )
+    };
+    result == windows::Win32::UI::WindowsAndMessaging::IDOK
+}
+
+#[cfg(windows)]
+fn show_update_available_message(
+    owner_hwnd: windows::Win32::Foundation::HWND,
+    current_version: &str,
+    status: &UpdateStatus,
+) {
+    let release_url = match status {
+        UpdateStatus::UpdateAvailable { release_url, .. } => release_url.as_str(),
+        UpdateStatus::UpToDate => {
+            let _ = show_runtime_message(
+                owner_hwnd,
+                "检查更新",
+                &update_status_message(current_version, status),
+            );
+            return;
+        }
+    };
+
+    if show_runtime_message(
+        owner_hwnd,
+        "发现新版本",
+        &update_status_message(current_version, status),
+    ) {
+        if let Err(err) = open_url(owner_hwnd, release_url) {
+            tracing::warn!(error = %err, "open release page after update confirmation failed");
+            let _ = show_runtime_message(
+                owner_hwnd,
+                "打开失败",
+                "无法打开 Release 页面，请稍后重试。",
+            );
+        }
     }
 }
 
