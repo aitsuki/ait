@@ -13,9 +13,9 @@ use ait::ui::translate_window::{
     edit_display_text, edit_shortcut_action, is_third_click_after_double_click,
     paragraph_selection_range_utf16, profile_selection_action, show_action,
     show_window_needs_topmost_raise, show_window_needs_topmost_reset, show_window_z_order,
-    translation_profile_combo_dropdown_height, translation_static_text_uses_window_background,
-    translation_window_layout, translation_window_min_client_size,
-    translation_window_update_button_visible, window_z_order,
+    translation_message_is_current, translation_profile_combo_dropdown_height,
+    translation_static_text_uses_window_background, translation_window_layout,
+    translation_window_min_client_size, translation_window_update_button_visible, window_z_order,
 };
 use ait::update::{UpdateStatus, latest_release_url};
 use std::cell::RefCell;
@@ -652,6 +652,14 @@ fn tray_open_logs_menu_id_maps_to_open_log_directory_action() {
         ait::app::tray_action_from_menu_id(ait::ui::tray::MENU_OPEN_LOG_DIRECTORY),
         ait::app::TrayAction::OpenLogDirectory
     );
+}
+
+#[test]
+fn translation_messages_only_apply_to_the_active_request() {
+    assert!(translation_message_is_current(7, 7));
+    assert!(!translation_message_is_current(6, 7));
+    assert!(!translation_message_is_current(7, 0));
+    assert!(!translation_message_is_current(0, 0));
 }
 
 #[test]

@@ -24,6 +24,23 @@ pub const WM_TRANSLATE_WINDOW_PROFILE_CHANGED: u32 =
 #[cfg(windows)]
 pub const WM_TRANSLATE_WINDOW_UPDATE_CLICKED: u32 =
     windows::Win32::UI::WindowsAndMessaging::WM_APP + 32;
+#[cfg(windows)]
+const WM_TRANSLATION_TASK_FINISHED: u32 = windows::Win32::UI::WindowsAndMessaging::WM_APP + 60;
+#[cfg(windows)]
+const WM_TRANSLATION_SOURCE_CAPTURED: u32 = windows::Win32::UI::WindowsAndMessaging::WM_APP + 61;
+
+#[cfg(windows)]
+pub(crate) struct TranslationTaskMessage {
+    pub request_id: usize,
+    pub profile_id: String,
+    pub result: crate::error::Result<crate::app::TranslationWorkflowResult>,
+}
+
+#[cfg(windows)]
+pub(crate) struct TranslationSourceMessage {
+    pub request_id: usize,
+    pub source_text: String,
+}
 
 #[derive(Debug, Clone)]
 pub struct TranslationWindowState {
@@ -57,6 +74,10 @@ impl TranslationWindowState {
         self.error = Some(err.user_summary());
         self
     }
+}
+
+pub fn translation_message_is_current(message_request_id: usize, active_request_id: usize) -> bool {
+    message_request_id != 0 && message_request_id == active_request_id
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -527,6 +548,8 @@ impl TranslationWindow {
     }
 
     pub fn show_starting(&mut self) -> Result<()> {
+        self.state.source_text = get_text(self.source_edit)?;
+        self.state.translated_text = get_text(self.translated_edit)?;
         self.state.mark_starting();
         set_text(self.source_edit, &self.state.source_text)?;
         set_text(self.translated_edit, &self.state.translated_text)?;
@@ -556,11 +579,17 @@ impl TranslationWindow {
         Ok(())
     }
 
-    pub fn begin_selection_translation(&mut self) -> Result<()> {
+    pub fn begin_selection_translation(&mut self, request_id: usize) -> Result<()> {
+        set_active_request_id(self.hwnd, request_id);
         self.show_starting()
     }
 
-    pub fn begin_window_text_translation(&mut self, source_text: String) -> Result<()> {
+    pub fn begin_window_text_translation(
+        &mut self,
+        request_id: usize,
+        source_text: String,
+    ) -> Result<()> {
+        set_active_request_id(self.hwnd, request_id);
         self.show_loading(source_text)
     }
 
@@ -695,6 +724,68 @@ unsafe extern "system" fn default_wnd_proc(
         WM_SIZE,
     };
 
+    if msg == WM_TRANSLATION_SOURCE_CAPTURED {
+        if lparam.0 == 0 {
+            tracing::warn!("translation source message had no payload");
+            return LRESULT(0);
+        }
+        let message = unsafe { Box::from_raw(lparam.0 as *mut TranslationSourceMessage) };
+        if translation_message_is_current(message.request_id, active_request_id(hwnd)) {
+            if let Err(err) = show_loading_for_hwnd(hwnd, message.source_text) {
+                tracing::warn!(error = %err, request_id = message.request_id, "show translation source failed");
+            }
+        } else {
+            tracing::debug!(
+                request_id = message.request_id,
+                active_request_id = active_request_id(hwnd),
+                "ignore stale translation source"
+            );
+        }
+        return LRESULT(0);
+    }
+    if msg == WM_TRANSLATION_TASK_FINISHED {
+        if lparam.0 == 0 {
+            tracing::warn!("translation result message had no payload");
+            return LRESULT(0);
+        }
+        let message = unsafe { Box::from_raw(lparam.0 as *mut TranslationTaskMessage) };
+        if !translation_message_is_current(message.request_id, active_request_id(hwnd)) {
+            tracing::info!(
+                request_id = message.request_id,
+                active_request_id = active_request_id(hwnd),
+                "ignore stale translation result"
+            );
+            return LRESULT(0);
+        }
+        set_active_request_id(hwnd, 0);
+        match message.result {
+            Ok(result) => {
+                tracing::info!(
+                    request_id = message.request_id,
+                    provider = result.provider.as_log_name(),
+                    profile_id = message.profile_id,
+                    source_len = result.source_text.chars().count(),
+                    translated_len = result.translated_text.chars().count(),
+                    "translation completed"
+                );
+                if let Err(err) = show_result_for_hwnd(hwnd, &result) {
+                    tracing::warn!(error = %err, request_id = message.request_id, "show translation result failed");
+                }
+            }
+            Err(err) => {
+                tracing::warn!(
+                    error = %err,
+                    request_id = message.request_id,
+                    profile_id = message.profile_id,
+                    "translation failed"
+                );
+                if let Err(show_err) = show_error_for_hwnd(hwnd, &err.user_summary()) {
+                    tracing::warn!(error = %show_err, request_id = message.request_id, "show translation error failed");
+                }
+            }
+        }
+        return LRESULT(0);
+    }
     if msg == WM_CLOSE {
         unsafe {
             let _ = ShowWindow(hwnd, SW_HIDE);
@@ -837,6 +928,110 @@ unsafe extern "system" fn default_wnd_proc(
     }
 
     unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
+}
+
+#[cfg(windows)]
+pub(crate) fn post_translation_source(
+    hwnd: windows::Win32::Foundation::HWND,
+    message: TranslationSourceMessage,
+) {
+    post_translation_message(hwnd, WM_TRANSLATION_SOURCE_CAPTURED, message);
+}
+
+#[cfg(windows)]
+pub(crate) fn post_translation_result(
+    hwnd: windows::Win32::Foundation::HWND,
+    message: TranslationTaskMessage,
+) {
+    post_translation_message(hwnd, WM_TRANSLATION_TASK_FINISHED, message);
+}
+
+#[cfg(windows)]
+fn post_translation_message<T>(
+    hwnd: windows::Win32::Foundation::HWND,
+    message_id: u32,
+    message: T,
+) {
+    let message = Box::into_raw(Box::new(message));
+    unsafe {
+        if let Err(err) = windows::Win32::UI::WindowsAndMessaging::PostMessageW(
+            Some(hwnd),
+            message_id,
+            windows::Win32::Foundation::WPARAM(0),
+            windows::Win32::Foundation::LPARAM(message as isize),
+        ) {
+            drop(Box::from_raw(message));
+            tracing::warn!(error = %err, message_id, "post translation window message failed");
+        }
+    }
+}
+
+#[cfg(windows)]
+fn active_request_id(hwnd: windows::Win32::Foundation::HWND) -> usize {
+    unsafe {
+        windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(
+            hwnd,
+            windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA,
+        ) as usize
+    }
+}
+
+#[cfg(windows)]
+fn set_active_request_id(hwnd: windows::Win32::Foundation::HWND, request_id: usize) {
+    unsafe {
+        windows::Win32::UI::WindowsAndMessaging::SetWindowLongPtrW(
+            hwnd,
+            windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA,
+            request_id as isize,
+        );
+    }
+}
+
+#[cfg(windows)]
+fn show_loading_for_hwnd(
+    hwnd: windows::Win32::Foundation::HWND,
+    source_text: String,
+) -> Result<()> {
+    set_child_text(hwnd, ID_SOURCE_EDIT, &source_text)?;
+    set_child_text(hwnd, ID_TRANSLATED_EDIT, "")?;
+    set_child_text(hwnd, ID_STATUS_TEXT, "正在翻译...")?;
+    show_window_at_cursor(hwnd, ShowMode::Loading);
+    tracing::info!("show translation window loading state");
+    Ok(())
+}
+
+#[cfg(windows)]
+fn show_result_for_hwnd(
+    hwnd: windows::Win32::Foundation::HWND,
+    result: &crate::app::TranslationWorkflowResult,
+) -> Result<()> {
+    set_child_text(hwnd, ID_SOURCE_EDIT, &result.source_text)?;
+    set_child_text(hwnd, ID_TRANSLATED_EDIT, &result.translated_text)?;
+    set_child_text(hwnd, ID_STATUS_TEXT, "翻译完成")?;
+    show_window_at_cursor(hwnd, ShowMode::Result);
+    tracing::info!("show translation window result");
+    Ok(())
+}
+
+#[cfg(windows)]
+fn show_error_for_hwnd(hwnd: windows::Win32::Foundation::HWND, message: &str) -> Result<()> {
+    set_child_text(hwnd, ID_STATUS_TEXT, message)?;
+    show_window_at_cursor(hwnd, ShowMode::Error);
+    tracing::info!("show translation window error");
+    Ok(())
+}
+
+#[cfg(windows)]
+fn set_child_text(
+    hwnd: windows::Win32::Foundation::HWND,
+    control_id: isize,
+    text: &str,
+) -> Result<()> {
+    let child = unsafe {
+        windows::Win32::UI::WindowsAndMessaging::GetDlgItem(Some(hwnd), control_id as i32)
+            .map_err(|err| AppError::Windows(format!("获取翻译窗口控件失败: {err}")))?
+    };
+    set_text(child, text)
 }
 
 #[cfg(windows)]

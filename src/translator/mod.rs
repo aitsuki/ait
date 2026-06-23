@@ -82,6 +82,14 @@ pub(crate) fn invalid_response_error(detail: impl Into<String>) -> crate::error:
     crate::error::AppError::Translate(format!("翻译服务返回了无法识别的数据。详情: {detail}"))
 }
 
+pub(crate) fn request_error(err: reqwest::Error) -> crate::error::AppError {
+    if err.is_timeout() {
+        crate::error::AppError::Translate(TranslationErrorKind::Timeout.user_message().to_string())
+    } else {
+        crate::error::AppError::Network(err.to_string())
+    }
+}
+
 pub(crate) fn response_snippet(body: &str) -> String {
     const LIMIT: usize = 240;
     let mut snippet: String = body.chars().take(LIMIT).collect();

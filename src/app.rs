@@ -320,12 +320,6 @@ pub fn tray_action_from_menu_id(menu_id: usize) -> TrayAction {
 }
 
 #[cfg(windows)]
-const WM_TRANSLATION_TASK_FINISHED: u32 = windows::Win32::UI::WindowsAndMessaging::WM_APP + 60;
-
-#[cfg(windows)]
-const WM_TRANSLATION_SOURCE_CAPTURED: u32 = windows::Win32::UI::WindowsAndMessaging::WM_APP + 61;
-
-#[cfg(windows)]
 pub const WM_UPDATE_CHECK_FINISHED: u32 = windows::Win32::UI::WindowsAndMessaging::WM_APP + 62;
 
 #[cfg(windows)]
@@ -333,16 +327,6 @@ pub const WM_UPDATE_CHECK_FINISHED: u32 = windows::Win32::UI::WindowsAndMessagin
 pub enum UpdateCheckDisplayMode {
     SilentWhenUpToDate,
     ShowAll,
-}
-
-#[cfg(windows)]
-struct TranslationTaskMessage {
-    result: Result<TranslationWorkflowResult>,
-}
-
-#[cfg(windows)]
-struct TranslationSourceMessage {
-    source_text: String,
 }
 
 #[cfg(windows)]
@@ -383,6 +367,7 @@ fn run_platform() -> Result<()> {
     let mut registered_hotkey_id = 1;
     let mut registered_hotkey_text = hotkey.to_string();
     let mut translation_window = TranslationWindow::new()?;
+    let mut next_translation_request_id = 1_usize;
     translation_window
         .refresh_profiles(runtime_state.settings(), runtime_state.active_profile_id())?;
     spawn_update_check_task(
@@ -402,10 +387,12 @@ fn run_platform() -> Result<()> {
                         tracing::info!("ignore hotkey while translation window is foreground");
                     }
                     HotkeyAction::TranslateSelection => {
+                        let request_id = take_request_id(&mut next_translation_request_id);
                         tracing::info!("TranslateSelection requested");
-                        let _ = translation_window.begin_selection_translation();
+                        let _ = translation_window.begin_selection_translation(request_id);
                         spawn_translation_task(
                             runtime_state.clone(),
+                            request_id,
                             TranslationRequestKind::Selection,
                             translation_window.hwnd(),
                         );
@@ -460,10 +447,12 @@ fn run_platform() -> Result<()> {
             } else if msg.message == crate::ui::translate_window::WM_TRANSLATE_WINDOW_SOURCE {
                 match translation_window.source_text() {
                     Ok(source_text) => {
-                        let _ =
-                            translation_window.begin_window_text_translation(source_text.clone());
+                        let request_id = take_request_id(&mut next_translation_request_id);
+                        let _ = translation_window
+                            .begin_window_text_translation(request_id, source_text.clone());
                         spawn_translation_task(
                             runtime_state.clone(),
+                            request_id,
                             TranslationRequestKind::WindowText { source_text },
                             translation_window.hwnd(),
                         );
@@ -597,76 +586,53 @@ fn run_platform() -> Result<()> {
                 }
             } else if msg.message
                 == crate::ui::translate_window::WM_TRANSLATE_WINDOW_PROFILE_CHANGED
+                && let Some(profile_id) = translation_window.selected_profile_id()
             {
-                if let Some(profile_id) = translation_window.selected_profile_id() {
-                    let source_text = translation_window.source_text().unwrap_or_default();
-                    match crate::ui::translate_window::profile_selection_action(
-                        &profile_id,
-                        &source_text,
-                    ) {
-                        crate::ui::translate_window::ProfileSelectionAction::SaveDefaultOnly {
-                            profile_id,
-                        } => {
-                            if let Err(err) = save_default_profile_selection(
-                                &settings_dir,
-                                &mut runtime_state,
-                                &profile_id,
-                                &mut translation_window,
-                            ) {
-                                let _ = translation_window.show_error(err.to_string());
-                            }
-                        }
-                        crate::ui::translate_window::ProfileSelectionAction::SaveDefaultAndRetranslate {
-                            profile_id,
-                        } => {
-                            match save_default_profile_selection(
-                                &settings_dir,
-                                &mut runtime_state,
-                                &profile_id,
-                                &mut translation_window,
-                            ) {
-                                Ok(()) => {
-                                    let source_text =
-                                        translation_window.source_text().unwrap_or_default();
-                                    let _ = translation_window
-                                        .begin_window_text_translation(source_text.clone());
-                                    spawn_translation_task(
-                                        runtime_state.clone(),
-                                        TranslationRequestKind::WindowText { source_text },
-                                        translation_window.hwnd(),
-                                    );
-                                }
-                                Err(err) => {
-                                    let _ = translation_window.show_error(err.to_string());
-                                }
-                            }
+                let source_text = translation_window.source_text().unwrap_or_default();
+                match crate::ui::translate_window::profile_selection_action(
+                    &profile_id,
+                    &source_text,
+                ) {
+                    crate::ui::translate_window::ProfileSelectionAction::SaveDefaultOnly {
+                        profile_id,
+                    } => {
+                        if let Err(err) = save_default_profile_selection(
+                            &settings_dir,
+                            &mut runtime_state,
+                            &profile_id,
+                            &mut translation_window,
+                        ) {
+                            let _ = translation_window.show_error(err.to_string());
                         }
                     }
-                }
-            } else if msg.message == WM_TRANSLATION_SOURCE_CAPTURED {
-                let ptr = msg.lParam.0 as *mut TranslationSourceMessage;
-                if !ptr.is_null() {
-                    let message = Box::from_raw(ptr);
-                    let _ = translation_window.show_loading(message.source_text);
-                }
-            } else if msg.message == WM_TRANSLATION_TASK_FINISHED {
-                let ptr = msg.lParam.0 as *mut TranslationTaskMessage;
-                if !ptr.is_null() {
-                    let message = Box::from_raw(ptr);
-                    match message.result {
-                        Ok(result) => {
-                            tracing::info!(
-                                provider = result.provider.as_log_name(),
-                                profile_id = runtime_state.active_profile_id(),
-                                source_len = result.source_text.chars().count(),
-                                translated_len = result.translated_text.chars().count(),
-                                "translation completed"
-                            );
-                            let _ = translation_window.finish_translation_result(Ok(result));
-                        }
-                        Err(err) => {
-                            tracing::warn!(error = %err, profile_id = runtime_state.active_profile_id(), "translation failed");
-                            let _ = translation_window.finish_translation_result(Err(err));
+                    crate::ui::translate_window::ProfileSelectionAction::SaveDefaultAndRetranslate {
+                        profile_id,
+                    } => {
+                        match save_default_profile_selection(
+                            &settings_dir,
+                            &mut runtime_state,
+                            &profile_id,
+                            &mut translation_window,
+                        ) {
+                            Ok(()) => {
+                                let request_id =
+                                    take_request_id(&mut next_translation_request_id);
+                                let source_text =
+                                    translation_window.source_text().unwrap_or_default();
+                                let _ = translation_window.begin_window_text_translation(
+                                    request_id,
+                                    source_text.clone(),
+                                );
+                                spawn_translation_task(
+                                    runtime_state.clone(),
+                                    request_id,
+                                    TranslationRequestKind::WindowText { source_text },
+                                    translation_window.hwnd(),
+                                );
+                            }
+                            Err(err) => {
+                                let _ = translation_window.show_error(err.to_string());
+                            }
                         }
                     }
                 }
@@ -693,38 +659,39 @@ fn build_workflow(
 #[cfg(windows)]
 fn spawn_translation_task(
     state: AppRuntimeState,
+    request_id: usize,
     request: TranslationRequestKind,
     notify_hwnd: windows::Win32::Foundation::HWND,
 ) {
     let notify_hwnd = notify_hwnd.0 as isize;
     std::thread::spawn(move || {
-        let result = run_translation_task(&state, request, notify_hwnd);
-        let message = Box::into_raw(Box::new(TranslationTaskMessage { result }));
+        let result = run_translation_task(&state, request_id, request, notify_hwnd);
         let notify_hwnd = windows::Win32::Foundation::HWND(notify_hwnd as *mut core::ffi::c_void);
-        unsafe {
-            let posted = windows::Win32::UI::WindowsAndMessaging::PostMessageW(
-                Some(notify_hwnd),
-                WM_TRANSLATION_TASK_FINISHED,
-                windows::Win32::Foundation::WPARAM(0),
-                windows::Win32::Foundation::LPARAM(message as isize),
-            );
-            if posted.is_err() {
-                drop(Box::from_raw(message));
-            }
-        }
+        crate::ui::translate_window::post_translation_result(
+            notify_hwnd,
+            crate::ui::translate_window::TranslationTaskMessage {
+                request_id,
+                profile_id: state.active_profile_id().to_string(),
+                result,
+            },
+        );
     });
 }
 
 #[cfg(windows)]
 fn run_translation_task(
     state: &AppRuntimeState,
+    request_id: usize,
     request: TranslationRequestKind,
     notify_hwnd: isize,
 ) -> Result<TranslationWorkflowResult> {
     let workflow = build_workflow(state)?;
     match request {
         TranslationRequestKind::Selection => {
-            let mut observer = TranslationProgressObserver { notify_hwnd };
+            let mut observer = TranslationProgressObserver {
+                notify_hwnd,
+                request_id,
+            };
             run_translation_request_with_observer(
                 &workflow,
                 TranslationRequestKind::Selection,
@@ -746,29 +713,30 @@ fn run_translation_task(
 #[cfg(windows)]
 struct TranslationProgressObserver {
     notify_hwnd: isize,
+    request_id: usize,
 }
 
 #[cfg(windows)]
 impl TranslationObserver for TranslationProgressObserver {
     fn source_captured(&mut self, source_text: &str) -> Result<()> {
-        let message = Box::into_raw(Box::new(TranslationSourceMessage {
-            source_text: source_text.to_string(),
-        }));
         let notify_hwnd =
             windows::Win32::Foundation::HWND(self.notify_hwnd as *mut core::ffi::c_void);
-        unsafe {
-            let posted = windows::Win32::UI::WindowsAndMessaging::PostMessageW(
-                Some(notify_hwnd),
-                WM_TRANSLATION_SOURCE_CAPTURED,
-                windows::Win32::Foundation::WPARAM(0),
-                windows::Win32::Foundation::LPARAM(message as isize),
-            );
-            if posted.is_err() {
-                drop(Box::from_raw(message));
-            }
-        }
+        crate::ui::translate_window::post_translation_source(
+            notify_hwnd,
+            crate::ui::translate_window::TranslationSourceMessage {
+                request_id: self.request_id,
+                source_text: source_text.to_string(),
+            },
+        );
         Ok(())
     }
+}
+
+#[cfg(windows)]
+fn take_request_id(next_request_id: &mut usize) -> usize {
+    let request_id = *next_request_id;
+    *next_request_id = next_request_id.wrapping_add(1).max(1);
+    request_id
 }
 
 #[cfg(windows)]

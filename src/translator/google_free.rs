@@ -1,7 +1,7 @@
 use crate::error::{AppError, Result};
 use crate::translator::{
     ProviderKind, TranslationErrorKind, TranslationRequest, TranslationResponse, Translator,
-    invalid_response_error, response_snippet,
+    invalid_response_error, request_error, response_snippet,
 };
 use reqwest::StatusCode;
 use serde_json::Value;
@@ -44,12 +44,7 @@ impl GoogleFreeTranslator {
             urlencoding::encode(&request.target_lang),
             urlencoding::encode(&request.text),
         );
-        let response = self
-            .client
-            .get(url)
-            .send()
-            .await
-            .map_err(|err| AppError::Network(err.to_string()))?;
+        let response = self.client.get(url).send().await.map_err(request_error)?;
 
         let status = response.status();
         if status == StatusCode::TOO_MANY_REQUESTS {
@@ -76,10 +71,7 @@ impl GoogleFreeTranslator {
             .and_then(|value| value.to_str().ok())
             .unwrap_or("unknown")
             .to_string();
-        let body = response
-            .text()
-            .await
-            .map_err(|err| AppError::Network(err.to_string()))?;
+        let body = response.text().await.map_err(request_error)?;
         let json: Value = serde_json::from_str(&body).map_err(|err| {
             invalid_response_error(format!(
                 "响应不是 JSON；content-type: {content_type}；片段: {}；解析错误: {err}",

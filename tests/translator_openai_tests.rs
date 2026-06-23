@@ -3,6 +3,7 @@ use ait::translator::{ProviderKind, TranslationRequest, Translator};
 use httpmock::Method::POST;
 use httpmock::MockServer;
 use serde_json::json;
+use std::time::Duration;
 
 #[tokio::test]
 async fn sends_chat_completions_request() {
@@ -249,4 +250,35 @@ async fn rejects_blank_content() {
         .to_string();
 
     assert!(err.contains("choices[0].message.content 为空"));
+}
+
+#[tokio::test]
+async fn reports_request_timeout_distinctly() {
+    let server = MockServer::start();
+    server.mock(|when, then| {
+        when.method(POST).path("/v1/chat/completions");
+        then.delay(Duration::from_millis(1500))
+            .status(200)
+            .header("content-type", "application/json")
+            .body(r#"{"choices":[{"message":{"content":"你好"}}]}"#);
+    });
+    let translator = OpenAiCompatibleTranslator::new(OpenAiCompatibleConfig {
+        provider: ProviderKind::OpenAi,
+        base_url: server.url("/v1"),
+        api_key: "sk-test".to_string(),
+        model: "test-model".to_string(),
+        timeout_secs: 1,
+    })
+    .unwrap();
+
+    let err = translator
+        .translate(TranslationRequest {
+            text: "hello".to_string(),
+            source_lang: "auto".to_string(),
+            target_lang: "zh-CN".to_string(),
+        })
+        .await
+        .unwrap_err();
+
+    assert_eq!(err.user_summary(), "翻译失败：翻译请求超时，请重试。");
 }
