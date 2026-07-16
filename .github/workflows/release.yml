@@ -2,17 +2,16 @@ name: Release
 
 on:
   workflow_dispatch:
-    inputs:
-      version:
-        description: "Release version, for example v0.1.1"
-        required: true
-        type: string
   push:
     tags:
       - "v*.*.*"
 
 permissions:
   contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   release:
@@ -22,36 +21,47 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Resolve version
+      - name: Resolve and verify package version
         id: version
         shell: pwsh
         run: |
-          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
-            $version = "${{ inputs.version }}"
-          } else {
-            $version = "${{ github.ref_name }}"
-          }
-
-          if ($version -notmatch '^v\d+\.\d+\.\d+$') {
-            Write-Error "Version must use vX.Y.Z format, got '$version'."
+          $metadata = cargo metadata --locked --no-deps --format-version 1 | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "Cargo metadata failed. Commit the Cargo.lock version update before releasing."
             exit 1
           }
 
-          $plainVersion = $version.Substring(1)
+          $package = $metadata.packages | Where-Object { $_.name -eq "ait" } | Select-Object -First 1
+          if (-not $package) {
+            Write-Error "Could not find the ait package in Cargo metadata."
+            exit 1
+          }
+
+          $plainVersion = $package.version
+          $version = "v$plainVersion"
+
+          if ("${{ github.event_name }}" -eq "push" -and "${{ github.ref_name }}" -ne $version) {
+            Write-Error "Tag '${{ github.ref_name }}' does not match Cargo.toml package version '$version'."
+            exit 1
+          }
+
           "version=$version" >> $env:GITHUB_OUTPUT
           "plain_version=$plainVersion" >> $env:GITHUB_OUTPUT
           "portable_name=ait-$version-windows.exe" >> $env:GITHUB_OUTPUT
           "setup_name=ait-$version-setup.exe" >> $env:GITHUB_OUTPUT
+          "checksums_name=SHA256SUMS.txt" >> $env:GITHUB_OUTPUT
 
       - name: Test
-        run: cargo test
+        run: cargo test --locked
 
       - name: Build release executable
-        run: cargo build --release
+        run: cargo build --release --locked
 
       - name: Prepare portable executable
         shell: pwsh
@@ -71,20 +81,46 @@ jobs:
           $env:AIT_OUTPUT_DIR = (Resolve-Path "dist").Path
           $env:AIT_OUTPUT_BASE = "ait-${{ steps.version.outputs.version }}-setup"
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" installer\ait.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Write release notes
+      - name: Write SHA256 checksums
         shell: pwsh
         run: |
-          @'
-          # ait ${{ steps.version.outputs.version }}
+          Get-ChildItem dist -File |
+            Sort-Object Name |
+            ForEach-Object {
+              $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+              "$hash *$($_.Name)"
+            } | Set-Content "dist\${{ steps.version.outputs.checksums_name }}" -Encoding utf8NoBOM
 
-          Windows-only lightweight selection translator.
+      - name: Generate release notes
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $generatedJson = gh api `
+            --method POST `
+            "repos/${{ github.repository }}/releases/generate-notes" `
+            -f tag_name="$version" `
+            -f target_commitish="${{ github.sha }}"
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "Failed to generate release notes."
+            exit 1
+          }
+          $generated = $generatedJson | ConvertFrom-Json
 
-          ## Download
+          @"
+          # ait $version
 
-          - `${{ steps.version.outputs.setup_name }}`: recommended for most users.
-          - `${{ steps.version.outputs.portable_name }}`: portable single-file executable.
-          '@ | Set-Content -Path release-notes.md -Encoding UTF8
+          ## 下载
+
+          - ${{ steps.version.outputs.setup_name }}：推荐安装包。
+          - ${{ steps.version.outputs.portable_name }}：便携单文件版本。
+          - ${{ steps.version.outputs.checksums_name }}：SHA256 校验值。
+
+          $($generated.body)
+          "@ | Set-Content -Path release-notes.md -Encoding utf8NoBOM
 
       - name: Publish GitHub Release
         shell: pwsh
@@ -102,6 +138,7 @@ jobs:
           gh release create $version `
             "dist/${{ steps.version.outputs.portable_name }}#${{ steps.version.outputs.portable_name }}" `
             "dist/${{ steps.version.outputs.setup_name }}#${{ steps.version.outputs.setup_name }}" `
+            "dist/${{ steps.version.outputs.checksums_name }}#${{ steps.version.outputs.checksums_name }}" `
             --title "ait $version" `
             --notes-file release-notes.md `
             --target "${{ github.sha }}"

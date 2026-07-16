@@ -1,3 +1,9 @@
+pub use crate::ui::theme::RgbColor;
+use crate::ui::theme::{
+    COLOR_BORDER, COLOR_DISABLED_BORDER, COLOR_DISABLED_SURFACE, COLOR_DISABLED_TEXT,
+    COLOR_PRIMARY, COLOR_SURFACE, COLOR_SURFACE_SUBTLE, COLOR_TEXT, CONTROL_RADIUS,
+};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EditKind {
     SingleLine,
@@ -7,6 +13,7 @@ pub enum EditKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EditVisualState {
     pub focused: bool,
+    pub hot: bool,
     pub readonly: bool,
     pub disabled: bool,
 }
@@ -15,22 +22,10 @@ impl EditVisualState {
     pub fn normal() -> Self {
         Self {
             focused: false,
+            hot: false,
             readonly: false,
             disabled: false,
         }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RgbColor {
-    pub r: u8,
-    pub g: u8,
-    pub b: u8,
-}
-
-impl RgbColor {
-    pub const fn new(r: u8, g: u8, b: u8) -> Self {
-        Self { r, g, b }
     }
 }
 
@@ -69,28 +64,27 @@ pub fn edit_border_paint_target() -> EditBorderPaintTarget {
 pub fn edit_palette(state: EditVisualState) -> EditPalette {
     if state.disabled {
         return EditPalette {
-            background: RgbColor::new(243, 244, 246),
-            border: RgbColor::new(209, 213, 219),
-            text: RgbColor::new(156, 163, 175),
+            background: COLOR_DISABLED_SURFACE,
+            border: COLOR_DISABLED_BORDER,
+            text: COLOR_DISABLED_TEXT,
         };
     }
 
-    if state.readonly {
-        return EditPalette {
-            background: RgbColor::new(248, 250, 252),
-            border: RgbColor::new(203, 213, 225),
-            text: RgbColor::new(31, 41, 55),
-        };
-    }
-
+    let background = if state.readonly {
+        COLOR_SURFACE_SUBTLE
+    } else {
+        COLOR_SURFACE
+    };
     EditPalette {
-        background: RgbColor::new(255, 255, 255),
+        background,
         border: if state.focused {
-            RgbColor::new(37, 99, 235)
+            COLOR_PRIMARY
+        } else if state.hot {
+            crate::ui::theme::COLOR_BORDER_STRONG
         } else {
-            RgbColor::new(203, 213, 225)
+            COLOR_BORDER
         },
-        text: RgbColor::new(31, 41, 55),
+        text: COLOR_TEXT,
     }
 }
 
@@ -112,6 +106,16 @@ pub fn edit_uses_native_border(id: usize) -> bool {
 
 pub fn modern_edit_color_query_invalidates_border() -> bool {
     false
+}
+
+pub fn single_line_third_click_selects_all(
+    last_double_click_time: Option<u32>,
+    current_time: u32,
+    double_click_time: u32,
+) -> bool {
+    last_double_click_time
+        .map(|last| current_time.wrapping_sub(last) <= double_click_time)
+        .unwrap_or(false)
 }
 
 pub const EDIT_FRAME_GUTTER: i32 = 4;
@@ -146,31 +150,24 @@ pub fn multiline_edit_text_rect(width: i32, height: i32) -> EditTextRect {
 }
 
 #[cfg(windows)]
-impl RgbColor {
-    fn colorref(self) -> windows::Win32::Foundation::COLORREF {
-        windows::Win32::Foundation::COLORREF(
-            self.r as u32 | ((self.g as u32) << 8) | ((self.b as u32) << 16),
-        )
-    }
-}
-
-#[cfg(windows)]
 pub fn install_modern_edit_focus_tracking(
     hwnd: windows::Win32::Foundation::HWND,
 ) -> crate::error::Result<()> {
     use windows::Win32::UI::Shell::SetWindowSubclass;
 
+    let state = Box::into_raw(Box::new(ModernEditSubclassState::default())) as usize;
     unsafe {
         if SetWindowSubclass(
             hwnd,
             Some(modern_edit_subclass_proc),
             MODERN_EDIT_SUBCLASS_ID,
-            0,
+            state,
         )
         .as_bool()
         {
             Ok(())
         } else {
+            drop(Box::from_raw(state as *mut ModernEditSubclassState));
             Err(crate::error::AppError::Windows(
                 "安装输入框焦点处理失败".to_string(),
             ))
@@ -234,11 +231,11 @@ pub unsafe fn paint_modern_edit_border(parent: windows::Win32::Foundation::HWND,
     unsafe {
         let _ = MapWindowPoints(None, Some(parent), &mut points);
     }
-    let frame = modern_edit_frame_rect(points[0].x, points[0].y, points[1].x, points[1].y);
-    rect.left = frame.left;
-    rect.top = frame.top;
-    rect.right = frame.right;
-    rect.bottom = frame.bottom;
+    let gutter = crate::ui::theme::scale(EDIT_FRAME_GUTTER);
+    rect.left = points[0].x - gutter;
+    rect.top = points[0].y - gutter;
+    rect.right = points[1].x + gutter;
+    rect.bottom = points[1].y + gutter;
 
     let hdc = unsafe { GetDC(Some(parent)) };
     if hdc.is_invalid() {
@@ -255,7 +252,15 @@ pub unsafe fn paint_modern_edit_border(parent: windows::Win32::Foundation::HWND,
     let old_pen = unsafe { SelectObject(hdc, pen.into()) };
     let old_brush = unsafe { SelectObject(hdc, GetStockObject(NULL_BRUSH)) };
     unsafe {
-        let _ = RoundRect(hdc, rect.left, rect.top, rect.right, rect.bottom, 7, 7);
+        let _ = RoundRect(
+            hdc,
+            rect.left,
+            rect.top,
+            rect.right,
+            rect.bottom,
+            crate::ui::theme::scale(CONTROL_RADIUS),
+            crate::ui::theme::scale(CONTROL_RADIUS),
+        );
     }
     if !old_brush.is_invalid() {
         unsafe {
@@ -292,6 +297,7 @@ pub unsafe fn handle_modern_edit_color(
 
     let state = EditVisualState {
         focused: unsafe { GetFocus() } == child,
+        hot: is_edit_hot(child),
         readonly,
         disabled: !unsafe { IsWindowEnabled(child).as_bool() },
     };
@@ -314,6 +320,7 @@ unsafe fn edit_visual_state_for_child(hwnd: windows::Win32::Foundation::HWND) ->
     let style = unsafe { GetWindowLongW(hwnd, GWL_STYLE) } as u32;
     EditVisualState {
         focused: unsafe { GetFocus() } == hwnd,
+        hot: is_edit_hot(hwnd),
         readonly: (style & ES_READONLY as u32) != 0,
         disabled: !unsafe { IsWindowEnabled(hwnd).as_bool() },
     }
@@ -353,15 +360,43 @@ unsafe fn invalidate_edit_border(
         unsafe {
             let _ = MapWindowPoints(None, Some(parent), &mut points);
         }
-        let frame = modern_edit_frame_rect(points[0].x, points[0].y, points[1].x, points[1].y);
-        rect.left = frame.left;
-        rect.top = frame.top;
-        rect.right = frame.right;
-        rect.bottom = frame.bottom;
+        let gutter = crate::ui::theme::scale(EDIT_FRAME_GUTTER);
+        rect.left = points[0].x - gutter;
+        rect.top = points[0].y - gutter;
+        rect.right = points[1].x + gutter;
+        rect.bottom = points[1].y + gutter;
         unsafe {
             let _ = InvalidateRect(Some(parent), Some(&rect), false);
         }
     }
+}
+
+#[cfg(windows)]
+fn hot_edit() -> &'static std::sync::Mutex<isize> {
+    use std::sync::{Mutex, OnceLock};
+    static HOT_EDIT: OnceLock<Mutex<isize>> = OnceLock::new();
+    HOT_EDIT.get_or_init(|| Mutex::new(0))
+}
+
+#[cfg(windows)]
+fn is_edit_hot(hwnd: windows::Win32::Foundation::HWND) -> bool {
+    *hot_edit().lock().unwrap() == hwnd.0 as isize
+}
+
+#[cfg(windows)]
+fn set_edit_hot(hwnd: windows::Win32::Foundation::HWND, hot: bool) {
+    let mut current = hot_edit().lock().unwrap();
+    if hot {
+        *current = hwnd.0 as isize;
+    } else if *current == hwnd.0 as isize {
+        *current = 0;
+    }
+}
+
+#[cfg(windows)]
+#[derive(Default)]
+struct ModernEditSubclassState {
+    last_double_click_time: Option<u32>,
 }
 
 #[cfg(windows)]
@@ -374,12 +409,68 @@ unsafe extern "system" fn modern_edit_subclass_proc(
     wparam: windows::Win32::Foundation::WPARAM,
     lparam: windows::Win32::Foundation::LPARAM,
     subclass_id: usize,
-    _ref_data: usize,
+    ref_data: usize,
 ) -> windows::Win32::Foundation::LRESULT {
+    use windows::Win32::Foundation::{LPARAM, WPARAM};
+    use windows::Win32::UI::Controls::{EM_SETSEL, WM_MOUSELEAVE};
+    use windows::Win32::UI::Input::KeyboardAndMouse::{
+        GetDoubleClickTime, TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent,
+    };
     use windows::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass};
     use windows::Win32::UI::WindowsAndMessaging::{
-        GetParent, WM_ENABLE, WM_KILLFOCUS, WM_NCDESTROY, WM_SETFOCUS,
+        GetDlgCtrlID, GetMessageTime, GetParent, SendMessageW, WM_ENABLE, WM_KILLFOCUS,
+        WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_MOUSEMOVE, WM_NCDESTROY, WM_SETFOCUS,
     };
+
+    let state_ptr = ref_data as *mut ModernEditSubclassState;
+
+    if msg == WM_MOUSEMOVE && !is_edit_hot(hwnd) {
+        set_edit_hot(hwnd, true);
+        let mut event = TRACKMOUSEEVENT {
+            cbSize: std::mem::size_of::<TRACKMOUSEEVENT>() as u32,
+            dwFlags: TME_LEAVE,
+            hwndTrack: hwnd,
+            dwHoverTime: 0,
+        };
+        unsafe {
+            let _ = TrackMouseEvent(&mut event);
+        }
+        if let Ok(parent) = unsafe { GetParent(hwnd) } {
+            unsafe {
+                invalidate_edit_border(parent, hwnd);
+            }
+        }
+    } else if msg == WM_MOUSELEAVE {
+        set_edit_hot(hwnd, false);
+        if let Ok(parent) = unsafe { GetParent(hwnd) } {
+            unsafe {
+                invalidate_edit_border(parent, hwnd);
+            }
+        }
+    }
+
+    if msg == WM_LBUTTONDBLCLK && !state_ptr.is_null() {
+        let state = unsafe { &mut *state_ptr };
+        state.last_double_click_time = Some(unsafe { GetMessageTime() } as u32);
+    } else if msg == WM_LBUTTONDOWN
+        && !state_ptr.is_null()
+        && edit_kind_for_control(unsafe { GetDlgCtrlID(hwnd) } as usize)
+            == Some(EditKind::SingleLine)
+    {
+        let state = unsafe { &mut *state_ptr };
+        if single_line_third_click_selects_all(
+            state.last_double_click_time,
+            unsafe { GetMessageTime() } as u32,
+            unsafe { GetDoubleClickTime() },
+        ) {
+            state.last_double_click_time = None;
+            unsafe {
+                let _ = SendMessageW(hwnd, EM_SETSEL, Some(WPARAM(0)), Some(LPARAM(-1)));
+            }
+            return windows::Win32::Foundation::LRESULT(0);
+        }
+        state.last_double_click_time = None;
+    }
 
     if msg == WM_SETFOCUS || msg == WM_KILLFOCUS || msg == WM_ENABLE {
         if let Ok(parent) = unsafe { GetParent(hwnd) } {
@@ -390,6 +481,12 @@ unsafe extern "system" fn modern_edit_subclass_proc(
     }
 
     if msg == WM_NCDESTROY {
+        set_edit_hot(hwnd, false);
+        if !state_ptr.is_null() {
+            unsafe {
+                drop(Box::from_raw(state_ptr));
+            }
+        }
         unsafe {
             let _ = RemoveWindowSubclass(hwnd, Some(modern_edit_subclass_proc), subclass_id);
             return DefSubclassProc(hwnd, msg, wparam, lparam);
@@ -405,7 +502,7 @@ mod tests {
         EditBorderPaintTarget, EditKind, EditVisualState, RgbColor, edit_border_paint_target,
         edit_kind_for_control, edit_palette, edit_uses_native_border, is_modern_edit,
         modern_edit_child_rect, modern_edit_color_query_invalidates_border,
-        multiline_edit_text_rect,
+        multiline_edit_text_rect, single_line_third_click_selects_all,
     };
 
     #[test]
@@ -483,10 +580,17 @@ mod tests {
 
         assert!(rect.x > 16);
         assert!(rect.y > 38);
-        assert!(rect.x - 16 >= 4);
-        assert!(rect.y - 38 >= 4);
+        assert_eq!(rect.x - 16, 4);
+        assert_eq!(rect.y - 38, 4);
         assert_eq!(rect.width, 572 - (rect.x - 16) * 2);
         assert_eq!(rect.height, 96 - (rect.y - 38) * 2);
+    }
+
+    #[test]
+    fn single_line_third_click_selects_all_after_recent_double_click() {
+        assert!(single_line_third_click_selects_all(Some(100), 250, 500));
+        assert!(!single_line_third_click_selects_all(Some(100), 700, 500));
+        assert!(!single_line_third_click_selects_all(None, 250, 500));
     }
 
     #[test]

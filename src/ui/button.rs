@@ -1,7 +1,17 @@
+pub use crate::ui::theme::RgbColor;
+use crate::ui::theme::{
+    COLOR_BORDER, COLOR_BORDER_STRONG, COLOR_DANGER, COLOR_DANGER_HOVER, COLOR_DANGER_SOFT,
+    COLOR_DISABLED_BORDER, COLOR_DISABLED_SURFACE, COLOR_DISABLED_TEXT, COLOR_FOCUS_SOFT,
+    COLOR_PRIMARY, COLOR_PRIMARY_HOVER, COLOR_PRIMARY_PRESSED, COLOR_PRIMARY_TEXT, COLOR_SURFACE,
+    COLOR_SURFACE_HOVER, COLOR_SURFACE_PRESSED, COLOR_TEXT, CONTROL_RADIUS, FOCUS_RING_INSET,
+};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ButtonRole {
     Primary,
     Secondary,
+    Danger,
+    Ghost,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -24,19 +34,6 @@ impl ButtonVisualState {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RgbColor {
-    pub r: u8,
-    pub g: u8,
-    pub b: u8,
-}
-
-impl RgbColor {
-    pub const fn new(r: u8, g: u8, b: u8) -> Self {
-        Self { r, g, b }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ButtonPalette {
     pub background: RgbColor,
     pub border: RgbColor,
@@ -45,48 +42,76 @@ pub struct ButtonPalette {
 }
 
 pub fn button_palette(role: ButtonRole, state: ButtonVisualState) -> ButtonPalette {
-    let focus = RgbColor::new(37, 99, 235);
     if state.disabled {
         return ButtonPalette {
-            background: RgbColor::new(243, 244, 246),
-            border: RgbColor::new(209, 213, 219),
-            text: RgbColor::new(156, 163, 175),
-            focus,
+            background: COLOR_DISABLED_SURFACE,
+            border: COLOR_DISABLED_BORDER,
+            text: COLOR_DISABLED_TEXT,
+            focus: COLOR_PRIMARY,
         };
     }
 
     match role {
         ButtonRole::Primary => {
-            let focus = RgbColor::new(219, 234, 254);
             let background = if state.pressed {
-                RgbColor::new(29, 78, 216)
+                COLOR_PRIMARY_PRESSED
             } else if state.hot {
-                RgbColor::new(30, 90, 224)
+                COLOR_PRIMARY_HOVER
             } else {
-                RgbColor::new(37, 99, 235)
+                COLOR_PRIMARY
             };
             ButtonPalette {
                 background,
                 border: background,
-                text: RgbColor::new(255, 255, 255),
-                focus,
+                text: COLOR_PRIMARY_TEXT,
+                focus: COLOR_FOCUS_SOFT,
             }
         }
         ButtonRole::Secondary => ButtonPalette {
             background: if state.pressed {
-                RgbColor::new(226, 232, 240)
+                COLOR_SURFACE_PRESSED
             } else if state.hot {
-                RgbColor::new(241, 245, 249)
+                COLOR_SURFACE_HOVER
             } else {
-                RgbColor::new(255, 255, 255)
+                COLOR_SURFACE
             },
             border: if state.hot || state.pressed {
-                RgbColor::new(148, 163, 184)
+                COLOR_BORDER_STRONG
             } else {
-                RgbColor::new(203, 213, 225)
+                COLOR_BORDER
             },
-            text: RgbColor::new(31, 41, 55),
-            focus,
+            text: COLOR_TEXT,
+            focus: COLOR_PRIMARY,
+        },
+        ButtonRole::Danger => ButtonPalette {
+            background: if state.pressed || state.hot {
+                COLOR_DANGER_SOFT
+            } else {
+                COLOR_SURFACE
+            },
+            border: if state.hot || state.pressed {
+                COLOR_DANGER_HOVER
+            } else {
+                COLOR_BORDER
+            },
+            text: COLOR_DANGER,
+            focus: COLOR_DANGER,
+        },
+        ButtonRole::Ghost => ButtonPalette {
+            background: if state.pressed {
+                COLOR_SURFACE_PRESSED
+            } else if state.hot {
+                COLOR_SURFACE_HOVER
+            } else {
+                COLOR_SURFACE
+            },
+            border: if state.focused {
+                COLOR_PRIMARY
+            } else {
+                COLOR_SURFACE
+            },
+            text: COLOR_TEXT,
+            focus: COLOR_PRIMARY,
         },
     }
 }
@@ -99,24 +124,16 @@ pub fn button_uses_native_border(id: usize) -> bool {
     !is_owner_draw_button(id)
 }
 
-pub fn button_draws_inner_focus_ring(_state: ButtonVisualState) -> bool {
-    false
+pub fn button_draws_inner_focus_ring(state: ButtonVisualState) -> bool {
+    state.focused && !state.disabled
 }
 
 pub fn button_role_for_control(id: usize) -> Option<ButtonRole> {
     match id {
         2001 | 3004 => Some(ButtonRole::Primary),
-        2002 | 3001 | 3002 | 3003 | 3005 | 3116 | 3119 => Some(ButtonRole::Secondary),
+        3002 => Some(ButtonRole::Danger),
+        2002 | 3001 | 3003 | 3005 | 3116 | 3119 => Some(ButtonRole::Secondary),
         _ => None,
-    }
-}
-
-#[cfg(windows)]
-impl RgbColor {
-    fn colorref(self) -> windows::Win32::Foundation::COLORREF {
-        windows::Win32::Foundation::COLORREF(
-            self.r as u32 | ((self.g as u32) << 8) | ((self.b as u32) << 16),
-        )
     }
 }
 
@@ -135,7 +152,9 @@ pub unsafe fn draw_owner_draw_button(
     let Some(draw_item) = (unsafe { draw_item.as_ref() }) else {
         return false;
     };
-    let Some(role) = button_role_for_control(draw_item.CtlID as usize) else {
+    let Some(role) = button_role_for_window(draw_item.hwndItem)
+        .or_else(|| button_role_for_control(draw_item.CtlID as usize))
+    else {
         return false;
     };
 
@@ -146,12 +165,22 @@ pub unsafe fn draw_owner_draw_button(
         focused: (draw_item.itemState.0 & ODS_FOCUS.0) != 0,
     };
     let palette = button_palette(role, state);
+    let radius = crate::ui::theme::scale(CONTROL_RADIUS);
+    let focus_inset = crate::ui::theme::scale(FOCUS_RING_INSET);
     let hdc = draw_item.hDC;
     let rect = draw_item.rcItem;
 
     let background = unsafe { CreateSolidBrush(palette.background.colorref()) };
-    let clip_region =
-        unsafe { CreateRoundRectRgn(rect.left, rect.top, rect.right + 1, rect.bottom + 1, 7, 7) };
+    let clip_region = unsafe {
+        CreateRoundRectRgn(
+            rect.left,
+            rect.top,
+            rect.right + 1,
+            rect.bottom + 1,
+            radius,
+            radius,
+        )
+    };
     if !clip_region.is_invalid() {
         unsafe {
             let _ = SelectClipRgn(hdc, Some(clip_region));
@@ -187,7 +216,15 @@ pub unsafe fn draw_owner_draw_button(
     };
     let old_brush = unsafe { SelectObject(hdc, GetStockObject(NULL_BRUSH)) };
     unsafe {
-        let _ = RoundRect(hdc, rect.left, rect.top, rect.right, rect.bottom, 7, 7);
+        let _ = RoundRect(
+            hdc,
+            rect.left,
+            rect.top,
+            rect.right,
+            rect.bottom,
+            radius,
+            radius,
+        );
     }
     if !old_brush.is_invalid() {
         unsafe {
@@ -197,6 +234,38 @@ pub unsafe fn draw_owner_draw_button(
     if !old_pen.is_invalid() {
         unsafe {
             let _ = SelectObject(hdc, old_pen);
+        }
+    }
+
+    if button_draws_inner_focus_ring(state) {
+        let focus_pen = unsafe { CreatePen(PS_SOLID, 2, palette.focus.colorref()) };
+        if !focus_pen.is_invalid() {
+            let old_focus_pen = unsafe { SelectObject(hdc, focus_pen.into()) };
+            let old_focus_brush = unsafe { SelectObject(hdc, GetStockObject(NULL_BRUSH)) };
+            unsafe {
+                let _ = RoundRect(
+                    hdc,
+                    rect.left + focus_inset,
+                    rect.top + focus_inset,
+                    rect.right - focus_inset,
+                    rect.bottom - focus_inset,
+                    (radius - 1).max(1),
+                    (radius - 1).max(1),
+                );
+            }
+            if !old_focus_brush.is_invalid() {
+                unsafe {
+                    let _ = SelectObject(hdc, old_focus_brush);
+                }
+            }
+            if !old_focus_pen.is_invalid() {
+                unsafe {
+                    let _ = SelectObject(hdc, old_focus_pen);
+                }
+            }
+            unsafe {
+                let _ = DeleteObject(focus_pen.into());
+            }
         }
     }
 
@@ -248,18 +317,38 @@ fn button_text(hwnd: windows::Win32::Foundation::HWND) -> Vec<u16> {
 #[cfg(windows)]
 pub fn install_owner_draw_button_hover(
     hwnd: windows::Win32::Foundation::HWND,
+    role: ButtonRole,
 ) -> crate::error::Result<()> {
     use windows::Win32::UI::Shell::SetWindowSubclass;
 
+    button_roles().lock().unwrap().insert(hwnd.0 as isize, role);
     unsafe {
         if SetWindowSubclass(hwnd, Some(owner_draw_button_subclass_proc), 1, 0).as_bool() {
             Ok(())
         } else {
+            button_roles().lock().unwrap().remove(&(hwnd.0 as isize));
             Err(crate::error::AppError::Windows(
                 "安装按钮悬停处理失败".to_string(),
             ))
         }
     }
+}
+
+#[cfg(windows)]
+fn button_roles() -> &'static std::sync::Mutex<std::collections::HashMap<isize, ButtonRole>> {
+    use std::collections::HashMap;
+    use std::sync::{Mutex, OnceLock};
+    static ROLES: OnceLock<Mutex<HashMap<isize, ButtonRole>>> = OnceLock::new();
+    ROLES.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+#[cfg(windows)]
+fn button_role_for_window(hwnd: windows::Win32::Foundation::HWND) -> Option<ButtonRole> {
+    button_roles()
+        .lock()
+        .unwrap()
+        .get(&(hwnd.0 as isize))
+        .copied()
 }
 
 #[cfg(windows)]
@@ -301,7 +390,9 @@ unsafe extern "system" fn owner_draw_button_subclass_proc(
         TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent,
     };
     use windows::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass};
-    use windows::Win32::UI::WindowsAndMessaging::{WM_MOUSEMOVE, WM_NCDESTROY};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        WM_ENABLE, WM_KILLFOCUS, WM_MOUSEMOVE, WM_NCDESTROY, WM_SETFOCUS,
+    };
 
     if msg == WM_MOUSEMOVE {
         if !is_button_hot(hwnd) {
@@ -322,8 +413,13 @@ unsafe extern "system" fn owner_draw_button_subclass_proc(
         unsafe {
             let _ = InvalidateRect(Some(hwnd), None, true);
         }
+    } else if msg == WM_SETFOCUS || msg == WM_KILLFOCUS || msg == WM_ENABLE {
+        unsafe {
+            let _ = InvalidateRect(Some(hwnd), None, true);
+        }
     } else if msg == WM_NCDESTROY {
         set_button_hot(hwnd, false);
+        button_roles().lock().unwrap().remove(&(hwnd.0 as isize));
         unsafe {
             let _ = RemoveWindowSubclass(hwnd, Some(owner_draw_button_subclass_proc), subclass_id);
             return DefSubclassProc(hwnd, msg, wparam, lparam);
@@ -350,10 +446,15 @@ mod tests {
 
     #[test]
     fn maps_known_secondary_buttons() {
-        for id in [2002, 3001, 3002, 3003, 3005, 3116, 3119] {
+        for id in [2002, 3001, 3003, 3005, 3116, 3119] {
             assert_eq!(button_role_for_control(id), Some(ButtonRole::Secondary));
             assert!(is_owner_draw_button(id));
         }
+    }
+
+    #[test]
+    fn maps_delete_button_to_danger_role() {
+        assert_eq!(button_role_for_control(3002), Some(ButtonRole::Danger));
     }
 
     #[test]
@@ -402,13 +503,13 @@ mod tests {
     }
 
     #[test]
-    fn focused_button_does_not_draw_inner_focus_ring() {
+    fn focused_button_draws_inner_focus_ring() {
         let state = ButtonVisualState {
             focused: true,
             ..ButtonVisualState::normal()
         };
 
-        assert!(!button_draws_inner_focus_ring(state));
+        assert!(button_draws_inner_focus_ring(state));
     }
 
     #[cfg(windows)]

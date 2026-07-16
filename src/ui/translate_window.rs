@@ -204,46 +204,63 @@ pub struct TranslationWindowLayout {
 }
 
 pub fn translation_window_layout(client_width: i32, client_height: i32) -> TranslationWindowLayout {
-    const MARGIN: i32 = 16;
-    const GAP: i32 = 10;
-    const LABEL_HEIGHT: i32 = 20;
-    const STATUS_HEIGHT: i32 = 22;
-    const BUTTON_WIDTH: i32 = 52;
-    const BUTTON_HEIGHT: i32 = 28;
-    const UPDATE_BUTTON_WIDTH: i32 = 86;
-    const MIN_EDIT_HEIGHT: i32 = 64;
-    const MAX_SOURCE_EDIT_HEIGHT: i32 = 200;
+    translation_window_layout_for_dpi(client_width, client_height, crate::ui::theme::BASE_DPI)
+}
+
+#[cfg(windows)]
+fn translation_window_layout_for_system_dpi(
+    client_width: i32,
+    client_height: i32,
+) -> TranslationWindowLayout {
+    translation_window_layout_for_dpi(client_width, client_height, crate::ui::theme::system_dpi())
+}
+
+fn translation_window_layout_for_dpi(
+    client_width: i32,
+    client_height: i32,
+    dpi: u32,
+) -> TranslationWindowLayout {
+    let scale = |value| crate::ui::theme::scale_for_dpi(value, dpi);
+    let margin = scale(16);
+    let gap = scale(10);
+    let label_height_value = scale(20);
+    let status_height_value = scale(22);
+    let button_width_value = scale(crate::ui::theme::BUTTON_MIN_WIDTH);
+    let button_height_value = scale(crate::ui::theme::PRIMARY_BUTTON_HEIGHT);
+    let update_button_width_value = scale(86);
+    let min_edit_height = scale(64);
+    let max_source_edit_height = scale(200);
 
     let usable_width = client_width.max(1);
     let usable_height = client_height.max(1);
-    let content_x = MARGIN.min(usable_width - 1);
-    let content_width = (usable_width - content_x - MARGIN).max(1);
-    let combo_width = 180.min(content_width);
-    let combo_height = 26.min(usable_height);
-    let button_width = BUTTON_WIDTH.min(content_width);
-    let button_height = BUTTON_HEIGHT.min(usable_height);
-    let button_x = (usable_width - MARGIN - button_width).clamp(0, usable_width - button_width);
-    let bottom_y = (usable_height - MARGIN - button_height).clamp(0, usable_height - button_height);
-    let status_width = (button_x - MARGIN - GAP).max(1);
-    let label_height = LABEL_HEIGHT.min(usable_height);
-    let status_height = STATUS_HEIGHT.min(usable_height);
+    let content_x = margin.min(usable_width - 1);
+    let content_width = (usable_width - content_x - margin).max(1);
+    let combo_width = scale(180).min(content_width);
+    let combo_height = scale(crate::ui::theme::CONTROL_HEIGHT).min(usable_height);
+    let button_width = button_width_value.min(content_width);
+    let button_height = button_height_value.min(usable_height);
+    let button_x = (usable_width - margin - button_width).clamp(0, usable_width - button_width);
+    let bottom_y = (usable_height - margin - button_height).clamp(0, usable_height - button_height);
+    let status_width = (button_x - margin - gap).max(1);
+    let label_height = label_height_value.min(usable_height);
+    let status_height = status_height_value.min(usable_height);
     let profile_combo = ControlRect {
-        x: (usable_width - MARGIN - combo_width).clamp(0, usable_width - combo_width),
-        y: 12.min(usable_height - combo_height),
+        x: (usable_width - margin - combo_width).clamp(0, usable_width - combo_width),
+        y: scale(12).min(usable_height - combo_height),
         width: combo_width,
         height: combo_height,
     };
     let source_label = ControlRect {
         x: content_x,
-        y: 14.min(usable_height - label_height),
-        width: 80.min(content_width),
+        y: scale(14).min(usable_height - label_height),
+        width: scale(80).min(content_width),
         height: label_height,
     };
-    let update_button_width = UPDATE_BUTTON_WIDTH
-        .min((profile_combo.x - content_x - GAP).max(1))
+    let update_button_width = update_button_width_value
+        .min((profile_combo.x - content_x - gap).max(1))
         .max(1);
-    let update_button_x = (profile_combo.x - GAP - update_button_width)
-        .max(content_x + source_label.width + GAP)
+    let update_button_x = (profile_combo.x - gap - update_button_width)
+        .max(content_x + source_label.width + gap)
         .min(usable_width - update_button_width);
     let update_button = ControlRect {
         x: update_button_x,
@@ -255,21 +272,21 @@ pub fn translation_window_layout(client_width: i32, client_height: i32) -> Trans
         .y
         .max(update_button.y)
         .saturating_add(profile_combo.height.max(update_button.height));
-    let source_edit_y = (source_label.y + label_height + 4)
-        .max(top_row_bottom + 6)
+    let source_edit_y = (source_label.y + label_height + scale(4))
+        .max(top_row_bottom + scale(6))
         .min(usable_height - 1);
-    let edit_area_bottom = (bottom_y - GAP).max(source_edit_y + 1);
-    let fixed_between_edits = GAP + label_height + 4;
+    let edit_area_bottom = (bottom_y - gap).max(source_edit_y + 1);
+    let fixed_between_edits = gap + label_height + scale(4);
     let available_edit_height = (edit_area_bottom - source_edit_y - fixed_between_edits).max(2);
     let half_edit_height = available_edit_height / 2;
     let source_edit_height = half_edit_height
-        .min(MAX_SOURCE_EDIT_HEIGHT)
-        .max(MIN_EDIT_HEIGHT.min(half_edit_height.max(1)))
+        .min(max_source_edit_height)
+        .max(min_edit_height.min(half_edit_height.max(1)))
         .min(usable_height - source_edit_y);
-    let translated_label_y = source_edit_y + source_edit_height + GAP;
+    let translated_label_y = source_edit_y + source_edit_height + gap;
     let translated_label_y = translated_label_y.min(usable_height - 1);
-    let translated_edit_y = (translated_label_y + label_height + 4).min(usable_height - 1);
-    let translated_edit_height = (bottom_y - translated_edit_y - GAP)
+    let translated_edit_y = (translated_label_y + label_height + scale(4)).min(usable_height - 1);
+    let translated_edit_height = (bottom_y - translated_edit_y - gap)
         .max(1)
         .min(usable_height - translated_edit_y);
 
@@ -286,7 +303,7 @@ pub fn translation_window_layout(client_width: i32, client_height: i32) -> Trans
         translated_label: ControlRect {
             x: content_x,
             y: translated_label_y,
-            width: 80.min(content_width),
+            width: scale(80).min(content_width),
             height: label_height.min(usable_height - translated_label_y),
         },
         translated_edit: ControlRect {
@@ -297,7 +314,7 @@ pub fn translation_window_layout(client_width: i32, client_height: i32) -> Trans
         },
         status_text: ControlRect {
             x: content_x,
-            y: (bottom_y + 3).min(usable_height - status_height),
+            y: (bottom_y + scale(3)).min(usable_height - status_height),
             width: status_width,
             height: status_height,
         },
@@ -331,6 +348,7 @@ pub fn show_action(is_visible: bool, is_foreground: bool) -> ShowAction {
 pub enum EditShortcutAction {
     None,
     SelectAll,
+    Translate,
     HideWindow,
 }
 
@@ -343,9 +361,12 @@ pub enum EditCharAction {
 pub fn edit_shortcut_action(vk: u32, ctrl_down: bool) -> EditShortcutAction {
     const VK_A: u32 = 0x41;
     const VK_ESCAPE: u32 = 0x1B;
+    const VK_RETURN: u32 = 0x0D;
 
     if ctrl_down && vk == VK_A {
         EditShortcutAction::SelectAll
+    } else if ctrl_down && vk == VK_RETURN {
+        EditShortcutAction::Translate
     } else if vk == VK_ESCAPE {
         EditShortcutAction::HideWindow
     } else {
@@ -483,8 +504,8 @@ impl TranslationWindow {
                 translation_window_style(),
                 CW_USEDEFAULT,
                 CW_USEDEFAULT,
-                620,
-                420,
+                crate::ui::theme::scale(620),
+                crate::ui::theme::scale(420),
                 Some(HWND::default()),
                 None,
                 None,
@@ -641,6 +662,15 @@ impl TranslationWindow {
         self.hwnd
     }
 
+    pub fn handle_dialog_message(
+        &self,
+        msg: &mut windows::Win32::UI::WindowsAndMessaging::MSG,
+    ) -> bool {
+        unsafe {
+            windows::Win32::UI::WindowsAndMessaging::IsDialogMessageW(self.hwnd, msg).as_bool()
+        }
+    }
+
     pub fn refresh_profiles(
         &mut self,
         settings: &crate::config::AppSettings,
@@ -666,11 +696,14 @@ impl TranslationWindow {
         unsafe {
             let mut rect = RECT::default();
             let _ = GetClientRect(self.hwnd, &mut rect);
-            let layout = translation_window_layout(rect.right - rect.left, rect.bottom - rect.top);
+            let layout = translation_window_layout_for_system_dpi(
+                rect.right - rect.left,
+                rect.bottom - rect.top,
+            );
             move_window(
                 self.profile_combo,
                 combo_content_rect(ControlRect {
-                    height: translation_profile_combo_dropdown_height(),
+                    height: crate::ui::theme::scale(translation_profile_combo_dropdown_height()),
                     ..layout.profile_combo
                 }),
             )?;
@@ -1072,6 +1105,19 @@ unsafe extern "system" fn edit_subclass_proc(
                 }
                 return LRESULT(0);
             }
+            EditShortcutAction::Translate => {
+                unsafe {
+                    if let Ok(parent) = GetParent(hwnd) {
+                        let _ = PostMessageW(
+                            Some(parent),
+                            WM_TRANSLATE_WINDOW_SOURCE,
+                            WPARAM(0),
+                            LPARAM(0),
+                        );
+                    }
+                }
+                return LRESULT(0);
+            }
             EditShortcutAction::HideWindow => {
                 unsafe {
                     if let Ok(parent) = GetParent(hwnd) {
@@ -1083,8 +1129,13 @@ unsafe extern "system" fn edit_subclass_proc(
             EditShortcutAction::None => {}
         }
     }
-    if msg == WM_CHAR && edit_char_action(wparam.0 as u32) == EditCharAction::Swallow {
-        return LRESULT(0);
+    if msg == WM_CHAR {
+        let ctrl_down = unsafe { GetKeyState(VK_CONTROL.0 as i32) } < 0;
+        if edit_char_action(wparam.0 as u32) == EditCharAction::Swallow
+            || (ctrl_down && wparam.0 as u32 == 0x0D)
+        {
+            return LRESULT(0);
+        }
     }
     if msg == WM_LBUTTONDBLCLK && !state_ptr.is_null() {
         let state = unsafe { &mut *state_ptr };
@@ -1229,7 +1280,11 @@ fn create_button(
         crate::ui::button::button_uses_native_border(id as usize),
     )?;
     if owner_draw {
-        crate::ui::button::install_owner_draw_button_hover(hwnd)?;
+        crate::ui::button::install_owner_draw_button_hover(
+            hwnd,
+            crate::ui::button::button_role_for_control(id as usize)
+                .expect("owner-draw button must have a semantic role"),
+        )?;
     }
     Ok(hwnd)
 }
@@ -1254,7 +1309,7 @@ fn create_edit(
     }
     let style = WINDOW_STYLE(style_bits);
     let rect = crate::ui::edit::modern_edit_child_rect(x, y, width, height);
-    create_control(
+    let hwnd = create_control(
         parent,
         "EDIT",
         "",
@@ -1265,7 +1320,11 @@ fn create_edit(
         id,
         style,
         crate::ui::edit::edit_uses_native_border(id as usize),
-    )
+    )?;
+    if crate::ui::edit::is_modern_edit(id as usize) {
+        crate::ui::edit::install_modern_edit_focus_tracking(hwnd)?;
+    }
+    Ok(hwnd)
 }
 
 #[cfg(windows)]
@@ -1324,7 +1383,7 @@ fn create_control(
     bordered: bool,
 ) -> Result<windows::Win32::Foundation::HWND> {
     use windows::Win32::UI::WindowsAndMessaging::{
-        CreateWindowExW, HMENU, WINDOW_EX_STYLE, WS_BORDER, WS_CHILD, WS_VISIBLE,
+        CreateWindowExW, HMENU, WINDOW_EX_STYLE, WS_BORDER, WS_CHILD, WS_TABSTOP, WS_VISIBLE,
     };
     use windows::core::PCWSTR;
 
@@ -1335,6 +1394,11 @@ fn create_control(
             PCWSTR(wide(text).as_ptr()),
             WS_CHILD
                 | WS_VISIBLE
+                | if id != 0 && class_name != "STATIC" {
+                    WS_TABSTOP
+                } else {
+                    windows::Win32::UI::WindowsAndMessaging::WINDOW_STYLE(0)
+                }
                 | if bordered {
                     WS_BORDER
                 } else {
@@ -1418,12 +1482,12 @@ fn move_window(hwnd: windows::Win32::Foundation::HWND, rect: ControlRect) -> Res
 
 #[cfg(windows)]
 fn edit_content_rect(rect: ControlRect) -> ControlRect {
-    let content = crate::ui::edit::modern_edit_child_rect(rect.x, rect.y, rect.width, rect.height);
+    let gutter = crate::ui::theme::scale(crate::ui::edit::EDIT_FRAME_GUTTER);
     ControlRect {
-        x: content.x,
-        y: content.y,
-        width: content.width,
-        height: content.height,
+        x: rect.x + gutter,
+        y: rect.y + gutter,
+        width: (rect.width - gutter * 2).max(1),
+        height: (rect.height - gutter * 2).max(1),
     }
 }
 
@@ -1458,17 +1522,17 @@ fn apply_multiline_edit_padding(hwnd: windows::Win32::Foundation::HWND) -> Resul
         let mut client = RECT::default();
         GetClientRect(hwnd, &mut client)
             .map_err(|err| AppError::Windows(format!("获取编辑框尺寸失败: {err}")))?;
-        let text_rect = crate::ui::edit::multiline_edit_text_rect(
-            client.right - client.left,
-            client.bottom - client.top,
-        );
+        let horizontal_padding =
+            crate::ui::theme::scale(crate::ui::edit::MULTILINE_EDIT_HORIZONTAL_PADDING);
+        let vertical_padding =
+            crate::ui::theme::scale(crate::ui::edit::MULTILINE_EDIT_VERTICAL_PADDING);
         let mut rect = RECT {
-            left: text_rect.left,
-            top: text_rect.top,
-            right: text_rect.right,
-            bottom: text_rect.bottom,
+            left: horizontal_padding,
+            top: vertical_padding,
+            right: (client.right - horizontal_padding).max(horizontal_padding),
+            bottom: (client.bottom - vertical_padding).max(vertical_padding),
         };
-        let margin = crate::ui::edit::MULTILINE_EDIT_HORIZONTAL_PADDING as u16 as u32;
+        let margin = horizontal_padding as u16 as u32;
         let packed_margins = margin | (margin << 16);
         let _ = SendMessageW(
             hwnd,
@@ -1509,6 +1573,8 @@ unsafe fn apply_min_track_size(lparam: windows::Win32::Foundation::LPARAM) {
     }
 
     let (min_width, min_height) = translation_window_min_client_size();
+    let min_width = crate::ui::theme::scale(min_width);
+    let min_height = crate::ui::theme::scale(min_height);
     let mut rect = RECT {
         left: 0,
         top: 0,
@@ -1540,7 +1606,10 @@ fn resize_translation_window(hwnd: windows::Win32::Foundation::HWND) -> Result<(
         let mut rect = RECT::default();
         GetClientRect(hwnd, &mut rect)
             .map_err(|err| AppError::Windows(format!("获取翻译窗口尺寸失败: {err}")))?;
-        let layout = translation_window_layout(rect.right - rect.left, rect.bottom - rect.top);
+        let layout = translation_window_layout_for_system_dpi(
+            rect.right - rect.left,
+            rect.bottom - rect.top,
+        );
         let source_label =
             windows::Win32::UI::WindowsAndMessaging::GetDlgItem(Some(hwnd), ID_SOURCE_LABEL as i32)
                 .map_err(|err| AppError::Windows(format!("获取原文标签失败: {err}")))?;
@@ -1576,7 +1645,7 @@ fn resize_translation_window(hwnd: windows::Win32::Foundation::HWND) -> Result<(
         move_window(
             profile_combo,
             combo_content_rect(ControlRect {
-                height: translation_profile_combo_dropdown_height(),
+                height: crate::ui::theme::scale(translation_profile_combo_dropdown_height()),
                 ..layout.profile_combo
             }),
         )?;

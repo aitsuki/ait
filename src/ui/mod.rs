@@ -11,5 +11,6 @@ pub mod font;
 #[cfg(windows)]
 pub mod listbox;
 pub mod settings_window;
+pub mod theme;
 pub mod translate_window;
 pub mod tray;

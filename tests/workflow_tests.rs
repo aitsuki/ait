@@ -435,7 +435,7 @@ fn translation_window_layout_keeps_controls_inside_small_client_area() {
 fn translation_profile_combo_keeps_dropdown_height() {
     let layout = translation_window_layout(620, 420);
 
-    assert_eq!(layout.profile_combo.height, 26);
+    assert_eq!(layout.profile_combo.height, 34);
     assert_eq!(translation_profile_combo_dropdown_height(), 220);
 }
 
@@ -679,13 +679,28 @@ fn legacy_logs_menu_id_is_not_reused() {
 }
 
 #[test]
-fn release_workflow_writes_basic_download_notes() {
+fn release_workflow_uses_package_version_and_generates_release_information() {
     let workflow = std::fs::read_to_string(".github/workflows/release.yml").unwrap();
-    assert!(workflow.contains("Write release notes"));
-    assert!(workflow.contains("## Download"));
+
+    assert!(workflow.contains("cargo metadata --locked"));
+    assert!(workflow.contains("does not match Cargo.toml package version"));
+    assert!(workflow.contains("Generate release notes"));
+    assert!(workflow.contains("releases/generate-notes"));
+    assert!(workflow.contains("Write SHA256 checksums"));
     assert!(workflow.contains("${{ steps.version.outputs.setup_name }}"));
     assert!(workflow.contains("${{ steps.version.outputs.portable_name }}"));
+    assert!(workflow.contains("${{ steps.version.outputs.checksums_name }}"));
     assert!(workflow.contains("Publish GitHub Release"));
+}
+
+#[test]
+fn readme_uses_version_placeholder_instead_of_stale_release_number() {
+    let readme = std::fs::read_to_string("README.md").unwrap();
+
+    assert!(readme.contains("ait-vX.Y.Z-setup.exe"));
+    assert!(readme.contains("ait-vX.Y.Z-windows.exe"));
+    assert!(!readme.contains("ait-v0.2.1-setup.exe"));
+    assert!(readme.contains("Cargo.toml` 是唯一的版本号来源"));
 }
 
 #[test]
@@ -697,6 +712,10 @@ fn edit_shortcut_action_handles_ctrl_a_and_escape() {
     assert_eq!(
         edit_shortcut_action(0x1B, false),
         EditShortcutAction::HideWindow
+    );
+    assert_eq!(
+        edit_shortcut_action(0x0D, true),
+        EditShortcutAction::Translate
     );
     assert_eq!(edit_shortcut_action(0x42, false), EditShortcutAction::None);
 }

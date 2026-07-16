@@ -1,3 +1,10 @@
+pub use crate::ui::theme::RgbColor;
+use crate::ui::theme::{
+    COLOR_BORDER, COLOR_DISABLED_BORDER, COLOR_DISABLED_SURFACE, COLOR_DISABLED_TEXT,
+    COLOR_FOCUS_SOFT, COLOR_FOCUS_TEXT, COLOR_PRIMARY, COLOR_SURFACE, COLOR_SURFACE_HOVER,
+    COLOR_TEXT, CONTROL_RADIUS, LIST_ITEM_HEIGHT,
+};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ListBoxVisualState {
     pub focused: bool,
@@ -16,6 +23,7 @@ impl ListBoxVisualState {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ListBoxItemVisualState {
     pub selected: bool,
+    pub hot: bool,
     pub disabled: bool,
 }
 
@@ -23,21 +31,9 @@ impl ListBoxItemVisualState {
     pub fn normal() -> Self {
         Self {
             selected: false,
+            hot: false,
             disabled: false,
         }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RgbColor {
-    pub r: u8,
-    pub g: u8,
-    pub b: u8,
-}
-
-impl RgbColor {
-    pub const fn new(r: u8, g: u8, b: u8) -> Self {
-        Self { r, g, b }
     }
 }
 
@@ -62,43 +58,52 @@ pub struct ListBoxTextRect {
     pub bottom: i32,
 }
 
-pub const MODERN_LISTBOX_ITEM_HEIGHT: u32 = 32;
+pub const MODERN_LISTBOX_ITEM_HEIGHT: u32 = LIST_ITEM_HEIGHT;
 pub const MODERN_LISTBOX_TEXT_PADDING: i32 = 10;
-pub const MODERN_LISTBOX_RADIUS: i32 = 7;
+pub const MODERN_LISTBOX_RADIUS: i32 = CONTROL_RADIUS;
 
 pub fn listbox_palette(state: ListBoxVisualState) -> ListBoxPalette {
     if state.disabled {
         return ListBoxPalette {
-            background: RgbColor::new(243, 244, 246),
-            border: RgbColor::new(209, 213, 219),
-            text: RgbColor::new(156, 163, 175),
+            background: COLOR_DISABLED_SURFACE,
+            border: COLOR_DISABLED_BORDER,
+            text: COLOR_DISABLED_TEXT,
         };
     }
 
     ListBoxPalette {
-        background: RgbColor::new(255, 255, 255),
-        border: RgbColor::new(203, 213, 225),
-        text: RgbColor::new(31, 41, 55),
+        background: COLOR_SURFACE,
+        border: if state.focused {
+            COLOR_PRIMARY
+        } else {
+            COLOR_BORDER
+        },
+        text: COLOR_TEXT,
     }
 }
 
 pub fn listbox_item_palette(state: ListBoxItemVisualState) -> ListBoxItemPalette {
     if state.disabled {
         return ListBoxItemPalette {
-            background: RgbColor::new(243, 244, 246),
-            text: RgbColor::new(156, 163, 175),
+            background: COLOR_DISABLED_SURFACE,
+            text: COLOR_DISABLED_TEXT,
         };
     }
 
     if state.selected {
         ListBoxItemPalette {
-            background: RgbColor::new(219, 234, 254),
-            text: RgbColor::new(30, 64, 175),
+            background: COLOR_FOCUS_SOFT,
+            text: COLOR_FOCUS_TEXT,
+        }
+    } else if state.hot {
+        ListBoxItemPalette {
+            background: COLOR_SURFACE_HOVER,
+            text: COLOR_TEXT,
         }
     } else {
         ListBoxItemPalette {
-            background: RgbColor::new(255, 255, 255),
-            text: RgbColor::new(31, 41, 55),
+            background: COLOR_SURFACE,
+            text: COLOR_TEXT,
         }
     }
 }
@@ -118,15 +123,6 @@ pub fn modern_listbox_text_rect(rect: ListBoxTextRect) -> ListBoxTextRect {
         right: (rect.right - MODERN_LISTBOX_TEXT_PADDING)
             .max(rect.left + MODERN_LISTBOX_TEXT_PADDING),
         bottom: rect.bottom,
-    }
-}
-
-#[cfg(windows)]
-impl RgbColor {
-    fn colorref(self) -> windows::Win32::Foundation::COLORREF {
-        windows::Win32::Foundation::COLORREF(
-            self.r as u32 | ((self.g as u32) << 8) | ((self.b as u32) << 16),
-        )
     }
 }
 
@@ -167,7 +163,7 @@ pub unsafe fn measure_owner_draw_listbox_item(
         return false;
     }
 
-    measure_item.itemHeight = MODERN_LISTBOX_ITEM_HEIGHT;
+    measure_item.itemHeight = crate::ui::theme::scale(MODERN_LISTBOX_ITEM_HEIGHT as i32) as u32;
     true
 }
 
@@ -196,6 +192,7 @@ pub unsafe fn draw_owner_draw_listbox_item(
 
     let state = ListBoxItemVisualState {
         selected: (draw_item.itemState.0 & ODS_SELECTED.0) != 0,
+        hot: hot_listbox_item(draw_item.hwndItem) == Some(draw_item.itemID as usize),
         disabled: (draw_item.itemState.0 & ODS_DISABLED.0) != 0,
     };
     let palette = listbox_item_palette(state);
@@ -230,12 +227,13 @@ pub unsafe fn draw_owner_draw_listbox_item(
         }
         text.truncate(len as usize);
 
-        let text_frame = modern_listbox_text_rect(ListBoxTextRect {
-            left: rect.left,
+        let padding = crate::ui::theme::scale(MODERN_LISTBOX_TEXT_PADDING);
+        let text_frame = ListBoxTextRect {
+            left: rect.left + padding,
             top: rect.top,
-            right: rect.right,
+            right: (rect.right - padding).max(rect.left + padding),
             bottom: rect.bottom,
-        });
+        };
         let mut text_rect = RECT {
             left: text_frame.left,
             top: text_frame.top,
@@ -333,6 +331,42 @@ unsafe fn paint_modern_listbox_border(hwnd: windows::Win32::Foundation::HWND) {
 }
 
 #[cfg(windows)]
+fn hot_listbox_items() -> &'static std::sync::Mutex<std::collections::HashMap<isize, Option<usize>>>
+{
+    use std::collections::HashMap;
+    use std::sync::{Mutex, OnceLock};
+    static HOT_ITEMS: OnceLock<Mutex<HashMap<isize, Option<usize>>>> = OnceLock::new();
+    HOT_ITEMS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+#[cfg(windows)]
+fn hot_listbox_item(hwnd: windows::Win32::Foundation::HWND) -> Option<usize> {
+    hot_listbox_items()
+        .lock()
+        .unwrap()
+        .get(&(hwnd.0 as isize))
+        .copied()
+        .flatten()
+}
+
+#[cfg(windows)]
+fn set_hot_listbox_item(hwnd: windows::Win32::Foundation::HWND, item: Option<usize>) -> bool {
+    let mut items = hot_listbox_items().lock().unwrap();
+    let key = hwnd.0 as isize;
+    let changed = items.get(&key).copied().flatten() != item;
+    items.insert(key, item);
+    changed
+}
+
+#[cfg(windows)]
+fn clear_hot_listbox_item(hwnd: windows::Win32::Foundation::HWND) {
+    hot_listbox_items()
+        .lock()
+        .unwrap()
+        .remove(&(hwnd.0 as isize));
+}
+
+#[cfg(windows)]
 const MODERN_LISTBOX_SUBCLASS_ID: usize = 5;
 
 #[cfg(windows)]
@@ -345,10 +379,42 @@ unsafe extern "system" fn modern_listbox_subclass_proc(
     _ref_data: usize,
 ) -> windows::Win32::Foundation::LRESULT {
     use windows::Win32::Graphics::Gdi::InvalidateRect;
+    use windows::Win32::UI::Controls::WM_MOUSELEAVE;
+    use windows::Win32::UI::Input::KeyboardAndMouse::{
+        TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent,
+    };
     use windows::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass};
     use windows::Win32::UI::WindowsAndMessaging::{
-        WM_ENABLE, WM_KILLFOCUS, WM_NCDESTROY, WM_PAINT, WM_SETFOCUS,
+        LB_ITEMFROMPOINT, SendMessageW, WM_ENABLE, WM_KILLFOCUS, WM_MOUSEMOVE, WM_NCDESTROY,
+        WM_PAINT, WM_SETFOCUS,
     };
+
+    if msg == WM_MOUSEMOVE {
+        let result = unsafe { SendMessageW(hwnd, LB_ITEMFROMPOINT, None, Some(lparam)) }.0 as u32;
+        let item = if result >> 16 == 0 {
+            Some((result & 0xffff) as usize)
+        } else {
+            None
+        };
+        if set_hot_listbox_item(hwnd, item) {
+            unsafe {
+                let _ = InvalidateRect(Some(hwnd), None, false);
+            }
+        }
+        let mut event = TRACKMOUSEEVENT {
+            cbSize: std::mem::size_of::<TRACKMOUSEEVENT>() as u32,
+            dwFlags: TME_LEAVE,
+            hwndTrack: hwnd,
+            dwHoverTime: 0,
+        };
+        unsafe {
+            let _ = TrackMouseEvent(&mut event);
+        }
+    } else if msg == WM_MOUSELEAVE && set_hot_listbox_item(hwnd, None) {
+        unsafe {
+            let _ = InvalidateRect(Some(hwnd), None, false);
+        }
+    }
 
     if msg == WM_SETFOCUS || msg == WM_KILLFOCUS || msg == WM_ENABLE {
         unsafe {
@@ -365,6 +431,7 @@ unsafe extern "system" fn modern_listbox_subclass_proc(
     }
 
     if msg == WM_NCDESTROY {
+        clear_hot_listbox_item(hwnd);
         unsafe {
             let _ = RemoveWindowSubclass(hwnd, Some(modern_listbox_subclass_proc), subclass_id);
             return DefSubclassProc(hwnd, msg, wparam, lparam);
@@ -404,13 +471,13 @@ mod tests {
     }
 
     #[test]
-    fn focused_listbox_keeps_neutral_border() {
+    fn focused_listbox_uses_active_border() {
         let palette = listbox_palette(ListBoxVisualState {
             focused: true,
             ..ListBoxVisualState::normal()
         });
 
-        assert_eq!(palette.border, RgbColor::new(203, 213, 225));
+        assert_eq!(palette.border, RgbColor::new(37, 99, 235));
     }
 
     #[test]

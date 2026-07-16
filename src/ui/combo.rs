@@ -1,6 +1,14 @@
+pub use crate::ui::theme::RgbColor;
+use crate::ui::theme::{
+    COLOR_BORDER, COLOR_BORDER_STRONG, COLOR_DISABLED_BORDER, COLOR_DISABLED_SURFACE,
+    COLOR_DISABLED_TEXT, COLOR_FOCUS_SOFT, COLOR_FOCUS_TEXT, COLOR_PRIMARY, COLOR_SURFACE,
+    COLOR_TEXT, CONTROL_HEIGHT, CONTROL_RADIUS, LIST_ITEM_HEIGHT,
+};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ComboVisualState {
     pub focused: bool,
+    pub hot: bool,
     pub dropped: bool,
     pub disabled: bool,
 }
@@ -9,22 +17,10 @@ impl ComboVisualState {
     pub fn normal() -> Self {
         Self {
             focused: false,
+            hot: false,
             dropped: false,
             disabled: false,
         }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RgbColor {
-    pub r: u8,
-    pub g: u8,
-    pub b: u8,
-}
-
-impl RgbColor {
-    pub const fn new(r: u8, g: u8, b: u8) -> Self {
-        Self { r, g, b }
     }
 }
 
@@ -76,42 +72,44 @@ pub struct ComboRect {
 pub fn combo_palette(state: ComboVisualState) -> ComboPalette {
     if state.disabled {
         return ComboPalette {
-            background: RgbColor::new(243, 244, 246),
-            border: RgbColor::new(209, 213, 219),
-            text: RgbColor::new(156, 163, 175),
-            arrow: RgbColor::new(156, 163, 175),
+            background: COLOR_DISABLED_SURFACE,
+            border: COLOR_DISABLED_BORDER,
+            text: COLOR_DISABLED_TEXT,
+            arrow: COLOR_DISABLED_TEXT,
         };
     }
 
     ComboPalette {
-        background: RgbColor::new(255, 255, 255),
+        background: COLOR_SURFACE,
         border: if state.focused || state.dropped {
-            RgbColor::new(37, 99, 235)
+            COLOR_PRIMARY
+        } else if state.hot {
+            COLOR_BORDER_STRONG
         } else {
-            RgbColor::new(203, 213, 225)
+            COLOR_BORDER
         },
-        text: RgbColor::new(31, 41, 55),
-        arrow: RgbColor::new(31, 41, 55),
+        text: COLOR_TEXT,
+        arrow: COLOR_TEXT,
     }
 }
 
 pub fn combo_list_item_palette(state: ComboListItemVisualState) -> ComboListItemPalette {
     if state.disabled {
         return ComboListItemPalette {
-            background: RgbColor::new(243, 244, 246),
-            text: RgbColor::new(156, 163, 175),
+            background: COLOR_DISABLED_SURFACE,
+            text: COLOR_DISABLED_TEXT,
         };
     }
 
     if state.selected {
         ComboListItemPalette {
-            background: RgbColor::new(219, 234, 254),
-            text: RgbColor::new(30, 64, 175),
+            background: COLOR_FOCUS_SOFT,
+            text: COLOR_FOCUS_TEXT,
         }
     } else {
         ComboListItemPalette {
-            background: RgbColor::new(255, 255, 255),
-            text: RgbColor::new(31, 41, 55),
+            background: COLOR_SURFACE,
+            text: COLOR_TEXT,
         }
     }
 }
@@ -155,12 +153,12 @@ pub fn modern_combo_child_rect(id: usize, x: i32, y: i32, width: i32, height: i3
         height,
     }
 }
-pub const MODERN_COMBO_VISIBLE_HEIGHT: i32 = 26;
-pub const MODERN_COMBO_LIST_ITEM_HEIGHT: u32 = 28;
+pub const MODERN_COMBO_VISIBLE_HEIGHT: i32 = CONTROL_HEIGHT;
+pub const MODERN_COMBO_LIST_ITEM_HEIGHT: u32 = LIST_ITEM_HEIGHT;
 pub const MODERN_COMBO_ARROW_WIDTH: i32 = 28;
 pub const MODERN_COMBO_TEXT_PADDING: i32 = 9;
 pub const MODERN_COMBO_LIST_TEXT_PADDING: i32 = 10;
-pub const MODERN_COMBO_DROPDOWN_RADIUS: i32 = 7;
+pub const MODERN_COMBO_DROPDOWN_RADIUS: i32 = CONTROL_RADIUS;
 
 pub fn modern_combo_text_rect(left: i32, top: i32, right: i32, bottom: i32) -> ComboTextRect {
     ComboTextRect {
@@ -202,15 +200,27 @@ pub fn modern_combo_dropdown_window_style(style: u32, native_border_style: u32) 
 }
 
 pub fn modern_combo_dropdown_border_color() -> RgbColor {
-    RgbColor::new(37, 99, 235)
+    COLOR_PRIMARY
 }
 
 #[cfg(windows)]
-impl RgbColor {
-    fn colorref(self) -> windows::Win32::Foundation::COLORREF {
-        windows::Win32::Foundation::COLORREF(
-            self.r as u32 | ((self.g as u32) << 8) | ((self.b as u32) << 16),
-        )
+fn runtime_combo_frame_rect(left: i32, top: i32, right: i32) -> ComboTextRect {
+    ComboTextRect {
+        left,
+        top,
+        right,
+        bottom: top + crate::ui::theme::scale(MODERN_COMBO_VISIBLE_HEIGHT),
+    }
+}
+
+#[cfg(windows)]
+fn runtime_combo_text_rect(left: i32, top: i32, right: i32, bottom: i32) -> ComboTextRect {
+    let padding = crate::ui::theme::scale(MODERN_COMBO_TEXT_PADDING);
+    ComboTextRect {
+        left: left + padding,
+        top,
+        right: (right - crate::ui::theme::scale(MODERN_COMBO_ARROW_WIDTH)).max(left + padding),
+        bottom,
     }
 }
 
@@ -245,7 +255,7 @@ pub unsafe fn paint_modern_combo(hwnd: windows::Win32::Foundation::HWND) {
         DrawTextW, EndPaint, FillRect, GetStockObject, HGDIOBJ, LineTo, MoveToEx, NULL_BRUSH,
         PS_SOLID, RoundRect, SelectClipRgn, SelectObject, SetBkMode, SetTextColor, TRANSPARENT,
     };
-    use windows::Win32::UI::WindowsAndMessaging::GetClientRect;
+    use windows::Win32::UI::WindowsAndMessaging::{GetClientRect, SendMessageW, WM_GETFONT};
 
     let state = unsafe { combo_visual_state_for_child(hwnd) };
     let palette = combo_palette(state);
@@ -253,7 +263,7 @@ pub unsafe fn paint_modern_combo(hwnd: windows::Win32::Foundation::HWND) {
     if unsafe { GetClientRect(hwnd, &mut rect).is_err() } {
         return;
     }
-    let frame = modern_combo_frame_rect(rect.left, rect.top, rect.right, rect.bottom);
+    let frame = runtime_combo_frame_rect(rect.left, rect.top, rect.right);
     rect.left = frame.left;
     rect.top = frame.top;
     rect.right = frame.right;
@@ -261,6 +271,12 @@ pub unsafe fn paint_modern_combo(hwnd: windows::Win32::Foundation::HWND) {
 
     let mut paint = windows::Win32::Graphics::Gdi::PAINTSTRUCT::default();
     let hdc = unsafe { BeginPaint(hwnd, &mut paint) };
+    let font = unsafe { SendMessageW(hwnd, WM_GETFONT, None, None) }.0;
+    let old_font = if font == 0 {
+        HGDIOBJ::default()
+    } else {
+        unsafe { SelectObject(hdc, HGDIOBJ(font as *mut core::ffi::c_void)) }
+    };
 
     let background = unsafe { CreateSolidBrush(palette.background.colorref()) };
     let clip_region =
@@ -283,7 +299,7 @@ pub unsafe fn paint_modern_combo(hwnd: windows::Win32::Foundation::HWND) {
     }
 
     let mut text = combo_text(hwnd);
-    let text_frame = modern_combo_text_rect(rect.left, rect.top, rect.right, rect.bottom);
+    let text_frame = runtime_combo_text_rect(rect.left, rect.top, rect.right, rect.bottom);
     let mut text_rect = windows::Win32::Foundation::RECT {
         left: text_frame.left,
         top: text_frame.top,
@@ -310,7 +326,7 @@ pub unsafe fn paint_modern_combo(hwnd: windows::Win32::Foundation::HWND) {
     } else {
         unsafe { SelectObject(hdc, arrow_pen.into()) }
     };
-    let arrow_center_x = rect.right - MODERN_COMBO_ARROW_WIDTH / 2;
+    let arrow_center_x = rect.right - crate::ui::theme::scale(MODERN_COMBO_ARROW_WIDTH) / 2;
     let arrow_center_y = rect.top + (rect.bottom - rect.top) / 2 + 1;
     unsafe {
         let _ = MoveToEx(hdc, arrow_center_x - 5, arrow_center_y - 2, None);
@@ -355,6 +371,11 @@ pub unsafe fn paint_modern_combo(hwnd: windows::Win32::Foundation::HWND) {
             let _ = DeleteObject(background.into());
         }
     }
+    if !old_font.is_invalid() {
+        unsafe {
+            let _ = SelectObject(hdc, old_font);
+        }
+    }
     unsafe {
         let _ = EndPaint(hwnd, &paint);
     }
@@ -373,7 +394,7 @@ pub unsafe fn measure_owner_draw_combo_item(
         return false;
     }
 
-    measure_item.itemHeight = MODERN_COMBO_LIST_ITEM_HEIGHT;
+    measure_item.itemHeight = crate::ui::theme::scale(MODERN_COMBO_LIST_ITEM_HEIGHT as i32) as u32;
     true
 }
 
@@ -460,9 +481,9 @@ pub unsafe fn draw_owner_draw_combo_item(
             text.truncate(len as usize);
 
             let mut text_rect = RECT {
-                left: rect.left + MODERN_COMBO_LIST_TEXT_PADDING,
+                left: rect.left + crate::ui::theme::scale(MODERN_COMBO_LIST_TEXT_PADDING),
                 top: rect.top,
-                right: rect.right - MODERN_COMBO_LIST_TEXT_PADDING,
+                right: rect.right - crate::ui::theme::scale(MODERN_COMBO_LIST_TEXT_PADDING),
                 bottom: rect.bottom,
             };
             let old_bk_mode = unsafe { GetBkMode(hdc) };
@@ -756,6 +777,7 @@ unsafe fn combo_visual_state_for_child(hwnd: windows::Win32::Foundation::HWND) -
 
     ComboVisualState {
         focused: unsafe { GetFocus() } == hwnd,
+        hot: is_combo_hot(hwnd),
         dropped: is_combo_dropped(hwnd),
         disabled: !unsafe { IsWindowEnabled(hwnd).as_bool() },
     }
@@ -772,7 +794,7 @@ pub unsafe fn invalidate_modern_combo_for_child(
         left: 0,
         top: 0,
         right: 32000,
-        bottom: MODERN_COMBO_VISIBLE_HEIGHT,
+        bottom: crate::ui::theme::scale(MODERN_COMBO_VISIBLE_HEIGHT),
     };
     unsafe {
         let _ = InvalidateRect(Some(child), Some(&rect), false);
@@ -815,7 +837,12 @@ unsafe fn apply_modern_combo_visible_region(hwnd: windows::Win32::Foundation::HW
     if unsafe { GetClientRect(hwnd, &mut rect).is_err() } {
         return;
     }
-    let region_rect = modern_combo_visible_region_rect(rect.right - rect.left);
+    let region_rect = ComboRect {
+        x: 0,
+        y: 0,
+        width: rect.right - rect.left,
+        height: crate::ui::theme::scale(MODERN_COMBO_VISIBLE_HEIGHT),
+    };
     if region_rect.width <= 0 || region_rect.height <= 0 {
         return;
     }
@@ -837,6 +864,28 @@ unsafe fn apply_modern_combo_visible_region(hwnd: windows::Win32::Foundation::HW
 }
 
 #[cfg(windows)]
+fn hot_combo() -> &'static std::sync::Mutex<isize> {
+    use std::sync::{Mutex, OnceLock};
+    static HOT_COMBO: OnceLock<Mutex<isize>> = OnceLock::new();
+    HOT_COMBO.get_or_init(|| Mutex::new(0))
+}
+
+#[cfg(windows)]
+fn is_combo_hot(hwnd: windows::Win32::Foundation::HWND) -> bool {
+    *hot_combo().lock().unwrap() == hwnd.0 as isize
+}
+
+#[cfg(windows)]
+fn set_combo_hot(hwnd: windows::Win32::Foundation::HWND, hot: bool) {
+    let mut current = hot_combo().lock().unwrap();
+    if hot {
+        *current = hwnd.0 as isize;
+    } else if *current == hwnd.0 as isize {
+        *current = 0;
+    }
+}
+
+#[cfg(windows)]
 const MODERN_COMBO_SUBCLASS_ID: usize = 3;
 #[cfg(windows)]
 const MODERN_COMBO_DROPDOWN_SUBCLASS_ID: usize = 4;
@@ -850,10 +899,14 @@ unsafe extern "system" fn modern_combo_subclass_proc(
     subclass_id: usize,
     _ref_data: usize,
 ) -> windows::Win32::Foundation::LRESULT {
+    use windows::Win32::UI::Controls::WM_MOUSELEAVE;
+    use windows::Win32::UI::Input::KeyboardAndMouse::{
+        TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent,
+    };
     use windows::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass};
     use windows::Win32::UI::WindowsAndMessaging::{
-        GetParent, WM_ENABLE, WM_ERASEBKGND, WM_KILLFOCUS, WM_NCDESTROY, WM_PAINT, WM_SETFOCUS,
-        WM_SIZE,
+        GetParent, WM_ENABLE, WM_ERASEBKGND, WM_KILLFOCUS, WM_MOUSEMOVE, WM_NCDESTROY, WM_PAINT,
+        WM_SETFOCUS, WM_SIZE,
     };
 
     if msg == WM_PAINT {
@@ -865,6 +918,27 @@ unsafe extern "system" fn modern_combo_subclass_proc(
 
     if msg == WM_ERASEBKGND {
         return windows::Win32::Foundation::LRESULT(1);
+    }
+
+    if msg == WM_MOUSEMOVE && !is_combo_hot(hwnd) {
+        set_combo_hot(hwnd, true);
+        let mut event = TRACKMOUSEEVENT {
+            cbSize: std::mem::size_of::<TRACKMOUSEEVENT>() as u32,
+            dwFlags: TME_LEAVE,
+            hwndTrack: hwnd,
+            dwHoverTime: 0,
+        };
+        unsafe {
+            let _ = TrackMouseEvent(&mut event);
+        }
+        unsafe {
+            let _ = windows::Win32::Graphics::Gdi::InvalidateRect(Some(hwnd), None, false);
+        }
+    } else if msg == WM_MOUSELEAVE {
+        set_combo_hot(hwnd, false);
+        unsafe {
+            let _ = windows::Win32::Graphics::Gdi::InvalidateRect(Some(hwnd), None, false);
+        }
     }
 
     if msg == WM_SETFOCUS || msg == WM_KILLFOCUS || msg == WM_ENABLE {
@@ -883,6 +957,7 @@ unsafe extern "system" fn modern_combo_subclass_proc(
 
     if msg == WM_NCDESTROY {
         set_combo_dropped(hwnd, false);
+        set_combo_hot(hwnd, false);
         unsafe {
             let _ = RemoveWindowSubclass(hwnd, Some(modern_combo_subclass_proc), subclass_id);
             return DefSubclassProc(hwnd, msg, wparam, lparam);
@@ -1036,7 +1111,7 @@ mod tests {
         assert_eq!(rect.left, 0);
         assert_eq!(rect.top, 0);
         assert_eq!(rect.right, 180);
-        assert_eq!(rect.bottom, 26);
+        assert_eq!(rect.bottom, 34);
     }
 
     #[test]
@@ -1051,12 +1126,12 @@ mod tests {
 
     #[test]
     fn text_rect_leaves_room_for_custom_arrow() {
-        let rect = modern_combo_text_rect(0, 0, 180, 26);
+        let rect = modern_combo_text_rect(0, 0, 180, 34);
 
         assert_eq!(rect.left, 9);
         assert_eq!(rect.top, 0);
         assert_eq!(rect.right, 152);
-        assert_eq!(rect.bottom, 26);
+        assert_eq!(rect.bottom, 34);
     }
 
     #[test]
@@ -1066,7 +1141,7 @@ mod tests {
         assert_eq!(rect.x, 0);
         assert_eq!(rect.y, 0);
         assert_eq!(rect.width, 180);
-        assert_eq!(rect.height, 26);
+        assert_eq!(rect.height, 34);
     }
 
     #[test]

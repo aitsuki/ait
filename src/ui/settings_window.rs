@@ -5,7 +5,7 @@ use crate::update::latest_release_url;
 use std::sync::{Mutex, OnceLock};
 
 const SETTINGS_WINDOW_WIDTH: i32 = 720;
-const SETTINGS_WINDOW_HEIGHT: i32 = 460;
+const SETTINGS_WINDOW_HEIGHT: i32 = 480;
 const GOOGLE_NOTICE_TEXT: &str = "Google 使用内置免 Key 翻译，无需填写 Base URL、模型或 API Key。";
 const API_KEY_PLACEHOLDER_TEXT: &str = "********";
 
@@ -279,11 +279,11 @@ pub fn settings_profile_detail_control_rect(
             x: DETAIL_INPUT_X,
             y: 100,
             width: DETAIL_INPUT_WIDTH,
-            height: 32,
+            height: crate::ui::theme::CONTROL_HEIGHT,
         },
         SettingsProfileDetailControl::BaseUrlLabel => SettingsControlRect {
             x: 266,
-            y: 150,
+            y: 151,
             width: 90,
             height: 24,
         },
@@ -291,11 +291,11 @@ pub fn settings_profile_detail_control_rect(
             x: DETAIL_INPUT_X,
             y: 146,
             width: DETAIL_INPUT_WIDTH,
-            height: 32,
+            height: crate::ui::theme::CONTROL_HEIGHT,
         },
         SettingsProfileDetailControl::ModelLabel => SettingsControlRect {
             x: 266,
-            y: 196,
+            y: 197,
             width: 90,
             height: 24,
         },
@@ -303,11 +303,11 @@ pub fn settings_profile_detail_control_rect(
             x: DETAIL_INPUT_X,
             y: 192,
             width: DETAIL_INPUT_WIDTH,
-            height: 32,
+            height: crate::ui::theme::CONTROL_HEIGHT,
         },
         SettingsProfileDetailControl::ApiKeyLabel => SettingsControlRect {
             x: 266,
-            y: 242,
+            y: 243,
             width: 90,
             height: 24,
         },
@@ -315,11 +315,11 @@ pub fn settings_profile_detail_control_rect(
             x: DETAIL_INPUT_X,
             y: 238,
             width: API_KEY_INPUT_WIDTH,
-            height: 32,
+            height: crate::ui::theme::CONTROL_HEIGHT,
         },
         SettingsProfileDetailControl::TimeoutLabel => SettingsControlRect {
             x: 266,
-            y: 288,
+            y: 289,
             width: 90,
             height: 24,
         },
@@ -327,7 +327,7 @@ pub fn settings_profile_detail_control_rect(
             x: DETAIL_INPUT_X,
             y: 284,
             width: DETAIL_INPUT_WIDTH,
-            height: 32,
+            height: crate::ui::theme::CONTROL_HEIGHT,
         },
         SettingsProfileDetailControl::GoogleNotice => SettingsControlRect {
             x: 266,
@@ -600,9 +600,11 @@ impl SettingsWindow {
             };
             let _ = GetMonitorInfoW(monitor, &mut monitor_info);
             let work = monitor_info.rcWork;
+            let window_width = crate::ui::theme::scale(SETTINGS_WINDOW_WIDTH);
+            let window_height = crate::ui::theme::scale(SETTINGS_WINDOW_HEIGHT);
             let (x, y) = settings_window_center_position(
                 (work.left, work.top, work.right, work.bottom),
-                (SETTINGS_WINDOW_WIDTH, SETTINGS_WINDOW_HEIGHT),
+                (window_width, window_height),
             );
 
             let hwnd = CreateWindowExW(
@@ -612,8 +614,8 @@ impl SettingsWindow {
                 WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU,
                 x,
                 y,
-                SETTINGS_WINDOW_WIDTH,
-                SETTINGS_WINDOW_HEIGHT,
+                window_width,
+                window_height,
                 Some(owner_hwnd),
                 None,
                 None,
@@ -653,7 +655,7 @@ impl SettingsWindow {
             set_hotkey_capture_mode(hotkey_edit)?;
             create_checkbox(
                 hwnd,
-                "开启自启",
+                "开机自动启动",
                 layout.auto_start.x,
                 layout.auto_start.y,
                 layout.auto_start.width,
@@ -813,7 +815,7 @@ impl SettingsWindow {
                 api_key_rect.x + api_key_rect.width + 12,
                 api_key_rect.y,
                 52,
-                32,
+                api_key_rect.height,
                 ID_API_KEY_VISIBILITY,
             )?;
             let timeout_label_rect =
@@ -964,15 +966,15 @@ pub fn settings_window_layout() -> SettingsWindowLayout {
         },
         hotkey: SettingsControlRect {
             x: 118,
-            y: 18,
+            y: 17,
             width: 180,
-            height: 32,
+            height: crate::ui::theme::CONTROL_HEIGHT,
         },
         auto_start: SettingsControlRect {
             x: 320,
-            y: 18,
-            width: 100,
-            height: 32,
+            y: 17,
+            width: 120,
+            height: crate::ui::theme::CONTROL_HEIGHT,
         },
         separator: SettingsControlRect {
             x: 18,
@@ -996,19 +998,19 @@ pub fn settings_window_layout() -> SettingsWindowLayout {
             x: 18,
             y: 342,
             width: 64,
-            height: 28,
+            height: crate::ui::theme::CONTROL_HEIGHT,
         },
         delete_profile: SettingsControlRect {
             x: 90,
             y: 342,
-            width: 64,
-            height: 28,
+            width: 68,
+            height: crate::ui::theme::CONTROL_HEIGHT,
         },
         set_default_profile: SettingsControlRect {
-            x: 162,
+            x: 166,
             y: 342,
-            width: 76,
-            height: 28,
+            width: 72,
+            height: crate::ui::theme::CONTROL_HEIGHT,
         },
         name: SettingsControlRect {
             x: 370,
@@ -1018,28 +1020,38 @@ pub fn settings_window_layout() -> SettingsWindowLayout {
         },
         version: SettingsControlRect {
             x: 18,
-            y: 385,
+            y: 408,
             width: 160,
             height: 22,
         },
         update_action: SettingsControlRect {
             x: 180,
-            y: 382,
+            y: 402,
             width: 88,
-            height: 28,
+            height: crate::ui::theme::CONTROL_HEIGHT,
         },
         save_action: SettingsControlRect {
             x: 534,
-            y: 382,
+            y: 402,
             width: 72,
-            height: 28,
+            height: crate::ui::theme::CONTROL_HEIGHT,
         },
         cancel_action: SettingsControlRect {
             x: 614,
-            y: 382,
+            y: 402,
             width: 72,
-            height: 28,
+            height: crate::ui::theme::CONTROL_HEIGHT,
         },
+    }
+}
+
+#[cfg(windows)]
+fn scaled_settings_rect(rect: SettingsControlRect) -> SettingsControlRect {
+    SettingsControlRect {
+        x: crate::ui::theme::scale(rect.x),
+        y: crate::ui::theme::scale(rect.y),
+        width: crate::ui::theme::scale(rect.width),
+        height: crate::ui::theme::scale(rect.height),
     }
 }
 
@@ -1087,6 +1099,39 @@ impl SettingsWindowRegistry {
 fn settings_window_registry() -> &'static Mutex<SettingsWindowRegistry> {
     static REGISTRY: OnceLock<Mutex<SettingsWindowRegistry>> = OnceLock::new();
     REGISTRY.get_or_init(|| Mutex::new(SettingsWindowRegistry::default()))
+}
+
+#[cfg(windows)]
+pub(crate) fn handle_dialog_message(
+    msg: &mut windows::Win32::UI::WindowsAndMessaging::MSG,
+) -> bool {
+    use windows::Win32::Foundation::{LPARAM, WPARAM};
+    use windows::Win32::UI::Input::KeyboardAndMouse::{VK_ESCAPE, VK_RETURN};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        IsChild, IsDialogMessageW, PostMessageW, WM_COMMAND, WM_KEYDOWN,
+    };
+
+    let hwnd = settings_window_registry()
+        .lock()
+        .unwrap()
+        .existing_if_alive()
+        .map(|raw| windows::Win32::Foundation::HWND(raw as *mut core::ffi::c_void));
+    let Some(hwnd) = hwnd else { return false };
+    let belongs_to_window = msg.hwnd == hwnd || unsafe { IsChild(hwnd, msg.hwnd).as_bool() };
+    if belongs_to_window && msg.message == WM_KEYDOWN {
+        let command = match msg.wParam.0 as u16 {
+            key if key == VK_RETURN.0 => Some(ID_SAVE),
+            key if key == VK_ESCAPE.0 => Some(ID_CANCEL),
+            _ => None,
+        };
+        if let Some(command) = command {
+            unsafe {
+                let _ = PostMessageW(Some(hwnd), WM_COMMAND, WPARAM(command as usize), LPARAM(0));
+            }
+            return true;
+        }
+    }
+    unsafe { IsDialogMessageW(hwnd, msg).as_bool() }
 }
 
 #[cfg(all(test, windows))]
@@ -1601,6 +1646,7 @@ fn apply_profile_detail_ui_state(
             } else {
                 settings_profile_detail_hidden_rect()
             };
+            let rect = scaled_settings_rect(rect);
             let _ = MoveWindow(
                 api_key_visibility_button,
                 rect.x,
@@ -1645,6 +1691,7 @@ fn apply_profile_detail_ui_state(
                         rect.height,
                     );
                 }
+                let rect = scaled_settings_rect(rect);
                 let _ = MoveWindow(child, rect.x, rect.y, rect.width, rect.height, true);
                 let visibility_flag = if state.visible {
                     SWP_SHOWWINDOW
@@ -2009,7 +2056,11 @@ fn create_button(
         crate::ui::button::button_uses_native_border(id as usize),
     )?;
     if owner_draw {
-        crate::ui::button::install_owner_draw_button_hover(hwnd)?;
+        crate::ui::button::install_owner_draw_button_hover(
+            hwnd,
+            crate::ui::button::button_role_for_control(id as usize)
+                .expect("owner-draw button must have a semantic role"),
+        )?;
     }
     Ok(hwnd)
 }
@@ -2103,10 +2154,14 @@ fn create_control(
     bordered: bool,
 ) -> Result<windows::Win32::Foundation::HWND> {
     use windows::Win32::UI::WindowsAndMessaging::{
-        CreateWindowExW, HMENU, WINDOW_EX_STYLE, WS_BORDER, WS_CHILD, WS_VISIBLE,
+        CreateWindowExW, HMENU, WINDOW_EX_STYLE, WS_BORDER, WS_CHILD, WS_TABSTOP, WS_VISIBLE,
     };
     use windows::core::PCWSTR;
 
+    let x = crate::ui::theme::scale(x);
+    let y = crate::ui::theme::scale(y);
+    let width = crate::ui::theme::scale(width);
+    let height = crate::ui::theme::scale(height);
     let hwnd = unsafe {
         CreateWindowExW(
             WINDOW_EX_STYLE::default(),
@@ -2114,6 +2169,11 @@ fn create_control(
             PCWSTR(wide(text).as_ptr()),
             WS_CHILD
                 | WS_VISIBLE
+                | if id != 0 && class_name != "STATIC" {
+                    WS_TABSTOP
+                } else {
+                    windows::Win32::UI::WindowsAndMessaging::WINDOW_STYLE(0)
+                }
                 | if bordered {
                     WS_BORDER
                 } else {

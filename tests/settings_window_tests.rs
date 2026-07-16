@@ -633,17 +633,21 @@ fn settings_window_layout_places_auto_start_with_global_settings() {
 
 #[test]
 fn app_version_text_uses_package_version() {
-    assert_eq!(app_version_text(), "ait v0.2.5");
+    assert_eq!(
+        app_version_text(),
+        format!("ait v{}", env!("CARGO_PKG_VERSION"))
+    );
 }
 
 #[test]
 fn settings_window_layout_keeps_version_label_in_visible_client_area() {
     let layout = settings_window_layout();
 
-    assert!(layout.version.y + layout.version.height <= 410);
-    assert!(layout.update_action.y + layout.update_action.height <= 410);
-    assert!(layout.save_action.y + layout.save_action.height <= 410);
-    assert!(layout.cancel_action.y + layout.cancel_action.height <= 410);
+    const CLIENT_HEIGHT: i32 = 440;
+    assert!(layout.version.y + layout.version.height <= CLIENT_HEIGHT);
+    assert!(layout.update_action.y + layout.update_action.height <= CLIENT_HEIGHT);
+    assert!(layout.save_action.y + layout.save_action.height <= CLIENT_HEIGHT);
+    assert!(layout.cancel_action.y + layout.cancel_action.height <= CLIENT_HEIGHT);
 }
 
 #[test]
@@ -705,11 +709,11 @@ fn settings_modern_edit_controls_leave_room_for_parent_drawn_border() {
         layout.hotkey.height,
     );
 
-    assert_eq!(layout.hotkey.height, 32);
+    assert_eq!(layout.hotkey.height, 34);
     assert_eq!(rect.x, 122);
-    assert_eq!(rect.y, 22);
+    assert_eq!(rect.y, 21);
     assert_eq!(rect.width, 172);
-    assert_eq!(rect.height, 24);
+    assert_eq!(rect.height, 26);
 }
 
 #[test]
@@ -721,10 +725,10 @@ fn settings_profile_detail_layout_gives_single_line_edits_full_content_height() 
     let timeout = settings_profile_detail_control_rect(SettingsProfileDetailControl::TimeoutInput);
 
     for rect in [name, base_url, model, api_key, timeout] {
-        assert_eq!(rect.height, 32);
+        assert_eq!(rect.height, 34);
         assert_eq!(
             settings_edit_child_rect(3102, rect.x, rect.y, rect.width, rect.height).height,
-            24
+            26
         );
     }
     assert!(base_url.y - name.y >= 44);

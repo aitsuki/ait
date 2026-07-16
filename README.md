@@ -1,5 +1,7 @@
 # ait
 
+[![GitHub Release](https://img.shields.io/github/v/release/aitsuki/ait)](https://github.com/aitsuki/ait/releases/latest)
+
 ait 是一个 Windows 划词翻译小工具。
 
 选中文字，按下快捷键，就能弹出翻译结果。它会安静地待在系统托盘里，不会一直占着屏幕。
@@ -10,10 +12,12 @@ ait 是一个 Windows 划词翻译小工具。
 
 https://github.com/aitsuki/ait/releases/latest
 
+版本变更记录见 [CHANGELOG.md](CHANGELOG.md)。
+
 推荐安装器：
 
 ```text
-ait-v0.2.1-setup.exe
+ait-vX.Y.Z-setup.exe
 ```
 
 这是推荐的安装包，双击后按提示安装即可。
@@ -21,7 +25,7 @@ ait-v0.2.1-setup.exe
 便携版：
 
 ```text
-ait-v0.2.1-windows.exe
+ait-vX.Y.Z-windows.exe
 ```
 
 它是单文件版本，下载后直接双击运行，不需要解压。
@@ -95,16 +99,18 @@ cargo run
 cargo test
 ```
 
-发布正式版：
+发布正式版时，`Cargo.toml` 是唯一的版本号来源：
 
-1. 打开 GitHub 仓库的 Actions 页面。
-2. 选择 `Release` workflow。
-3. 点击 `Run workflow`。
-4. 输入版本号，例如 `v0.2.1`。
+1. 修改 `Cargo.toml` 中的 `package.version`。
+2. 执行 `cargo check`，同步更新 `Cargo.lock`。
+3. 提交并推送到 `main`。
+4. 在 GitHub Actions 中手动运行 `Release` workflow，无需再次输入版本号。
 
-也可以推送 tag 发布：
+也可以推送与包版本一致的 tag 触发发布：
 
 ```powershell
-git tag v0.2.1
-git push origin v0.2.1
+git tag vX.Y.Z
+git push origin vX.Y.Z
 ```
+
+Release workflow 会校验 tag 与 `Cargo.toml` 是否一致，并自动生成变更说明、安装包、便携版和 SHA256 校验文件。

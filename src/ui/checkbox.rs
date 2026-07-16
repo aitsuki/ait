@@ -1,3 +1,10 @@
+pub use crate::ui::theme::RgbColor;
+use crate::ui::theme::{
+    COLOR_BORDER, COLOR_DISABLED_BORDER, COLOR_DISABLED_SURFACE, COLOR_DISABLED_TEXT,
+    COLOR_PRIMARY, COLOR_PRIMARY_HOVER, COLOR_PRIMARY_TEXT, COLOR_SURFACE, COLOR_SURFACE_SUBTLE,
+    COLOR_TEXT, FOCUS_RING_INSET,
+};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CheckboxVisualState {
     pub checked: bool,
@@ -14,19 +21,6 @@ impl CheckboxVisualState {
             disabled: false,
             focused: false,
         }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RgbColor {
-    pub r: u8,
-    pub g: u8,
-    pub b: u8,
-}
-
-impl RgbColor {
-    pub const fn new(r: u8, g: u8, b: u8) -> Self {
-        Self { r, g, b }
     }
 }
 
@@ -52,40 +46,40 @@ pub const CHECKBOX_TEXT_GAP: i32 = 8;
 pub fn checkbox_palette(state: CheckboxVisualState) -> CheckboxPalette {
     if state.disabled {
         return CheckboxPalette {
-            box_background: RgbColor::new(243, 244, 246),
-            box_border: RgbColor::new(209, 213, 219),
-            check: RgbColor::new(156, 163, 175),
-            text: RgbColor::new(156, 163, 175),
+            box_background: COLOR_DISABLED_SURFACE,
+            box_border: COLOR_DISABLED_BORDER,
+            check: COLOR_DISABLED_TEXT,
+            text: COLOR_DISABLED_TEXT,
         };
     }
 
     if state.checked {
         let box_background = if state.hot {
-            RgbColor::new(30, 90, 224)
+            COLOR_PRIMARY_HOVER
         } else {
-            RgbColor::new(37, 99, 235)
+            COLOR_PRIMARY
         };
         return CheckboxPalette {
             box_background,
             box_border: box_background,
-            check: RgbColor::new(255, 255, 255),
-            text: RgbColor::new(31, 41, 55),
+            check: COLOR_PRIMARY_TEXT,
+            text: COLOR_TEXT,
         };
     }
 
     CheckboxPalette {
         box_background: if state.hot || state.focused {
-            RgbColor::new(248, 250, 252)
+            COLOR_SURFACE_SUBTLE
         } else {
-            RgbColor::new(255, 255, 255)
+            COLOR_SURFACE
         },
         box_border: if state.hot || state.focused {
-            RgbColor::new(37, 99, 235)
+            COLOR_PRIMARY
         } else {
-            RgbColor::new(203, 213, 225)
+            COLOR_BORDER
         },
-        check: RgbColor::new(255, 255, 255),
-        text: RgbColor::new(31, 41, 55),
+        check: COLOR_PRIMARY_TEXT,
+        text: COLOR_TEXT,
     }
 }
 
@@ -113,15 +107,6 @@ pub fn checkbox_uses_native_border(id: usize) -> bool {
 
 pub fn checkbox_toggled_state(checked: bool) -> bool {
     !checked
-}
-
-#[cfg(windows)]
-impl RgbColor {
-    fn colorref(self) -> windows::Win32::Foundation::COLORREF {
-        windows::Win32::Foundation::COLORREF(
-            self.r as u32 | ((self.g as u32) << 8) | ((self.b as u32) << 16),
-        )
-    }
 }
 
 #[cfg(windows)]
@@ -199,7 +184,14 @@ pub unsafe fn draw_owner_draw_checkbox(
         let _ = FillRect(hdc, &rect, background);
     }
 
-    let box_frame = checkbox_box_rect(rect.bottom - rect.top);
+    let box_size = crate::ui::theme::scale(CHECKBOX_BOX_SIZE);
+    let box_top = (((rect.bottom - rect.top) - box_size) / 2).max(0);
+    let box_frame = CheckboxBoxRect {
+        left: 0,
+        top: box_top,
+        right: box_size,
+        bottom: box_top + box_size,
+    };
     let box_rect = windows::Win32::Foundation::RECT {
         left: rect.left + box_frame.left,
         top: rect.top + box_frame.top,
@@ -272,19 +264,19 @@ pub unsafe fn draw_owner_draw_checkbox(
             unsafe {
                 let _ = windows::Win32::Graphics::Gdi::MoveToEx(
                     hdc,
-                    box_rect.left + 4,
-                    box_rect.top + 9,
+                    box_rect.left + crate::ui::theme::scale(4),
+                    box_rect.top + crate::ui::theme::scale(9),
                     None,
                 );
                 let _ = windows::Win32::Graphics::Gdi::LineTo(
                     hdc,
-                    box_rect.left + 8,
-                    box_rect.top + 13,
+                    box_rect.left + crate::ui::theme::scale(8),
+                    box_rect.top + crate::ui::theme::scale(13),
                 );
                 let _ = windows::Win32::Graphics::Gdi::LineTo(
                     hdc,
-                    box_rect.left + 14,
-                    box_rect.top + 5,
+                    box_rect.left + crate::ui::theme::scale(14),
+                    box_rect.top + crate::ui::theme::scale(5),
                 );
             }
             if !old_pen.is_invalid() {
@@ -300,7 +292,7 @@ pub unsafe fn draw_owner_draw_checkbox(
 
     let mut text = checkbox_text(draw_item.hwndItem);
     let mut text_rect = windows::Win32::Foundation::RECT {
-        left: rect.left + checkbox_text_left(),
+        left: rect.left + crate::ui::theme::scale(CHECKBOX_BOX_SIZE + CHECKBOX_TEXT_GAP),
         top: rect.top,
         right: rect.right,
         bottom: rect.bottom,
@@ -318,6 +310,38 @@ pub unsafe fn draw_owner_draw_checkbox(
         );
         let _ = SetTextColor(hdc, old_text_color);
         let _ = SetBkMode(hdc, BACKGROUND_MODE(old_bk_mode as u32));
+    }
+
+    if state.focused && !state.disabled {
+        let focus_pen = unsafe { CreatePen(PS_SOLID, 1, COLOR_PRIMARY.colorref()) };
+        if !focus_pen.is_invalid() {
+            let old_pen = unsafe { SelectObject(hdc, focus_pen.into()) };
+            let old_brush = unsafe { SelectObject(hdc, GetStockObject(NULL_BRUSH)) };
+            unsafe {
+                let _ = RoundRect(
+                    hdc,
+                    rect.left + FOCUS_RING_INSET,
+                    rect.top + FOCUS_RING_INSET,
+                    rect.right - FOCUS_RING_INSET,
+                    rect.bottom - FOCUS_RING_INSET,
+                    5,
+                    5,
+                );
+            }
+            if !old_brush.is_invalid() {
+                unsafe {
+                    let _ = SelectObject(hdc, old_brush);
+                }
+            }
+            if !old_pen.is_invalid() {
+                unsafe {
+                    let _ = SelectObject(hdc, old_pen);
+                }
+            }
+            unsafe {
+                let _ = DeleteObject(focus_pen.into());
+            }
+        }
     }
 
     if !box_background.is_invalid() {
@@ -399,7 +423,9 @@ unsafe extern "system" fn owner_draw_checkbox_subclass_proc(
         TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent,
     };
     use windows::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass};
-    use windows::Win32::UI::WindowsAndMessaging::{WM_MOUSEMOVE, WM_NCDESTROY};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        WM_ENABLE, WM_KILLFOCUS, WM_MOUSEMOVE, WM_NCDESTROY, WM_SETFOCUS,
+    };
 
     if msg == WM_MOUSEMOVE {
         if !is_checkbox_hot(hwnd) {
@@ -417,6 +443,10 @@ unsafe extern "system" fn owner_draw_checkbox_subclass_proc(
         }
     } else if msg == WM_MOUSELEAVE {
         set_checkbox_hot(hwnd, false);
+        unsafe {
+            let _ = InvalidateRect(Some(hwnd), None, true);
+        }
+    } else if msg == WM_SETFOCUS || msg == WM_KILLFOCUS || msg == WM_ENABLE {
         unsafe {
             let _ = InvalidateRect(Some(hwnd), None, true);
         }

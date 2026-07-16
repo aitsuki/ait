@@ -637,6 +637,11 @@ fn run_platform() -> Result<()> {
                     }
                 }
             }
+            if translation_window.handle_dialog_message(&mut msg)
+                || crate::ui::settings_window::handle_dialog_message(&mut msg)
+            {
+                continue;
+            }
             let _ = TranslateMessage(&msg);
             DispatchMessageW(&msg);
         }
