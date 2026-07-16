@@ -110,6 +110,16 @@ jobs:
           }
           $generated = $generatedJson | ConvertFrom-Json
 
+          $plainVersion = "${{ steps.version.outputs.plain_version }}"
+          $changelog = Get-Content CHANGELOG.md -Raw
+          $pattern = '(?ms)^## \[' + [regex]::Escape($plainVersion) + '\][^\r\n]*\r?\n(?<body>.*?)(?=^## \[|\z)'
+          $match = [regex]::Match($changelog, $pattern)
+          if (-not $match.Success) {
+            Write-Error "CHANGELOG.md does not contain a section for $plainVersion."
+            exit 1
+          }
+          $releaseChanges = $match.Groups['body'].Value.Trim()
+
           @"
           # ait $version
 
@@ -118,6 +128,8 @@ jobs:
           - ${{ steps.version.outputs.setup_name }}：推荐安装包。
           - ${{ steps.version.outputs.portable_name }}：便携单文件版本。
           - ${{ steps.version.outputs.checksums_name }}：SHA256 校验值。
+
+          $releaseChanges
 
           $($generated.body)
           "@ | Set-Content -Path release-notes.md -Encoding utf8NoBOM

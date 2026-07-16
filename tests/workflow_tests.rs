@@ -686,6 +686,8 @@ fn release_workflow_uses_package_version_and_generates_release_information() {
     assert!(workflow.contains("does not match Cargo.toml package version"));
     assert!(workflow.contains("Generate release notes"));
     assert!(workflow.contains("releases/generate-notes"));
+    assert!(workflow.contains("Get-Content CHANGELOG.md -Raw"));
+    assert!(workflow.contains("CHANGELOG.md does not contain a section"));
     assert!(workflow.contains("Write SHA256 checksums"));
     assert!(workflow.contains("${{ steps.version.outputs.setup_name }}"));
     assert!(workflow.contains("${{ steps.version.outputs.portable_name }}"));
