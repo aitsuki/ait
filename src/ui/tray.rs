@@ -112,7 +112,7 @@ unsafe extern "system" fn tray_wnd_proc(
     use windows::Win32::UI::WindowsAndMessaging::{
         AppendMenuW, CreatePopupMenu, DefWindowProcW, DestroyMenu, GetCursorPos, MF_SEPARATOR,
         MF_STRING, PostMessageW, PostQuitMessage, SetForegroundWindow, TPM_RETURNCMD,
-        TrackPopupMenu, WM_CLOSE, WM_RBUTTONUP,
+        TrackPopupMenu, WM_CLOSE, WM_LBUTTONUP, WM_RBUTTONUP,
     };
     use windows::core::PCWSTR;
 
@@ -120,6 +120,18 @@ unsafe extern "system" fn tray_wnd_proc(
         tracing::info!("tray window close requested");
         unsafe {
             PostQuitMessage(0);
+        }
+        return LRESULT(0);
+    }
+
+    if msg == WM_TRAY_ICON && lparam.0 as u32 == WM_LBUTTONUP {
+        unsafe {
+            let _ = PostMessageW(
+                Some(hwnd),
+                WM_TRAY_COMMAND,
+                WPARAM(MENU_SHOW_TRANSLATION_WINDOW),
+                LPARAM(0),
+            );
         }
         return LRESULT(0);
     }
