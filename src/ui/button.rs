@@ -132,7 +132,7 @@ pub fn button_role_for_control(id: usize) -> Option<ButtonRole> {
     match id {
         2001 | 3004 => Some(ButtonRole::Primary),
         3002 => Some(ButtonRole::Danger),
-        2002 | 3001 | 3003 | 3005 | 3116 | 3119 => Some(ButtonRole::Secondary),
+        2002 | 3001 | 3003 | 3005 | 3116 | 3119 | 3121 => Some(ButtonRole::Secondary),
         _ => None,
     }
 }
@@ -446,7 +446,7 @@ mod tests {
 
     #[test]
     fn maps_known_secondary_buttons() {
-        for id in [2002, 3001, 3003, 3005, 3116, 3119] {
+        for id in [2002, 3001, 3003, 3005, 3116, 3119, 3121] {
             assert_eq!(button_role_for_control(id), Some(ButtonRole::Secondary));
             assert!(is_owner_draw_button(id));
         }

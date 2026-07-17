@@ -1,14 +1,17 @@
 use ait::config::{AppSettings, TranslatorProvider};
 use ait::ui::settings_window::{
     SettingsApiKeyUpdate, SettingsEditAction, SettingsProfileDetailControl,
-    SettingsProfileDetailUpdate, SettingsSaveOutcome, SettingsViewModel, api_key_placeholder_text,
-    app_version_text, apply_settings_detail_update, apply_settings_edit_action,
-    hotkey_capture_text, settings_api_key_input_text, settings_api_key_update_from_input,
-    settings_edit_child_rect, settings_profile_detail_control_rect,
-    settings_profile_detail_control_states, settings_profile_detail_hidden_rect,
-    settings_profile_google_notice_text, settings_save_outcome_after_success,
+    SettingsProfileDetailUpdate, SettingsProfileTestState, SettingsSaveOutcome, SettingsViewModel,
+    api_key_placeholder_text, app_version_text, apply_settings_detail_update,
+    apply_settings_edit_action, hotkey_capture_text, settings_api_key_input_text,
+    settings_api_key_update_from_input, settings_edit_child_rect,
+    settings_profile_detail_control_rect, settings_profile_detail_control_states,
+    settings_profile_detail_hidden_rect, settings_profile_google_notice_text,
+    settings_profile_test_api_key, settings_profile_test_button_text,
+    settings_profile_test_status_text, settings_save_outcome_after_success,
     settings_static_controls_have_border, settings_static_text_uses_window_background,
     settings_window_center_position, settings_window_layout, settings_window_uses_background_brush,
+    validate_settings_profile_test_fields,
 };
 use ait::update::latest_release_url;
 
@@ -251,6 +254,80 @@ fn google_notice_explains_no_network_fields_are_needed() {
         settings_profile_google_notice_text(),
         "Google 使用内置免 Key 翻译，无需填写 Base URL、模型或 API Key。"
     );
+}
+
+#[test]
+fn profile_test_controls_are_hidden_for_google_and_visible_for_models() {
+    let settings = AppSettings::default();
+    let google = SettingsViewModel::from_settings_with_selected(&settings, "google");
+    let openai = SettingsViewModel::from_settings_with_selected(&settings, "openai");
+
+    for control in [
+        SettingsProfileDetailControl::TestStatus,
+        SettingsProfileDetailControl::TestAction,
+    ] {
+        let google_state = settings_profile_detail_control_states(&google.selected_profile)
+            .into_iter()
+            .find(|state| state.control == control)
+            .unwrap();
+        let openai_state = settings_profile_detail_control_states(&openai.selected_profile)
+            .into_iter()
+            .find(|state| state.control == control)
+            .unwrap();
+        assert!(!google_state.visible);
+        assert!(openai_state.visible);
+        assert!(openai_state.enabled);
+    }
+}
+
+#[test]
+fn profile_test_state_has_stable_inline_labels() {
+    assert_eq!(
+        settings_profile_test_status_text(SettingsProfileTestState::Idle),
+        ""
+    );
+    assert_eq!(
+        settings_profile_test_status_text(SettingsProfileTestState::Testing),
+        "正在测试…"
+    );
+    assert_eq!(
+        settings_profile_test_status_text(SettingsProfileTestState::Success { latency_ms: 842 }),
+        "连接成功 (842 ms)"
+    );
+    assert_eq!(
+        settings_profile_test_status_text(SettingsProfileTestState::Failure),
+        "测试失败，请查看提示"
+    );
+    assert_eq!(
+        settings_profile_test_button_text(SettingsProfileTestState::Testing),
+        "测试中…"
+    );
+    assert_eq!(
+        settings_profile_test_button_text(SettingsProfileTestState::Success { latency_ms: 842 }),
+        "测试连接"
+    );
+}
+
+#[test]
+fn profile_test_uses_saved_key_only_for_placeholder() {
+    assert_eq!(
+        settings_profile_test_api_key(api_key_placeholder_text(), Some("saved-secret")).unwrap(),
+        "saved-secret"
+    );
+    assert_eq!(
+        settings_profile_test_api_key("draft-secret", Some("saved-secret")).unwrap(),
+        "draft-secret"
+    );
+    assert!(settings_profile_test_api_key(api_key_placeholder_text(), None).is_err());
+    assert!(settings_profile_test_api_key("  ", None).is_err());
+}
+
+#[test]
+fn profile_test_rejects_incomplete_model_fields() {
+    assert!(validate_settings_profile_test_fields("", "model", 30).is_err());
+    assert!(validate_settings_profile_test_fields("https://example.test/v1", "", 30).is_err());
+    assert!(validate_settings_profile_test_fields("https://example.test/v1", "model", 0).is_err());
+    assert!(validate_settings_profile_test_fields("https://example.test/v1", "model", 30).is_ok());
 }
 
 #[test]
@@ -607,6 +684,7 @@ fn successful_settings_save_closes_window() {
 fn settings_window_layout_places_global_settings_above_profiles() {
     let layout = settings_window_layout();
 
+    assert_eq!(layout.profile_title.y, layout.detail_title.y);
     assert_eq!(
         layout.hotkey_label.y + layout.hotkey_label.height / 2,
         layout.hotkey.y + layout.hotkey.height / 2
@@ -676,6 +754,7 @@ fn settings_static_text_controls_use_window_background() {
     assert!(settings_static_text_uses_window_background(3110));
     assert!(settings_static_text_uses_window_background(3111));
     assert!(settings_static_text_uses_window_background(3118));
+    assert!(settings_static_text_uses_window_background(3120));
     assert!(!settings_static_text_uses_window_background(3102));
 }
 
@@ -735,6 +814,20 @@ fn settings_profile_detail_layout_gives_single_line_edits_full_content_height() 
     assert!(model.y - base_url.y >= 44);
     assert!(api_key.y - model.y >= 44);
     assert!(timeout.y - api_key.y >= 44);
+}
+
+#[test]
+fn settings_profile_test_row_fits_between_fields_and_bottom_actions() {
+    let timeout = settings_profile_detail_control_rect(SettingsProfileDetailControl::TimeoutInput);
+    let status = settings_profile_detail_control_rect(SettingsProfileDetailControl::TestStatus);
+    let action = settings_profile_detail_control_rect(SettingsProfileDetailControl::TestAction);
+    let layout = settings_window_layout();
+
+    assert!(status.x + status.width < action.x);
+    assert!(timeout.y + timeout.height < action.y);
+    assert_eq!(action.y, layout.new_profile.y);
+    assert!(action.x + action.width <= layout.cancel_action.x + layout.cancel_action.width);
+    assert!(action.y + action.height < layout.save_action.y);
 }
 
 #[test]

@@ -44,6 +44,10 @@ const ID_VERSION_LABEL: i32 = 3118;
 #[cfg(windows)]
 const ID_CHECK_UPDATE: isize = 3119;
 #[cfg(windows)]
+const ID_TEST_STATUS: i32 = 3120;
+#[cfg(windows)]
+const ID_TEST_PROFILE: isize = 3121;
+#[cfg(windows)]
 const EM_SET_PASSWORD_CHAR: u32 = 0x00CC;
 #[cfg(windows)]
 const EM_SETREADONLY: u32 = 0x00CF;
@@ -59,6 +63,8 @@ const ID_SAVE: isize = 3004;
 const ID_CANCEL: isize = 3005;
 #[cfg(windows)]
 pub const WM_SETTINGS_SAVED: u32 = windows::Win32::UI::WindowsAndMessaging::WM_APP + 40;
+#[cfg(windows)]
+const WM_PROFILE_TEST_FINISHED: u32 = windows::Win32::UI::WindowsAndMessaging::WM_APP + 41;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SettingsViewModel {
@@ -132,6 +138,16 @@ pub enum SettingsProfileDetailControl {
     TimeoutLabel,
     TimeoutInput,
     GoogleNotice,
+    TestStatus,
+    TestAction,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SettingsProfileTestState {
+    Idle,
+    Testing,
+    Success { latency_ms: u128 },
+    Failure,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -194,6 +210,54 @@ pub fn hotkey_capture_text(vk: u32, modifiers: crate::hotkey::Modifiers) -> Opti
     Some(crate::hotkey::Hotkey { modifiers, key }.to_string())
 }
 
+pub fn settings_profile_test_status_text(state: SettingsProfileTestState) -> String {
+    match state {
+        SettingsProfileTestState::Idle => String::new(),
+        SettingsProfileTestState::Testing => "正在测试…".to_string(),
+        SettingsProfileTestState::Success { latency_ms } => {
+            format!("连接成功 ({latency_ms} ms)")
+        }
+        SettingsProfileTestState::Failure => "测试失败，请查看提示".to_string(),
+    }
+}
+
+pub fn settings_profile_test_button_text(state: SettingsProfileTestState) -> &'static str {
+    if state == SettingsProfileTestState::Testing {
+        "测试中…"
+    } else {
+        "测试连接"
+    }
+}
+
+pub fn settings_profile_test_api_key(input: &str, saved_api_key: Option<&str>) -> Result<String> {
+    let api_key = if input == API_KEY_PLACEHOLDER_TEXT {
+        saved_api_key.unwrap_or_default()
+    } else {
+        input
+    };
+    if api_key.trim().is_empty() {
+        return Err(AppError::Config("请填写 API Key".to_string()));
+    }
+    Ok(api_key.to_string())
+}
+
+pub fn validate_settings_profile_test_fields(
+    base_url: &str,
+    model: &str,
+    timeout_secs: u64,
+) -> Result<()> {
+    if base_url.trim().is_empty() {
+        return Err(AppError::Config("请填写 Base URL".to_string()));
+    }
+    if model.trim().is_empty() {
+        return Err(AppError::Config("请填写模型".to_string()));
+    }
+    if timeout_secs == 0 {
+        return Err(AppError::Config("超时秒数必须大于 0".to_string()));
+    }
+    Ok(())
+}
+
 pub fn settings_profile_detail_control_states(
     profile: &SettingsProfileDetail,
 ) -> Vec<SettingsProfileDetailControlState> {
@@ -254,6 +318,16 @@ pub fn settings_profile_detail_control_states(
             control: SettingsProfileDetailControl::GoogleNotice,
             visible: profile.google_notice_visible,
             enabled: true,
+        },
+        SettingsProfileDetailControlState {
+            control: SettingsProfileDetailControl::TestStatus,
+            visible: network_visible,
+            enabled: true,
+        },
+        SettingsProfileDetailControlState {
+            control: SettingsProfileDetailControl::TestAction,
+            visible: network_visible,
+            enabled: network_enabled,
         },
     ]
 }
@@ -334,6 +408,18 @@ pub fn settings_profile_detail_control_rect(
             y: 100,
             width: 420,
             height: 60,
+        },
+        SettingsProfileDetailControl::TestStatus => SettingsControlRect {
+            x: 266,
+            y: 348,
+            width: 286,
+            height: 24,
+        },
+        SettingsProfileDetailControl::TestAction => SettingsControlRect {
+            x: 574,
+            y: 342,
+            width: 112,
+            height: crate::ui::theme::CONTROL_HEIGHT,
         },
     }
 }
@@ -685,6 +771,14 @@ impl SettingsWindow {
                 layout.profile_title.width,
                 layout.profile_title.height,
             )?;
+            create_static(
+                hwnd,
+                "配置详情",
+                layout.detail_title.x,
+                layout.detail_title.y,
+                layout.detail_title.width,
+                layout.detail_title.height,
+            )?;
             let profile_list = create_listbox(
                 hwnd,
                 layout.profile_list.x,
@@ -857,6 +951,28 @@ impl SettingsWindow {
                 google_notice_rect.height,
                 ID_GOOGLE_NOTICE,
             )?;
+            let test_status_rect =
+                settings_profile_detail_control_rect(SettingsProfileDetailControl::TestStatus);
+            create_static_with_id(
+                hwnd,
+                &settings_profile_test_status_text(SettingsProfileTestState::Idle),
+                test_status_rect.x,
+                test_status_rect.y,
+                test_status_rect.width,
+                test_status_rect.height,
+                ID_TEST_STATUS,
+            )?;
+            let test_action_rect =
+                settings_profile_detail_control_rect(SettingsProfileDetailControl::TestAction);
+            create_button(
+                hwnd,
+                settings_profile_test_button_text(SettingsProfileTestState::Idle),
+                test_action_rect.x,
+                test_action_rect.y,
+                test_action_rect.width,
+                test_action_rect.height,
+                ID_TEST_PROFILE,
+            )?;
             apply_profile_detail_ui_state(hwnd, &view_model.selected_profile);
             let _ = windows::Win32::UI::Input::KeyboardAndMouse::EnableWindow(
                 delete_button,
@@ -950,6 +1066,7 @@ pub struct SettingsWindowLayout {
     pub auto_start: SettingsControlRect,
     pub separator: SettingsControlRect,
     pub profile_title: SettingsControlRect,
+    pub detail_title: SettingsControlRect,
     pub profile_list: SettingsControlRect,
     pub new_profile: SettingsControlRect,
     pub delete_profile: SettingsControlRect,
@@ -989,6 +1106,12 @@ pub fn settings_window_layout() -> SettingsWindowLayout {
         },
         profile_title: SettingsControlRect {
             x: 18,
+            y: 74,
+            width: 120,
+            height: 22,
+        },
+        detail_title: SettingsControlRect {
+            x: 266,
             y: 74,
             width: 120,
             height: 22,
@@ -1069,7 +1192,13 @@ pub fn settings_static_controls_have_border() -> bool {
 }
 
 pub fn settings_static_text_uses_window_background(control_id: usize) -> bool {
-    matches!(control_id, 0 | 3110..=3115 | 3118)
+    matches!(control_id, 0 | 3110..=3115 | 3118 | 3120)
+}
+
+#[cfg(windows)]
+struct ProfileTestMessage {
+    profile_id: String,
+    result: Result<u128>,
 }
 
 #[cfg(windows)]
@@ -1188,6 +1317,16 @@ unsafe extern "system" fn default_wnd_proc(
         WM_NCDESTROY, WM_PAINT,
     };
 
+    if msg == WM_PROFILE_TEST_FINISHED {
+        let ptr = lparam.0 as *mut ProfileTestMessage;
+        if !ptr.is_null() {
+            let message = unsafe { Box::from_raw(ptr) };
+            if let Err(err) = unsafe { finish_profile_test(hwnd, &message) } {
+                tracing::warn!(error = %err, "finish profile test failed");
+            }
+        }
+        return LRESULT(0);
+    }
     if msg == WM_CLOSE {
         unsafe {
             let _ = DestroyWindow(hwnd);
@@ -1248,6 +1387,16 @@ unsafe extern "system" fn default_wnd_proc(
                 tracing::warn!(error = %err, "toggle api key visibility failed");
                 unsafe {
                     show_message(hwnd, "读取失败", &err.user_summary());
+                }
+            }
+            return LRESULT(0);
+        }
+        if command == ID_TEST_PROFILE as usize {
+            if let Err(err) = unsafe { start_profile_test(hwnd) } {
+                tracing::warn!(error = %err, "start profile test failed");
+                let _ = set_profile_test_state(hwnd, SettingsProfileTestState::Failure);
+                unsafe {
+                    show_message(hwnd, "测试连接失败", &err.to_string());
                 }
             }
             return LRESULT(0);
@@ -1429,6 +1578,189 @@ unsafe fn save_settings_from_window(hwnd: windows::Win32::Foundation::HWND) -> R
 }
 
 #[cfg(windows)]
+unsafe fn start_profile_test(hwnd: windows::Win32::Foundation::HWND) -> Result<()> {
+    let (profile_id, config) = unsafe { profile_test_config_from_window(hwnd) }?;
+    set_profile_test_busy(hwnd, true)?;
+    set_profile_test_state(hwnd, SettingsProfileTestState::Testing)?;
+    let hwnd_raw = hwnd.0 as isize;
+
+    std::thread::spawn(move || {
+        let started_at = std::time::Instant::now();
+        let result = (|| {
+            let translator =
+                crate::translator::openai_compatible::OpenAiCompatibleTranslator::new(config)?;
+            crate::translator::translate_blocking(
+                &translator,
+                crate::translator::TranslationRequest {
+                    text: "Hello".to_string(),
+                    source_lang: "auto".to_string(),
+                    target_lang: "zh-CN".to_string(),
+                },
+            )?;
+            Ok(started_at.elapsed().as_millis())
+        })();
+        let message = Box::new(ProfileTestMessage { profile_id, result });
+        let ptr = Box::into_raw(message);
+        let hwnd = windows::Win32::Foundation::HWND(hwnd_raw as *mut core::ffi::c_void);
+        let posted = unsafe {
+            windows::Win32::UI::WindowsAndMessaging::PostMessageW(
+                Some(hwnd),
+                WM_PROFILE_TEST_FINISHED,
+                windows::Win32::Foundation::WPARAM(0),
+                windows::Win32::Foundation::LPARAM(ptr as isize),
+            )
+        };
+        if posted.is_err() {
+            unsafe {
+                drop(Box::from_raw(ptr));
+            }
+        }
+    });
+    Ok(())
+}
+
+#[cfg(windows)]
+unsafe fn profile_test_config_from_window(
+    hwnd: windows::Win32::Foundation::HWND,
+) -> Result<(
+    String,
+    crate::translator::openai_compatible::OpenAiCompatibleConfig,
+)> {
+    use windows::Win32::UI::WindowsAndMessaging::{GWLP_USERDATA, GetWindowLongPtrW};
+
+    let ptr = unsafe { GetWindowLongPtrW(hwnd, GWLP_USERDATA) };
+    if ptr == 0 {
+        return Err(AppError::Config("设置窗口状态缺失".to_string()));
+    }
+    let settings = unsafe { &*(ptr as *const AppSettings) };
+    let profile_id = selected_profile_id(hwnd)?;
+    let profile = settings
+        .profile_by_id(&profile_id)
+        .ok_or_else(|| AppError::Config("翻译配置不存在".to_string()))?;
+    if profile.provider == TranslatorProvider::Google {
+        return Err(AppError::Config(
+            "Google 内置翻译无需测试大模型连接".to_string(),
+        ));
+    }
+
+    let base_url = read_control_text(hwnd, ID_BASE_URL)?;
+    let model = read_control_text(hwnd, ID_MODEL)?;
+    let timeout_text = read_control_text(hwnd, ID_TIMEOUT)?;
+    let timeout_secs = timeout_text
+        .trim()
+        .parse::<u64>()
+        .map_err(|_| AppError::Config("超时秒数必须是正整数".to_string()))?;
+    validate_settings_profile_test_fields(&base_url, &model, timeout_secs)?;
+
+    let api_key_input = read_control_text(hwnd, ID_API_KEY)?;
+    let saved_api_key = if api_key_input == API_KEY_PLACEHOLDER_TEXT {
+        profile
+            .encrypted_api_key
+            .as_ref()
+            .map(|encrypted| {
+                crate::secret::SecretStore::new(format!("ait-translator-profile-{profile_id}"))
+                    .unprotect(encrypted)
+            })
+            .transpose()?
+    } else {
+        None
+    };
+    let api_key = settings_profile_test_api_key(&api_key_input, saved_api_key.as_deref())?;
+
+    Ok((
+        profile_id,
+        crate::translator::openai_compatible::OpenAiCompatibleConfig {
+            provider: profile.provider,
+            base_url: base_url.trim().to_string(),
+            api_key,
+            model: model.trim().to_string(),
+            timeout_secs,
+        },
+    ))
+}
+
+#[cfg(windows)]
+unsafe fn finish_profile_test(
+    hwnd: windows::Win32::Foundation::HWND,
+    message: &ProfileTestMessage,
+) -> Result<()> {
+    set_profile_test_busy(hwnd, false)?;
+    if selected_profile_id(hwnd).ok().as_deref() != Some(message.profile_id.as_str()) {
+        set_profile_test_state(hwnd, SettingsProfileTestState::Idle)?;
+        return Ok(());
+    }
+
+    match &message.result {
+        Ok(latency_ms) => set_profile_test_state(
+            hwnd,
+            SettingsProfileTestState::Success {
+                latency_ms: *latency_ms,
+            },
+        )?,
+        Err(err) => {
+            set_profile_test_state(hwnd, SettingsProfileTestState::Failure)?;
+            unsafe {
+                show_message(hwnd, "测试连接失败", &err.user_summary());
+            }
+        }
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn set_profile_test_state(
+    hwnd: windows::Win32::Foundation::HWND,
+    state: SettingsProfileTestState,
+) -> Result<()> {
+    set_control_text(
+        hwnd,
+        ID_TEST_STATUS,
+        &settings_profile_test_status_text(state),
+    )?;
+    set_control_text(
+        hwnd,
+        ID_TEST_PROFILE as i32,
+        settings_profile_test_button_text(state),
+    )
+}
+
+#[cfg(windows)]
+fn set_profile_test_busy(hwnd: windows::Win32::Foundation::HWND, busy: bool) -> Result<()> {
+    use windows::Win32::UI::Input::KeyboardAndMouse::EnableWindow;
+    use windows::Win32::UI::WindowsAndMessaging::{GWLP_USERDATA, GetWindowLongPtrW};
+
+    for id in [
+        ID_PROFILE_LIST,
+        ID_NEW_PROFILE as i32,
+        ID_SET_DEFAULT as i32,
+        ID_TEST_PROFILE as i32,
+    ] {
+        unsafe {
+            let _ = EnableWindow(control(hwnd, id)?, !busy);
+        }
+    }
+
+    let delete_enabled = if busy {
+        false
+    } else {
+        let ptr = unsafe { GetWindowLongPtrW(hwnd, GWLP_USERDATA) };
+        if ptr == 0 {
+            false
+        } else {
+            let settings = unsafe { &*(ptr as *const AppSettings) };
+            selected_profile_id(hwnd)
+                .ok()
+                .and_then(|id| settings.profile_by_id(&id))
+                .is_some_and(|profile| !profile.built_in)
+        }
+    };
+    unsafe {
+        let _ = EnableWindow(control(hwnd, ID_DELETE_PROFILE as i32)?, delete_enabled);
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
 unsafe fn edit_settings_profiles(
     hwnd: windows::Win32::Foundation::HWND,
     action: SettingsEditAction,
@@ -1495,6 +1827,7 @@ fn load_profile_into_window(
             ""
         },
     )?;
+    set_profile_test_state(hwnd, SettingsProfileTestState::Idle)?;
     set_control_text(hwnd, ID_HOTKEY, &vm.hotkey)?;
     set_checkbox_checked(hwnd, ID_AUTO_START, vm.auto_start_enabled)?;
     apply_profile_detail_ui_state(hwnd, profile);
@@ -1742,6 +2075,8 @@ fn settings_profile_detail_control_id(control: SettingsProfileDetailControl) -> 
         SettingsProfileDetailControl::TimeoutLabel => ID_TIMEOUT_LABEL,
         SettingsProfileDetailControl::TimeoutInput => ID_TIMEOUT,
         SettingsProfileDetailControl::GoogleNotice => ID_GOOGLE_NOTICE,
+        SettingsProfileDetailControl::TestStatus => ID_TEST_STATUS,
+        SettingsProfileDetailControl::TestAction => ID_TEST_PROFILE as i32,
     })
 }
 
