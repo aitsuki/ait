@@ -546,9 +546,10 @@ impl SettingsWindow {
             MonitorFromPoint,
         };
         use windows::Win32::UI::WindowsAndMessaging::{
-            CreateWindowExW, GWLP_USERDATA, GetCursorPos, IDC_ARROW, IsWindow, LoadCursorW,
-            RegisterClassW, SW_RESTORE, SW_SHOW, SetForegroundWindow, SetWindowLongPtrW,
-            ShowWindow, WINDOW_EX_STYLE, WNDCLASSW, WS_CAPTION, WS_OVERLAPPED, WS_SYSMENU,
+            CreateWindowExW, GWLP_USERDATA, GetCursorPos, GetSystemMetrics, IDC_ARROW, IsWindow,
+            LoadCursorW, RegisterClassW, SM_CXICON, SM_CYICON, SW_RESTORE, SW_SHOW,
+            SetForegroundWindow, SetWindowLongPtrW, ShowWindow, WINDOW_EX_STYLE, WNDCLASSW,
+            WS_CAPTION, WS_OVERLAPPED, WS_SYSMENU,
         };
         use windows::core::PCWSTR;
 
@@ -583,6 +584,10 @@ impl SettingsWindow {
                 lpfnWndProc: Some(default_wnd_proc),
                 lpszClassName: PCWSTR(class_name.as_ptr()),
                 hCursor: LoadCursorW(None, IDC_ARROW).unwrap_or_default(),
+                hIcon: crate::ui::icon::load_app_icon(
+                    GetSystemMetrics(SM_CXICON),
+                    GetSystemMetrics(SM_CYICON),
+                ),
                 hbrBackground: GetSysColorBrush(COLOR_WINDOW),
                 ..Default::default()
             };

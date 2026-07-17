@@ -9,6 +9,8 @@ pub mod edit;
 #[cfg(windows)]
 pub mod font;
 #[cfg(windows)]
+pub(crate) mod icon;
+#[cfg(windows)]
 pub mod listbox;
 pub mod settings_window;
 pub mod theme;

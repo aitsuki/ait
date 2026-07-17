@@ -191,31 +191,10 @@ unsafe extern "system" fn tray_wnd_proc(
 
 #[cfg(windows)]
 unsafe fn load_tray_icon() -> windows::Win32::UI::WindowsAndMessaging::HICON {
-    use windows::Win32::System::LibraryLoader::GetModuleHandleW;
-    use windows::Win32::UI::WindowsAndMessaging::{
-        GetSystemMetrics, HICON, IDI_APPLICATION, IMAGE_ICON, LR_DEFAULTCOLOR, LR_SHARED,
-        LoadIconW, LoadImageW, SM_CXSMICON, SM_CYSMICON,
-    };
-    use windows::core::PCWSTR;
+    use windows::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_CXSMICON, SM_CYSMICON};
 
     unsafe {
-        let icon_width = GetSystemMetrics(SM_CXSMICON);
-        let icon_height = GetSystemMetrics(SM_CYSMICON);
-
-        GetModuleHandleW(None)
-            .and_then(|module| {
-                LoadImageW(
-                    Some(windows::Win32::Foundation::HINSTANCE(module.0)),
-                    PCWSTR(1 as *const u16),
-                    IMAGE_ICON,
-                    icon_width,
-                    icon_height,
-                    LR_DEFAULTCOLOR | LR_SHARED,
-                )
-            })
-            .map(|handle| HICON(handle.0))
-            .or_else(|_| LoadIconW(None, IDI_APPLICATION))
-            .unwrap_or(HICON::default())
+        crate::ui::icon::load_app_icon(GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON))
     }
 }
 

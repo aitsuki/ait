@@ -478,8 +478,8 @@ impl TranslationWindow {
         use windows::Win32::Foundation::HWND;
         use windows::Win32::Graphics::Gdi::{COLOR_WINDOW, GetSysColorBrush};
         use windows::Win32::UI::WindowsAndMessaging::{
-            CW_USEDEFAULT, CreateWindowExW, IDC_ARROW, LoadCursorW, RegisterClassW,
-            WINDOW_EX_STYLE, WNDCLASSW,
+            CW_USEDEFAULT, CreateWindowExW, GetSystemMetrics, IDC_ARROW, LoadCursorW,
+            RegisterClassW, SM_CXICON, SM_CYICON, WINDOW_EX_STYLE, WNDCLASSW,
         };
         use windows::core::PCWSTR;
 
@@ -489,6 +489,10 @@ impl TranslationWindow {
                 lpfnWndProc: Some(default_wnd_proc),
                 lpszClassName: PCWSTR(class_name.as_ptr()),
                 hCursor: LoadCursorW(None, IDC_ARROW).unwrap_or_default(),
+                hIcon: crate::ui::icon::load_app_icon(
+                    GetSystemMetrics(SM_CXICON),
+                    GetSystemMetrics(SM_CYICON),
+                ),
                 hbrBackground: GetSysColorBrush(COLOR_WINDOW),
                 ..Default::default()
             };
