@@ -208,6 +208,19 @@ pub enum HotkeyRegistrationUpdate {
     },
 }
 
+pub fn startup_hotkey_failure_message(hotkey: &str, error: &str) -> String {
+    format!(
+        "快捷键 {hotkey} 注册失败，可能已被其他程序占用。ait 已继续启动，但全局快捷键暂不可用，请在设置中更换快捷键。{error}"
+    )
+}
+
+pub fn hotkey_registration_failure_message(current_hotkey: Option<&str>, error: &str) -> String {
+    match current_hotkey {
+        Some(_) => format!("快捷键注册失败，请换一个组合键；当前仍使用原来的快捷键。{error}"),
+        None => format!("快捷键注册失败，请换一个组合键；当前没有可用的全局快捷键。{error}"),
+    }
+}
+
 pub fn hotkey_registration_update(
     current_hotkey: &str,
     next_hotkey: &str,
@@ -223,7 +236,7 @@ pub fn hotkey_registration_update(
         },
         Err(error) => HotkeyRegistrationUpdate::Rejected {
             rollback_hotkey: current_hotkey.to_string(),
-            message: format!("快捷键注册失败，请换一个组合键；当前仍使用原来的快捷键。{error}"),
+            message: hotkey_registration_failure_message(Some(current_hotkey), &error),
         },
     }
 }
@@ -360,23 +373,60 @@ fn run_platform() -> Result<()> {
     let settings_dir = SettingsStore::default_dir()?;
     let store = SettingsStore::new(settings_dir.clone());
     let settings = store.load().unwrap_or_else(|_| AppSettings::default());
-    let hotkey = settings.hotkey.parse::<Hotkey>()?;
+    let configured_hotkey_text = settings.hotkey.clone();
     let mut runtime_state = AppRuntimeState::new(settings);
     let _tray = TrayIcon::create()?;
-    let mut _registered_hotkey = RegisteredHotkey::register(1, hotkey)?;
-    let mut registered_hotkey_id = 1;
-    let mut registered_hotkey_text = hotkey.to_string();
     let mut translation_window = TranslationWindow::new()?;
+    let mut registered_hotkey_id = 1;
+    let mut registered_hotkey_text = None;
+    let mut startup_hotkey_error = None;
+    let startup_registration = configured_hotkey_text.parse::<Hotkey>().and_then(|hotkey| {
+        let normalized_hotkey = hotkey.to_string();
+        RegisteredHotkey::register(registered_hotkey_id, hotkey)
+            .map(|registered| (registered, normalized_hotkey))
+    });
+    let mut _registered_hotkey = match startup_registration {
+        Ok((value, normalized_hotkey)) => {
+            registered_hotkey_text = Some(normalized_hotkey);
+            Some(value)
+        }
+        Err(err) => {
+            tracing::warn!(
+                hotkey = %configured_hotkey_text,
+                error = %err,
+                "startup hotkey registration failed; continuing without a global hotkey"
+            );
+            startup_hotkey_error = Some(err.to_string());
+            None
+        }
+    };
     let mut next_translation_request_id = 1_usize;
     translation_window
         .refresh_profiles(runtime_state.settings(), runtime_state.active_profile_id())?;
+
+    if let Some(error) = startup_hotkey_error {
+        show_runtime_message(
+            translation_window.hwnd(),
+            "快捷键不可用",
+            &startup_hotkey_failure_message(&configured_hotkey_text, &error),
+        );
+        if let Err(err) = handle_app_command(
+            crate::command::AppCommand::OpenSettings,
+            runtime_state.settings(),
+            translation_window.hwnd(),
+        ) {
+            tracing::warn!(error = %err, "open settings after hotkey registration failure failed");
+        }
+    }
     spawn_update_check_task(
         translation_window.hwnd(),
         env!("CARGO_PKG_VERSION").to_string(),
         UpdateCheckDisplayMode::SilentWhenUpToDate,
     );
 
-    tracing::info!("registered hotkey {}", hotkey);
+    if _registered_hotkey.is_some() {
+        tracing::info!("registered hotkey {}", configured_hotkey_text);
+    }
 
     unsafe {
         let mut msg = MSG::default();
@@ -527,32 +577,44 @@ fn run_platform() -> Result<()> {
                 match SettingsStore::new(settings_dir.clone()).load() {
                     Ok(mut settings) => {
                         let next_hotkey_text = settings.hotkey.clone();
-                        if next_hotkey_text != registered_hotkey_text {
+                        if registered_hotkey_text.as_deref() != Some(next_hotkey_text.as_str()) {
                             match next_hotkey_text.parse::<Hotkey>() {
                                 Ok(next_hotkey) => {
                                     let next_hotkey_id =
                                         if registered_hotkey_id == 1 { 2 } else { 1 };
                                     match RegisteredHotkey::register(next_hotkey_id, next_hotkey) {
                                         Ok(next_registered) => {
-                                            _registered_hotkey = next_registered;
+                                            _registered_hotkey = Some(next_registered);
                                             registered_hotkey_id = next_hotkey_id;
-                                            registered_hotkey_text = next_hotkey.to_string();
-                                            settings.hotkey = registered_hotkey_text.clone();
-                                            runtime_state.replace_settings(settings);
-                                        }
-                                        Err(err) => {
-                                            settings.hotkey = registered_hotkey_text.clone();
+                                            let normalized_hotkey = next_hotkey.to_string();
+                                            registered_hotkey_text =
+                                                Some(normalized_hotkey.clone());
+                                            settings.hotkey = normalized_hotkey;
                                             if let Err(save_err) =
                                                 SettingsStore::new(settings_dir.clone())
                                                     .save(&settings)
                                             {
-                                                tracing::warn!(error = %save_err, "rollback hotkey save failed");
+                                                tracing::warn!(error = %save_err, "save normalized hotkey failed");
+                                            }
+                                            runtime_state.replace_settings(settings);
+                                        }
+                                        Err(err) => {
+                                            let current_hotkey = registered_hotkey_text.clone();
+                                            if let Some(current_hotkey) = current_hotkey.as_ref() {
+                                                settings.hotkey = current_hotkey.clone();
+                                                if let Err(save_err) =
+                                                    SettingsStore::new(settings_dir.clone())
+                                                        .save(&settings)
+                                                {
+                                                    tracing::warn!(error = %save_err, "rollback hotkey save failed");
+                                                }
                                             }
                                             show_runtime_message(
                                                 translation_window.hwnd(),
                                                 "快捷键注册失败",
-                                                &format!(
-                                                    "快捷键注册失败，请换一个组合键；当前仍使用原来的快捷键。{err}"
+                                                &hotkey_registration_failure_message(
+                                                    current_hotkey.as_deref(),
+                                                    &err.to_string(),
                                                 ),
                                             );
                                             runtime_state.replace_settings(settings);
@@ -560,16 +622,24 @@ fn run_platform() -> Result<()> {
                                     }
                                 }
                                 Err(err) => {
-                                    settings.hotkey = registered_hotkey_text.clone();
-                                    if let Err(save_err) =
-                                        SettingsStore::new(settings_dir.clone()).save(&settings)
-                                    {
-                                        tracing::warn!(error = %save_err, "rollback invalid hotkey save failed");
+                                    let current_hotkey = registered_hotkey_text.clone();
+                                    if let Some(current_hotkey) = current_hotkey.as_ref() {
+                                        settings.hotkey = current_hotkey.clone();
+                                        if let Err(save_err) =
+                                            SettingsStore::new(settings_dir.clone()).save(&settings)
+                                        {
+                                            tracing::warn!(error = %save_err, "rollback invalid hotkey save failed");
+                                        }
                                     }
+                                    let message = if current_hotkey.is_some() {
+                                        format!("快捷键无效，当前仍使用原来的快捷键。{err}")
+                                    } else {
+                                        format!("快捷键无效，当前没有可用的全局快捷键。{err}")
+                                    };
                                     show_runtime_message(
                                         translation_window.hwnd(),
                                         "快捷键注册失败",
-                                        &format!("快捷键无效，当前仍使用原来的快捷键。{err}"),
+                                        &message,
                                     );
                                     runtime_state.replace_settings(settings);
                                 }

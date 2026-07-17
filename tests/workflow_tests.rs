@@ -1,8 +1,9 @@
 use ait::app::{
     HotkeyAction, HotkeyRegistrationUpdate, TranslationObserver, TranslationRequestKind,
     TranslationWorkflow, TranslationWorkflowResult, UpdateCheckAction, WorkflowCapture,
-    WorkflowTranslator, hotkey_action, hotkey_registration_update,
-    run_translation_request_with_observer, translation_task_action, update_check_action,
+    WorkflowTranslator, hotkey_action, hotkey_registration_failure_message,
+    hotkey_registration_update, run_translation_request_with_observer,
+    startup_hotkey_failure_message, translation_task_action, update_check_action,
 };
 use ait::capture::CapturedText;
 use ait::config::AppSettings;
@@ -344,6 +345,27 @@ fn hotkey_translation_runs_as_selection_task() {
     assert_eq!(
         translation_task_action(true, ""),
         TranslationRequestKind::Selection
+    );
+}
+
+#[test]
+fn startup_hotkey_failure_explains_degraded_mode() {
+    let message = startup_hotkey_failure_message(
+        "Ctrl+Alt+E",
+        "快捷键错误: 注册快捷键失败: already registered",
+    );
+
+    assert!(message.contains("Ctrl+Alt+E"));
+    assert!(message.contains("ait 已继续启动"));
+    assert!(message.contains("全局快捷键暂不可用"));
+    assert!(message.contains("请在设置中更换快捷键"));
+}
+
+#[test]
+fn failed_hotkey_change_without_an_active_hotkey_does_not_claim_to_keep_the_old_one() {
+    assert_eq!(
+        hotkey_registration_failure_message(None, "快捷键错误: 注册快捷键失败: already registered"),
+        "快捷键注册失败，请换一个组合键；当前没有可用的全局快捷键。快捷键错误: 注册快捷键失败: already registered"
     );
 }
 
