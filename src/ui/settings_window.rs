@@ -93,7 +93,6 @@ pub struct SettingsProfileDetail {
     pub model: String,
     pub has_api_key: bool,
     pub timeout_secs: u64,
-    pub built_in: bool,
     pub can_delete: bool,
     pub name_editable: bool,
     pub network_fields_visible: bool,
@@ -553,8 +552,7 @@ impl SettingsViewModel {
                 model,
                 has_api_key,
                 timeout_secs,
-                built_in: selected.built_in,
-                can_delete: !selected.built_in,
+                can_delete: !is_google,
                 name_editable: !is_google,
                 network_fields_visible: !is_google,
                 network_fields_enabled: !is_google,
@@ -1675,7 +1673,7 @@ fn set_profile_test_busy(hwnd: windows::Win32::Foundation::HWND, busy: bool) -> 
             selected_profile_id(hwnd)
                 .ok()
                 .and_then(|id| settings.profile_by_id(&id))
-                .is_some_and(|profile| !profile.built_in)
+                .is_some_and(|profile| profile.provider != TranslatorProvider::Google)
         }
     };
     unsafe {

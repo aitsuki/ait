@@ -8,26 +8,13 @@ use std::time::{SystemTime, UNIX_EPOCH};
 #[serde(rename_all = "snake_case")]
 pub enum TranslatorProvider {
     Google,
-    OpenAi,
-    Claude,
-    Gemini,
-    DeepSeek,
     Custom,
 }
 
 impl TranslatorProvider {
-    #[allow(non_upper_case_globals)]
-    pub const GoogleFree: Self = Self::Google;
-    #[allow(non_upper_case_globals)]
-    pub const OpenAiCompatible: Self = Self::OpenAi;
-
     pub fn display_name(self) -> &'static str {
         match self {
             Self::Google => "Google",
-            Self::OpenAi => "OpenAI",
-            Self::Claude => "Claude",
-            Self::Gemini => "Gemini",
-            Self::DeepSeek => "DeepSeek",
             Self::Custom => "自定义",
         }
     }
@@ -35,10 +22,6 @@ impl TranslatorProvider {
     pub fn as_log_name(self) -> &'static str {
         match self {
             Self::Google => "google",
-            Self::OpenAi => "openai",
-            Self::Claude => "claude",
-            Self::Gemini => "gemini",
-            Self::DeepSeek => "deepseek",
             Self::Custom => "custom",
         }
     }
@@ -51,7 +34,6 @@ pub struct TranslatorProfile {
     pub id: String,
     pub name: String,
     pub provider: TranslatorProvider,
-    pub built_in: bool,
     pub base_url: String,
     pub model: String,
     pub encrypted_api_key: Option<String>,
@@ -87,33 +69,6 @@ pub struct AppSettings {
     pub markdown: MarkdownSettings,
 }
 
-#[derive(Debug, Deserialize)]
-struct LegacyAppSettings {
-    default_provider: LegacyProviderKind,
-    hotkey: String,
-    target_language: String,
-    openai: LegacyOpenAiSettings,
-    clipboard_capture: ClipboardCaptureSettings,
-    window: WindowSettings,
-    markdown: MarkdownSettings,
-}
-
-#[derive(Debug, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-enum LegacyProviderKind {
-    GoogleFree,
-    OpenAiCompatible,
-}
-
-#[derive(Debug, Deserialize)]
-struct LegacyOpenAiSettings {
-    name: String,
-    base_url: String,
-    encrypted_api_key: Option<String>,
-    model: String,
-    timeout_secs: u64,
-}
-
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
@@ -138,58 +93,15 @@ impl Default for AppSettings {
 }
 
 pub fn builtin_translator_profiles() -> Vec<TranslatorProfile> {
-    vec![
-        TranslatorProfile {
-            id: "google".to_string(),
-            name: "Google".to_string(),
-            provider: TranslatorProvider::Google,
-            built_in: true,
-            base_url: String::new(),
-            model: String::new(),
-            encrypted_api_key: None,
-            timeout_secs: 0,
-        },
-        TranslatorProfile {
-            id: "openai".to_string(),
-            name: "OpenAI".to_string(),
-            provider: TranslatorProvider::OpenAi,
-            built_in: true,
-            base_url: "https://api.openai.com/v1".to_string(),
-            model: "gpt-4o-mini".to_string(),
-            encrypted_api_key: None,
-            timeout_secs: 30,
-        },
-        TranslatorProfile {
-            id: "claude".to_string(),
-            name: "Claude".to_string(),
-            provider: TranslatorProvider::Claude,
-            built_in: true,
-            base_url: "https://api.anthropic.com/v1".to_string(),
-            model: "claude-3-5-haiku-latest".to_string(),
-            encrypted_api_key: None,
-            timeout_secs: 30,
-        },
-        TranslatorProfile {
-            id: "gemini".to_string(),
-            name: "Gemini".to_string(),
-            provider: TranslatorProvider::Gemini,
-            built_in: true,
-            base_url: "https://generativelanguage.googleapis.com/v1beta/openai".to_string(),
-            model: "gemini-1.5-flash".to_string(),
-            encrypted_api_key: None,
-            timeout_secs: 30,
-        },
-        TranslatorProfile {
-            id: "deepseek".to_string(),
-            name: "DeepSeek".to_string(),
-            provider: TranslatorProvider::DeepSeek,
-            built_in: true,
-            base_url: "https://api.deepseek.com".to_string(),
-            model: "deepseek-v4-flash".to_string(),
-            encrypted_api_key: None,
-            timeout_secs: 30,
-        },
-    ]
+    vec![TranslatorProfile {
+        id: "google".to_string(),
+        name: "Google".to_string(),
+        provider: TranslatorProvider::Google,
+        base_url: String::new(),
+        model: String::new(),
+        encrypted_api_key: None,
+        timeout_secs: 0,
+    }]
 }
 
 impl AppSettings {
@@ -233,9 +145,8 @@ impl AppSettings {
             id,
             name: "自定义配置".to_string(),
             provider: TranslatorProvider::Custom,
-            built_in: false,
-            base_url: "https://api.openai.com/v1".to_string(),
-            model: "gpt-4o-mini".to_string(),
+            base_url: String::new(),
+            model: String::new(),
             encrypted_api_key: None,
             timeout_secs: 30,
         };
@@ -247,8 +158,8 @@ impl AppSettings {
         let profile = self
             .profile_by_id(id)
             .ok_or_else(|| AppError::Config("翻译配置不存在".to_string()))?;
-        if profile.built_in {
-            return Err(AppError::Config("内置翻译配置不能删除".to_string()));
+        if profile.provider == TranslatorProvider::Google {
+            return Err(AppError::Config("Google 翻译配置不能删除".to_string()));
         }
         self.translator_profiles.retain(|profile| profile.id != id);
         if self.default_profile_id == id {
@@ -285,39 +196,6 @@ impl AppSettings {
     }
 }
 
-impl From<LegacyAppSettings> for AppSettings {
-    fn from(legacy: LegacyAppSettings) -> Self {
-        let mut settings = AppSettings {
-            default_profile_id: "google".to_string(),
-            translator_profiles: builtin_translator_profiles(),
-            hotkey: legacy.hotkey,
-            target_language: legacy.target_language,
-            clipboard_capture: legacy.clipboard_capture,
-            window: legacy.window,
-            markdown: legacy.markdown,
-        };
-
-        if let Some(openai) = settings.profile_by_id_mut("openai") {
-            openai.name = legacy.openai.name;
-            openai.base_url = legacy.openai.base_url;
-            openai.encrypted_api_key = legacy.openai.encrypted_api_key;
-            openai.model = legacy.openai.model;
-            openai.timeout_secs = legacy.openai.timeout_secs;
-        }
-
-        let openai_has_key = settings
-            .profile_by_id("openai")
-            .and_then(|profile| profile.encrypted_api_key.as_ref())
-            .map(|key| !key.trim().is_empty())
-            .unwrap_or(false);
-        if legacy.default_provider == LegacyProviderKind::OpenAiCompatible && openai_has_key {
-            settings.default_profile_id = "openai".to_string();
-        }
-
-        settings.normalized()
-    }
-}
-
 pub struct SettingsStore {
     dir: PathBuf,
 }
@@ -346,11 +224,6 @@ impl SettingsStore {
         let raw = fs::read_to_string(&path)?;
         if let Ok(settings) = serde_json::from_str::<AppSettings>(&raw) {
             return Ok(settings.normalized());
-        }
-        if let Ok(legacy) = serde_json::from_str::<LegacyAppSettings>(&raw) {
-            let migrated = AppSettings::from(legacy);
-            self.save(&migrated)?;
-            return Ok(migrated);
         }
         self.backup_corrupt_file(&path)?;
         Ok(AppSettings::default())

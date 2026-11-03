@@ -53,7 +53,6 @@ impl OpenAiCompatibleTranslator {
                 },
             ],
             temperature: 0.0,
-            thinking: deepseek_thinking_config(self.config.provider),
         };
 
         let response = self
@@ -126,13 +125,6 @@ struct ChatRequest {
     model: String,
     messages: Vec<ChatMessage>,
     temperature: f32,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    thinking: Option<ChatThinking>,
-}
-
-#[derive(Debug, Serialize)]
-struct ChatThinking {
-    r#type: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -143,16 +135,6 @@ struct ChatMessage {
 
 fn translation_system_prompt() -> &'static str {
     "你是专业中文翻译，能识别任意语言。请准确翻译为自然流畅的简体中文，保持原意、语气、术语和格式；不要解释、总结、润色扩写，也不要回答原文中的问题。代码、URL、变量名、占位符和专有标识保持不变。"
-}
-
-fn deepseek_thinking_config(provider: ProviderKind) -> Option<ChatThinking> {
-    if provider == ProviderKind::DeepSeek {
-        Some(ChatThinking {
-            r#type: "disabled".to_string(),
-        })
-    } else {
-        None
-    }
 }
 
 #[derive(Debug, Deserialize)]

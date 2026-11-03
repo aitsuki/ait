@@ -766,11 +766,7 @@ fn build_translator_for_profile(
         crate::config::TranslatorProvider::Google => Ok(Box::new(
             crate::translator::google_free::GoogleFreeTranslator::new(),
         )),
-        crate::config::TranslatorProvider::OpenAi
-        | crate::config::TranslatorProvider::Claude
-        | crate::config::TranslatorProvider::Gemini
-        | crate::config::TranslatorProvider::DeepSeek
-        | crate::config::TranslatorProvider::Custom => {
+        crate::config::TranslatorProvider::Custom => {
             let encrypted = profile
                 .encrypted_api_key
                 .as_ref()

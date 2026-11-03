@@ -568,7 +568,7 @@ impl TranslationWindow {
         self.state.apply_translation_result(result);
         set_text(self.source_edit, &self.state.source_text)?;
         set_text(self.translated_edit, &self.state.translated_text)?;
-        set_text(self.status_text, "翻译完成")?;
+        set_text(self.status_text, "")?;
         show_window_at_cursor(self.hwnd, ShowMode::Result);
         tracing::info!("show translation window result");
         Ok(())
@@ -991,7 +991,7 @@ fn show_result_for_hwnd(
 ) -> Result<()> {
     set_child_text(hwnd, ID_SOURCE_EDIT, &result.source_text)?;
     set_child_text(hwnd, ID_TRANSLATED_EDIT, &result.translated_text)?;
-    set_child_text(hwnd, ID_STATUS_TEXT, "翻译完成")?;
+    set_child_text(hwnd, ID_STATUS_TEXT, "")?;
     show_window_at_cursor(hwnd, ShowMode::Result);
     tracing::info!("show translation window result");
     Ok(())
