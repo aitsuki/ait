@@ -478,7 +478,7 @@ impl TranslationWindow {
                 return Err(AppError::Windows("注册翻译窗口类失败".to_string()));
             }
 
-            let (width, height) = translation_window_min_outer_size()?;
+            let (width, height) = translation_window_outer_size(420, 360)?;
             let hwnd = CreateWindowExW(
                 WINDOW_EX_STYLE::default(),
                 PCWSTR(class_name.as_ptr()),
@@ -1500,18 +1500,15 @@ fn translation_window_style() -> windows::Win32::UI::WindowsAndMessaging::WINDOW
 }
 
 #[cfg(windows)]
-fn translation_window_min_outer_size() -> Result<(i32, i32)> {
+fn translation_window_outer_size(client_width: i32, client_height: i32) -> Result<(i32, i32)> {
     use windows::Win32::Foundation::RECT;
     use windows::Win32::UI::WindowsAndMessaging::{AdjustWindowRectEx, WINDOW_EX_STYLE};
 
-    let (min_width, min_height) = translation_window_min_client_size();
-    let min_width = crate::ui::theme::scale(min_width);
-    let min_height = crate::ui::theme::scale(min_height);
     let mut rect = RECT {
         left: 0,
         top: 0,
-        right: min_width,
-        bottom: min_height,
+        right: crate::ui::theme::scale(client_width),
+        bottom: crate::ui::theme::scale(client_height),
     };
     unsafe {
         AdjustWindowRectEx(
@@ -1534,7 +1531,8 @@ unsafe fn apply_min_track_size(lparam: windows::Win32::Foundation::LPARAM) {
         return;
     }
 
-    if let Ok((width, height)) = translation_window_min_outer_size() {
+    let (min_width, min_height) = translation_window_min_client_size();
+    if let Ok((width, height)) = translation_window_outer_size(min_width, min_height) {
         unsafe {
             (*info).ptMinTrackSize.x = width;
             (*info).ptMinTrackSize.y = height;
