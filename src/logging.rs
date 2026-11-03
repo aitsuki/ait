@@ -20,7 +20,3 @@ pub fn init_logging() -> Result<PathBuf> {
 
     Ok(log_dir)
 }
-
-pub fn safe_text_len(text: &str) -> usize {
-    text.chars().count()
-}

@@ -28,111 +28,17 @@ impl std::fmt::Display for CaptureError {
 
 impl std::error::Error for CaptureError {}
 
-pub trait ClipboardBackend {
-    fn read_text(&self) -> Result<Option<String>>;
-    fn write_text(&self, text: &str) -> Result<()>;
-    fn sequence_number(&self) -> Result<u32>;
-}
-
-pub trait SelectionBackend {
-    fn read_selected_text(&self) -> Result<Option<String>>;
-}
-
-pub struct NoSelectionBackend;
-
-impl SelectionBackend for NoSelectionBackend {
-    fn read_selected_text(&self) -> Result<Option<String>> {
-        Ok(None)
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CopyAction {
-    ReleaseCtrl,
-    ReleaseAlt,
-    ReleaseShift,
-    ReleaseWin,
-    ReleaseTab,
-    ReleaseEscape,
-    ReleaseCapsLock,
-    ReleaseC,
-    PressCtrl,
-    PressC,
-}
-
-pub trait CopyBackend {
-    fn send_copy(&self) -> Result<()>;
-}
-
-pub struct NoCopyBackend;
-
-impl CopyBackend for NoCopyBackend {
-    fn send_copy(&self) -> Result<()> {
-        Ok(())
-    }
-}
-
-pub struct CaptureService<B, S = NoSelectionBackend, C = NoCopyBackend> {
-    backend: B,
-    selection: S,
-    copy: C,
+pub struct CaptureService {
     copy_wait: Duration,
 }
 
-impl<B: ClipboardBackend> CaptureService<B> {
-    pub fn new(backend: B, copy_wait: Duration) -> Self {
-        Self {
-            backend,
-            selection: NoSelectionBackend,
-            copy: NoCopyBackend,
-            copy_wait,
-        }
-    }
-}
-
-impl<B, S, C> CaptureService<B, S, C>
-where
-    B: ClipboardBackend,
-    S: SelectionBackend,
-    C: CopyBackend,
-{
-    pub fn with_selection<NextSelection>(
-        self,
-        selection: NextSelection,
-    ) -> CaptureService<B, NextSelection, C>
-    where
-        NextSelection: SelectionBackend,
-    {
-        CaptureService {
-            backend: self.backend,
-            selection,
-            copy: self.copy,
-            copy_wait: self.copy_wait,
-        }
-    }
-
-    pub fn with_copy<NextCopy>(self, copy: NextCopy) -> CaptureService<B, S, NextCopy>
-    where
-        NextCopy: CopyBackend,
-    {
-        CaptureService {
-            backend: self.backend,
-            selection: self.selection,
-            copy,
-            copy_wait: self.copy_wait,
-        }
-    }
-
-    pub fn backend(&self) -> &B {
-        &self.backend
-    }
-
-    pub fn copy_backend(&self) -> &C {
-        &self.copy
+impl CaptureService {
+    pub fn new(copy_wait: Duration) -> Self {
+        Self { copy_wait }
     }
 
     pub fn capture_selected_text(&self) -> std::result::Result<CapturedText, CaptureError> {
-        match self.selection.read_selected_text() {
+        match WindowsSelectionBackend.read_selected_text() {
             Ok(Some(text)) if !text.trim().is_empty() => {
                 let text = normalize_captured_text(&text);
                 if text.trim().is_empty() {
@@ -166,10 +72,14 @@ where
 
         let previous = self.read_clipboard_with_retry()?;
         if previous.is_some() {
-            self.backend.write_text("").map_err(to_capture_error)?;
+            WindowsClipboardBackend
+                .write_text("")
+                .map_err(to_capture_error)?;
         }
-        let sequence_before = self.backend.sequence_number().map_err(to_capture_error)?;
-        self.copy.send_copy().map_err(|err| CaptureError {
+        let sequence_before = WindowsClipboardBackend
+            .sequence_number()
+            .map_err(to_capture_error)?;
+        WindowsCopyBackend.send_copy().map_err(|err| CaptureError {
             kind: CaptureErrorKind::CopyFailed,
             message: err.to_string(),
         })?;
@@ -181,7 +91,7 @@ where
             None
         };
         if let Some(old) = previous {
-            let _ = self.backend.write_text(&old);
+            let _ = WindowsClipboardBackend.write_text(&old);
         }
 
         if !sequence_changed {
@@ -210,7 +120,7 @@ where
     fn read_clipboard_with_retry(&self) -> std::result::Result<Option<String>, CaptureError> {
         let deadline = Instant::now() + self.copy_wait;
         loop {
-            match self.backend.read_text() {
+            match WindowsClipboardBackend.read_text() {
                 Ok(text) => return Ok(text),
                 Err(err) if Instant::now() >= deadline => return Err(to_capture_error(err)),
                 Err(_) => {}
@@ -230,7 +140,7 @@ where
     ) -> std::result::Result<bool, CaptureError> {
         let deadline = Instant::now() + self.copy_wait;
         loop {
-            match self.backend.sequence_number() {
+            match WindowsClipboardBackend.sequence_number() {
                 Ok(sequence) if sequence != previous_sequence => return Ok(true),
                 Ok(_) => {}
                 Err(err) => {
@@ -271,7 +181,7 @@ fn to_capture_error(err: AppError) -> CaptureError {
 pub struct WindowsClipboardBackend;
 
 #[cfg(windows)]
-impl ClipboardBackend for WindowsClipboardBackend {
+impl WindowsClipboardBackend {
     fn read_text(&self) -> Result<Option<String>> {
         use windows::Win32::Foundation::HGLOBAL;
         use windows::Win32::System::DataExchange::{
@@ -355,7 +265,7 @@ impl ClipboardBackend for WindowsClipboardBackend {
 pub struct WindowsCopyBackend;
 
 #[cfg(windows)]
-impl CopyBackend for WindowsCopyBackend {
+impl WindowsCopyBackend {
     fn send_copy(&self) -> Result<()> {
         use windows::Win32::UI::Input::KeyboardAndMouse::{
             INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, SendInput, VIRTUAL_KEY,
@@ -409,7 +319,7 @@ impl CopyBackend for WindowsCopyBackend {
 pub struct WindowsSelectionBackend;
 
 #[cfg(windows)]
-impl SelectionBackend for WindowsSelectionBackend {
+impl WindowsSelectionBackend {
     fn read_selected_text(&self) -> Result<Option<String>> {
         use windows::Win32::System::Com::{
             CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, CoCreateInstance, CoInitializeEx,

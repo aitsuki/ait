@@ -1,21 +1,6 @@
-use crate::capture::CapturedText;
 use crate::error::{AppError, Result};
-use crate::translator::{ProviderKind, TranslationRequest, TranslationResponse};
+use crate::translator::{ProviderKind, TranslationRequest, Translator};
 use crate::update::{UpdateStatus, check_for_updates, latest_release_url, update_status_message};
-
-pub trait WorkflowCapture {
-    fn capture(&self) -> Result<CapturedText>;
-}
-
-pub trait WorkflowTranslator {
-    fn translate_blocking(&self, request: TranslationRequest) -> Result<TranslationResponse>;
-}
-
-impl<T: WorkflowTranslator + ?Sized> WorkflowTranslator for Box<T> {
-    fn translate_blocking(&self, request: TranslationRequest) -> Result<TranslationResponse> {
-        (**self).translate_blocking(request)
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TranslationWorkflowResult {
@@ -23,111 +8,6 @@ pub struct TranslationWorkflowResult {
     pub translated_text: String,
     pub provider: ProviderKind,
 }
-
-pub trait TranslationObserver {
-    fn translation_started(&mut self) -> Result<()> {
-        Ok(())
-    }
-
-    fn source_captured(&mut self, _source_text: &str) -> Result<()> {
-        Ok(())
-    }
-
-    fn translation_succeeded(&mut self, _result: &TranslationWorkflowResult) -> Result<()> {
-        Ok(())
-    }
-}
-
-pub struct TranslationWorkflow<C, T> {
-    capture: C,
-    translator: T,
-}
-
-impl<C, T> TranslationWorkflow<C, T>
-where
-    C: WorkflowCapture,
-    T: WorkflowTranslator,
-{
-    pub fn new(capture: C, translator: T) -> Self {
-        Self {
-            capture,
-            translator,
-        }
-    }
-
-    pub fn translate_selection(&self, target_lang: &str) -> Result<TranslationWorkflowResult> {
-        self.translate_selection_with_observer(target_lang, &mut ())
-    }
-
-    pub fn translate_text(
-        &self,
-        source_text: &str,
-        target_lang: &str,
-    ) -> Result<TranslationWorkflowResult> {
-        self.translate_text_with_observer(source_text, target_lang, &mut ())
-    }
-
-    pub fn translate_text_with_observer<O>(
-        &self,
-        source_text: &str,
-        target_lang: &str,
-        observer: &mut O,
-    ) -> Result<TranslationWorkflowResult>
-    where
-        O: TranslationObserver,
-    {
-        if source_text.trim().is_empty() {
-            return Err(AppError::Translate("原文为空".to_string()));
-        }
-
-        observer.translation_started()?;
-        self.translate_captured_text_with_observer(source_text, target_lang, observer)
-    }
-
-    pub fn translate_selection_with_observer<O>(
-        &self,
-        target_lang: &str,
-        observer: &mut O,
-    ) -> Result<TranslationWorkflowResult>
-    where
-        O: TranslationObserver,
-    {
-        let captured = self.capture.capture()?;
-        observer.translation_started()?;
-        self.translate_captured_text_with_observer(&captured.text, target_lang, observer)
-    }
-
-    fn translate_captured_text_with_observer<O>(
-        &self,
-        source_text: &str,
-        target_lang: &str,
-        observer: &mut O,
-    ) -> Result<TranslationWorkflowResult>
-    where
-        O: TranslationObserver,
-    {
-        if source_text.trim().is_empty() {
-            return Err(AppError::Translate("原文为空".to_string()));
-        }
-
-        observer.source_captured(source_text)?;
-        let response = self.translator.translate_blocking(TranslationRequest {
-            text: source_text.to_string(),
-            source_lang: "auto".to_string(),
-            target_lang: target_lang.to_string(),
-        })?;
-
-        let result = TranslationWorkflowResult {
-            source_text: source_text.to_string(),
-            translated_text: response.translated_text,
-            provider: response.provider,
-        };
-        observer.translation_succeeded(&result)?;
-        Ok(result)
-    }
-}
-
-impl TranslationObserver for () {}
 
 #[derive(Debug, Clone)]
 pub struct AppRuntimeState {
@@ -196,18 +76,6 @@ pub enum HotkeyAction {
     TranslateSelection,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum HotkeyRegistrationUpdate {
-    Unchanged,
-    Changed {
-        hotkey: String,
-    },
-    Rejected {
-        rollback_hotkey: String,
-        message: String,
-    },
-}
-
 pub fn startup_hotkey_failure_message(hotkey: &str, error: &str) -> String {
     format!(
         "快捷键 {hotkey} 注册失败，可能已被其他程序占用。ait 已继续启动，但全局快捷键暂不可用，请在设置中更换快捷键。{error}"
@@ -221,64 +89,10 @@ pub fn hotkey_registration_failure_message(current_hotkey: Option<&str>, error: 
     }
 }
 
-pub fn hotkey_registration_update(
-    current_hotkey: &str,
-    next_hotkey: &str,
-    registration_result: std::result::Result<(), String>,
-) -> HotkeyRegistrationUpdate {
-    if current_hotkey == next_hotkey {
-        return HotkeyRegistrationUpdate::Unchanged;
-    }
-
-    match registration_result {
-        Ok(()) => HotkeyRegistrationUpdate::Changed {
-            hotkey: next_hotkey.to_string(),
-        },
-        Err(error) => HotkeyRegistrationUpdate::Rejected {
-            rollback_hotkey: current_hotkey.to_string(),
-            message: hotkey_registration_failure_message(Some(current_hotkey), &error),
-        },
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TranslationRequestKind {
     Selection,
     WindowText { source_text: String },
-}
-
-pub fn translation_task_action(
-    selection_requested: bool,
-    source_text: &str,
-) -> TranslationRequestKind {
-    if selection_requested {
-        TranslationRequestKind::Selection
-    } else {
-        TranslationRequestKind::WindowText {
-            source_text: source_text.to_string(),
-        }
-    }
-}
-
-pub fn run_translation_request_with_observer<C, T, O>(
-    workflow: &TranslationWorkflow<C, T>,
-    request: TranslationRequestKind,
-    target_lang: &str,
-    observer: &mut O,
-) -> Result<TranslationWorkflowResult>
-where
-    C: WorkflowCapture,
-    T: WorkflowTranslator,
-    O: TranslationObserver,
-{
-    match request {
-        TranslationRequestKind::Selection => {
-            workflow.translate_selection_with_observer(target_lang, observer)
-        }
-        TranslationRequestKind::WindowText { source_text } => {
-            workflow.translate_text_with_observer(&source_text, target_lang, observer)
-        }
-    }
 }
 
 pub fn hotkey_action(is_translation_window_foreground: bool) -> HotkeyAction {
@@ -286,27 +100,6 @@ pub fn hotkey_action(is_translation_window_foreground: bool) -> HotkeyAction {
         HotkeyAction::Ignore
     } else {
         HotkeyAction::TranslateSelection
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum UpdateCheckAction {
-    Ignore,
-    ShowDialog,
-    ShowUpdateButton,
-}
-
-pub fn update_check_action(
-    result: std::result::Result<UpdateStatus, String>,
-    show_all: bool,
-) -> UpdateCheckAction {
-    match result {
-        Ok(UpdateStatus::UpdateAvailable { .. }) if show_all => UpdateCheckAction::ShowDialog,
-        Ok(UpdateStatus::UpdateAvailable { .. }) => UpdateCheckAction::ShowUpdateButton,
-        Ok(UpdateStatus::UpToDate) if show_all => UpdateCheckAction::ShowDialog,
-        Ok(UpdateStatus::UpToDate) => UpdateCheckAction::Ignore,
-        Err(_) if show_all => UpdateCheckAction::ShowDialog,
-        Err(_) => UpdateCheckAction::Ignore,
     }
 }
 
@@ -720,18 +513,6 @@ fn run_platform() -> Result<()> {
 }
 
 #[cfg(windows)]
-fn build_workflow(
-    state: &AppRuntimeState,
-) -> Result<TranslationWorkflow<WindowsWorkflowCapture, Box<dyn WorkflowTranslator>>> {
-    Ok(TranslationWorkflow::new(
-        WindowsWorkflowCapture {
-            wait_ms: state.settings().clipboard_capture.copy_wait_ms,
-        },
-        build_workflow_translator_for_profile(state.active_profile()?)?,
-    ))
-}
-
-#[cfg(windows)]
 fn spawn_translation_task(
     state: AppRuntimeState,
     request_id: usize,
@@ -760,51 +541,43 @@ fn run_translation_task(
     request: TranslationRequestKind,
     notify_hwnd: isize,
 ) -> Result<TranslationWorkflowResult> {
-    let workflow = build_workflow(state)?;
-    match request {
+    let translator = build_translator_for_profile(state.active_profile()?)?;
+    let source_text = match request {
         TranslationRequestKind::Selection => {
-            let mut observer = TranslationProgressObserver {
+            let captured = crate::capture::CaptureService::new(std::time::Duration::from_millis(
+                state.settings().clipboard_capture.copy_wait_ms,
+            ))
+            .capture_selected_text()
+            .map_err(|err| AppError::Capture(err.to_string()))?;
+            let notify_hwnd =
+                windows::Win32::Foundation::HWND(notify_hwnd as *mut core::ffi::c_void);
+            crate::ui::translate_window::post_translation_source(
                 notify_hwnd,
-                request_id,
-            };
-            run_translation_request_with_observer(
-                &workflow,
-                TranslationRequestKind::Selection,
-                &state.settings().target_language,
-                &mut observer,
-            )
+                crate::ui::translate_window::TranslationSourceMessage {
+                    request_id,
+                    source_text: captured.text.clone(),
+                },
+            );
+            captured.text
         }
-        TranslationRequestKind::WindowText { source_text } => {
-            run_translation_request_with_observer(
-                &workflow,
-                TranslationRequestKind::WindowText { source_text },
-                &state.settings().target_language,
-                &mut (),
-            )
-        }
+        TranslationRequestKind::WindowText { source_text } => source_text,
+    };
+    if source_text.trim().is_empty() {
+        return Err(AppError::Translate("原文为空".to_string()));
     }
-}
-
-#[cfg(windows)]
-struct TranslationProgressObserver {
-    notify_hwnd: isize,
-    request_id: usize,
-}
-
-#[cfg(windows)]
-impl TranslationObserver for TranslationProgressObserver {
-    fn source_captured(&mut self, source_text: &str) -> Result<()> {
-        let notify_hwnd =
-            windows::Win32::Foundation::HWND(self.notify_hwnd as *mut core::ffi::c_void);
-        crate::ui::translate_window::post_translation_source(
-            notify_hwnd,
-            crate::ui::translate_window::TranslationSourceMessage {
-                request_id: self.request_id,
-                source_text: source_text.to_string(),
-            },
-        );
-        Ok(())
-    }
+    let response = crate::translator::translate_blocking(
+        translator.as_ref(),
+        TranslationRequest {
+            text: source_text.clone(),
+            source_lang: "auto".to_string(),
+            target_lang: state.settings().target_language.clone(),
+        },
+    )?;
+    Ok(TranslationWorkflowResult {
+        source_text,
+        translated_text: response.translated_text,
+        provider: response.provider,
+    })
 }
 
 #[cfg(windows)]
@@ -919,15 +692,14 @@ fn show_update_available_message(
         owner_hwnd,
         "发现新版本",
         &update_status_message(current_version, status),
-    ) {
-        if let Err(err) = open_url(owner_hwnd, release_url) {
-            tracing::warn!(error = %err, "open release page after update confirmation failed");
-            let _ = show_runtime_message(
-                owner_hwnd,
-                "打开失败",
-                "无法打开 Release 页面，请稍后重试。",
-            );
-        }
+    ) && let Err(err) = open_url(owner_hwnd, release_url)
+    {
+        tracing::warn!(error = %err, "open release page after update confirmation failed");
+        let _ = show_runtime_message(
+            owner_hwnd,
+            "打开失败",
+            "无法打开 Release 页面，请稍后重试。",
+        );
     }
 }
 
@@ -987,46 +759,13 @@ fn wide(text: &str) -> Vec<u16> {
 }
 
 #[cfg(windows)]
-struct WindowsWorkflowCapture {
-    wait_ms: u64,
-}
-
-#[cfg(windows)]
-impl WorkflowCapture for WindowsWorkflowCapture {
-    fn capture(&self) -> Result<crate::capture::CapturedText> {
-        let service = crate::capture::CaptureService::new(
-            crate::capture::WindowsClipboardBackend,
-            std::time::Duration::from_millis(self.wait_ms),
-        )
-        .with_selection(crate::capture::WindowsSelectionBackend)
-        .with_copy(crate::capture::WindowsCopyBackend);
-        service
-            .capture_selected_text()
-            .map_err(|err| crate::error::AppError::Capture(err.to_string()))
-    }
-}
-
-#[cfg(windows)]
-struct BlockingGoogleTranslator(crate::translator::google_free::GoogleFreeTranslator);
-
-#[cfg(windows)]
-impl WorkflowTranslator for BlockingGoogleTranslator {
-    fn translate_blocking(
-        &self,
-        request: crate::translator::TranslationRequest,
-    ) -> Result<crate::translator::TranslationResponse> {
-        crate::translator::translate_blocking(&self.0, request)
-    }
-}
-
-#[cfg(windows)]
-fn build_workflow_translator_for_profile(
+fn build_translator_for_profile(
     profile: &crate::config::TranslatorProfile,
-) -> Result<Box<dyn WorkflowTranslator>> {
+) -> Result<Box<dyn Translator>> {
     match profile.provider {
-        crate::config::TranslatorProvider::Google => Ok(Box::new(BlockingGoogleTranslator(
+        crate::config::TranslatorProvider::Google => Ok(Box::new(
             crate::translator::google_free::GoogleFreeTranslator::new(),
-        ))),
+        )),
         crate::config::TranslatorProvider::OpenAi
         | crate::config::TranslatorProvider::Claude
         | crate::config::TranslatorProvider::Gemini
@@ -1048,20 +787,7 @@ fn build_workflow_translator_for_profile(
                     timeout_secs: profile.timeout_secs,
                 },
             )?;
-            Ok(Box::new(BlockingOpenAiTranslator(translator)))
+            Ok(Box::new(translator))
         }
-    }
-}
-
-#[cfg(windows)]
-struct BlockingOpenAiTranslator(crate::translator::openai_compatible::OpenAiCompatibleTranslator);
-
-#[cfg(windows)]
-impl WorkflowTranslator for BlockingOpenAiTranslator {
-    fn translate_blocking(
-        &self,
-        request: crate::translator::TranslationRequest,
-    ) -> Result<crate::translator::TranslationResponse> {
-        crate::translator::translate_blocking(&self.0, request)
     }
 }

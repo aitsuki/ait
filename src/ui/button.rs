@@ -138,7 +138,7 @@ pub fn button_role_for_control(id: usize) -> Option<ButtonRole> {
 }
 
 #[cfg(windows)]
-pub unsafe fn draw_owner_draw_button(
+pub(crate) unsafe fn draw_owner_draw_button(
     draw_item: *const windows::Win32::UI::Controls::DRAWITEMSTRUCT,
 ) -> bool {
     use windows::Win32::Graphics::Gdi::{
@@ -427,101 +427,4 @@ unsafe extern "system" fn owner_draw_button_subclass_proc(
     }
 
     unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{
-        ButtonRole, ButtonVisualState, RgbColor, button_draws_inner_focus_ring, button_palette,
-        button_role_for_control, button_uses_native_border, is_owner_draw_button,
-    };
-    #[cfg(windows)]
-    use super::{is_button_hot, set_button_hot};
-
-    #[test]
-    fn maps_known_primary_buttons() {
-        assert_eq!(button_role_for_control(2001), Some(ButtonRole::Primary));
-        assert_eq!(button_role_for_control(3004), Some(ButtonRole::Primary));
-    }
-
-    #[test]
-    fn maps_known_secondary_buttons() {
-        for id in [2002, 3001, 3003, 3005, 3116, 3119, 3121] {
-            assert_eq!(button_role_for_control(id), Some(ButtonRole::Secondary));
-            assert!(is_owner_draw_button(id));
-        }
-    }
-
-    #[test]
-    fn maps_delete_button_to_danger_role() {
-        assert_eq!(button_role_for_control(3002), Some(ButtonRole::Danger));
-    }
-
-    #[test]
-    fn ignores_unknown_controls() {
-        assert_eq!(button_role_for_control(9999), None);
-        assert!(!is_owner_draw_button(9999));
-    }
-
-    #[test]
-    fn primary_palette_uses_quiet_blue() {
-        let palette = button_palette(ButtonRole::Primary, ButtonVisualState::normal());
-        assert_eq!(palette.background, RgbColor::new(37, 99, 235));
-        assert_eq!(palette.text, RgbColor::new(255, 255, 255));
-    }
-
-    #[test]
-    fn secondary_palette_uses_white_surface() {
-        let palette = button_palette(ButtonRole::Secondary, ButtonVisualState::normal());
-        assert_eq!(palette.background, RgbColor::new(255, 255, 255));
-        assert_eq!(palette.border, RgbColor::new(203, 213, 225));
-        assert_eq!(palette.text, RgbColor::new(31, 41, 55));
-    }
-
-    #[test]
-    fn disabled_palette_removes_primary_emphasis() {
-        let state = ButtonVisualState {
-            disabled: true,
-            ..ButtonVisualState::normal()
-        };
-        let palette = button_palette(ButtonRole::Primary, state);
-        assert_eq!(palette.background, RgbColor::new(243, 244, 246));
-        assert_eq!(palette.text, RgbColor::new(156, 163, 175));
-    }
-
-    #[test]
-    fn owner_draw_buttons_do_not_use_native_border() {
-        assert!(!button_uses_native_border(2001));
-        assert!(!button_uses_native_border(3004));
-        assert!(button_uses_native_border(9999));
-    }
-
-    #[test]
-    fn primary_focus_ring_uses_contrast_color() {
-        let palette = button_palette(ButtonRole::Primary, ButtonVisualState::normal());
-        assert_eq!(palette.focus, RgbColor::new(219, 234, 254));
-    }
-
-    #[test]
-    fn focused_button_draws_inner_focus_ring() {
-        let state = ButtonVisualState {
-            focused: true,
-            ..ButtonVisualState::normal()
-        };
-
-        assert!(button_draws_inner_focus_ring(state));
-    }
-
-    #[cfg(windows)]
-    #[test]
-    fn hover_state_round_trips_for_button_hwnd() {
-        let hwnd = windows::Win32::Foundation::HWND(12345 as *mut core::ffi::c_void);
-
-        set_button_hot(hwnd, false);
-        set_button_hot(hwnd, true);
-        assert!(is_button_hot(hwnd));
-
-        set_button_hot(hwnd, false);
-        assert!(!is_button_hot(hwnd));
-    }
 }

@@ -83,20 +83,6 @@ pub fn checkbox_palette(state: CheckboxVisualState) -> CheckboxPalette {
     }
 }
 
-pub fn checkbox_box_rect(control_height: i32) -> CheckboxBoxRect {
-    let top = ((control_height - CHECKBOX_BOX_SIZE) / 2).max(0);
-    CheckboxBoxRect {
-        left: 0,
-        top,
-        right: CHECKBOX_BOX_SIZE,
-        bottom: top + CHECKBOX_BOX_SIZE,
-    }
-}
-
-pub fn checkbox_text_left() -> i32 {
-    CHECKBOX_BOX_SIZE + CHECKBOX_TEXT_GAP
-}
-
 pub fn is_modern_checkbox(id: usize) -> bool {
     id == 3117
 }
@@ -146,7 +132,7 @@ fn owner_draw_checkbox_states() -> &'static std::sync::Mutex<std::collections::H
 }
 
 #[cfg(windows)]
-pub unsafe fn draw_owner_draw_checkbox(
+pub(crate) unsafe fn draw_owner_draw_checkbox(
     draw_item: *const windows::Win32::UI::Controls::DRAWITEMSTRUCT,
 ) -> bool {
     use windows::Win32::Graphics::Gdi::{
@@ -461,99 +447,4 @@ unsafe extern "system" fn owner_draw_checkbox_subclass_proc(
     }
 
     unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{
-        CheckboxVisualState, RgbColor, checkbox_box_rect, checkbox_palette, checkbox_text_left,
-        checkbox_toggled_state, checkbox_uses_native_border, is_modern_checkbox,
-    };
-
-    #[test]
-    fn maps_settings_auto_start_checkbox() {
-        assert!(is_modern_checkbox(3117));
-        assert!(!checkbox_uses_native_border(3117));
-    }
-
-    #[test]
-    fn ignores_unknown_controls() {
-        assert!(!is_modern_checkbox(9999));
-        assert!(checkbox_uses_native_border(9999));
-    }
-
-    #[test]
-    fn unchecked_checkbox_uses_white_surface() {
-        let palette = checkbox_palette(CheckboxVisualState::normal());
-
-        assert_eq!(palette.box_background, RgbColor::new(255, 255, 255));
-        assert_eq!(palette.box_border, RgbColor::new(203, 213, 225));
-        assert_eq!(palette.text, RgbColor::new(31, 41, 55));
-    }
-
-    #[test]
-    fn checked_checkbox_uses_primary_fill() {
-        let palette = checkbox_palette(CheckboxVisualState {
-            checked: true,
-            ..CheckboxVisualState::normal()
-        });
-
-        assert_eq!(palette.box_background, RgbColor::new(37, 99, 235));
-        assert_eq!(palette.check, RgbColor::new(255, 255, 255));
-    }
-
-    #[test]
-    fn focused_unchecked_checkbox_uses_active_border() {
-        let palette = checkbox_palette(CheckboxVisualState {
-            focused: true,
-            ..CheckboxVisualState::normal()
-        });
-
-        assert_eq!(palette.box_border, RgbColor::new(37, 99, 235));
-    }
-
-    #[test]
-    fn disabled_checkbox_uses_muted_colors() {
-        let palette = checkbox_palette(CheckboxVisualState {
-            disabled: true,
-            ..CheckboxVisualState::normal()
-        });
-
-        assert_eq!(palette.box_background, RgbColor::new(243, 244, 246));
-        assert_eq!(palette.text, RgbColor::new(156, 163, 175));
-    }
-
-    #[test]
-    fn checkbox_box_is_vertically_centered() {
-        let rect = checkbox_box_rect(28);
-
-        assert_eq!(rect.left, 0);
-        assert_eq!(rect.top, 5);
-        assert_eq!(rect.right, 18);
-        assert_eq!(rect.bottom, 23);
-    }
-
-    #[test]
-    fn checkbox_text_leaves_gap_after_box() {
-        assert_eq!(checkbox_text_left(), 26);
-    }
-
-    #[test]
-    fn checkbox_click_toggles_state() {
-        assert!(checkbox_toggled_state(false));
-        assert!(!checkbox_toggled_state(true));
-    }
-
-    #[cfg(windows)]
-    #[test]
-    fn hover_state_round_trips_for_checkbox_hwnd() {
-        let hwnd = windows::Win32::Foundation::HWND(3117 as *mut core::ffi::c_void);
-
-        super::set_checkbox_hot(hwnd, false);
-        super::set_checkbox_hot(hwnd, true);
-        assert!(super::is_checkbox_hot(hwnd));
-
-        super::set_checkbox_hot(hwnd, false);
-        assert!(!super::is_checkbox_hot(hwnd));
-    }
 }

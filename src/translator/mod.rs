@@ -68,7 +68,7 @@ pub trait Translator: Send + Sync {
     ) -> Pin<Box<dyn Future<Output = Result<TranslationResponse>> + Send + 'a>>;
 }
 
-pub fn translate_blocking<T: Translator>(
+pub fn translate_blocking<T: Translator + ?Sized>(
     translator: &T,
     request: TranslationRequest,
 ) -> crate::error::Result<TranslationResponse> {

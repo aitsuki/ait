@@ -1,4 +1,5 @@
 pub mod app;
+#[cfg(windows)]
 pub mod capture;
 pub mod command;
 pub mod config;

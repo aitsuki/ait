@@ -1,6 +1,5 @@
 use crate::config::{AppSettings, TranslatorProvider};
 use crate::error::{AppError, Result};
-use crate::update::latest_release_url;
 #[cfg(windows)]
 use std::sync::{Mutex, OnceLock};
 
@@ -75,8 +74,6 @@ pub struct SettingsViewModel {
     pub copy_wait_ms: u64,
     pub auto_start_enabled: bool,
     pub version_text: String,
-    pub update_check_available: bool,
-    pub latest_release_url: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -163,10 +160,6 @@ pub enum SettingsEditAction {
     DeleteProfile(String),
     SetDefault(String),
     SelectProfile(String),
-}
-
-pub fn api_key_placeholder_text() -> &'static str {
-    API_KEY_PLACEHOLDER_TEXT
 }
 
 pub fn app_version_text() -> String {
@@ -424,10 +417,6 @@ pub fn settings_profile_detail_control_rect(
     }
 }
 
-pub fn settings_profile_google_notice_text() -> &'static str {
-    GOOGLE_NOTICE_TEXT
-}
-
 pub fn settings_profile_detail_hidden_rect() -> SettingsControlRect {
     SettingsControlRect {
         x: -32000,
@@ -576,26 +565,7 @@ impl SettingsViewModel {
             copy_wait_ms: settings.clipboard_capture.copy_wait_ms,
             auto_start_enabled,
             version_text: app_version_text(),
-            update_check_available: true,
-            latest_release_url: latest_release_url().to_string(),
         }
-    }
-
-    pub fn from_settings_with_update_state(
-        settings: &AppSettings,
-        selected_profile_id: &str,
-        auto_start_enabled: bool,
-        update_check_available: bool,
-        latest_release_url: String,
-    ) -> Self {
-        let mut view_model = Self::from_settings_with_selected_and_auto_start(
-            settings,
-            selected_profile_id,
-            auto_start_enabled,
-        );
-        view_model.update_check_available = update_check_available;
-        view_model.latest_release_url = latest_release_url;
-        view_model
     }
 
     pub fn from_settings_with_selected(settings: &AppSettings, selected_profile_id: &str) -> Self {
@@ -1043,15 +1013,6 @@ pub fn settings_window_center_position(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SettingsSaveOutcome {
-    CloseWindow,
-}
-
-pub fn settings_save_outcome_after_success() -> SettingsSaveOutcome {
-    SettingsSaveOutcome::CloseWindow
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SettingsControlRect {
     pub x: i32,
     pub y: i32,
@@ -1183,14 +1144,6 @@ fn scaled_settings_rect(rect: SettingsControlRect) -> SettingsControlRect {
     }
 }
 
-pub fn settings_window_uses_background_brush() -> bool {
-    true
-}
-
-pub fn settings_static_controls_have_border() -> bool {
-    false
-}
-
 pub fn settings_static_text_uses_window_background(control_id: usize) -> bool {
     matches!(control_id, 0 | 3110..=3115 | 3118 | 3120)
 }
@@ -1266,31 +1219,6 @@ pub(crate) fn handle_dialog_message(
         }
     }
     unsafe { IsDialogMessageW(hwnd, msg).as_bool() }
-}
-
-#[cfg(all(test, windows))]
-mod tests {
-    use super::SettingsWindowRegistry;
-
-    #[test]
-    fn settings_window_registry_drops_dead_window() {
-        let mut registry = SettingsWindowRegistry::default();
-
-        assert!(registry.existing_if_alive().is_none());
-        registry.set(101);
-
-        assert!(registry.existing_if_alive().is_none());
-    }
-
-    #[test]
-    fn settings_window_registry_clears_closed_window() {
-        let mut registry = SettingsWindowRegistry::default();
-
-        registry.set(101);
-        registry.clear_if_current(101);
-
-        assert!(registry.existing_if_alive().is_none());
-    }
 }
 
 #[cfg(windows)]
@@ -1420,9 +1348,7 @@ unsafe extern "system" fn default_wnd_proc(
                             windows::Win32::Foundation::LPARAM(0),
                         );
                     }
-                    if settings_save_outcome_after_success() == SettingsSaveOutcome::CloseWindow {
-                        let _ = DestroyWindow(hwnd);
-                    }
+                    let _ = DestroyWindow(hwnd);
                 },
                 Err(err) => {
                     tracing::warn!(error = %err, "save settings failed");
@@ -1440,22 +1366,20 @@ unsafe extern "system" fn default_wnd_proc(
             return LRESULT(0);
         }
     }
-    if msg == WM_CTLCOLOREDIT {
-        if let Some(result) =
+    if msg == WM_CTLCOLOREDIT
+        && let Some(result) =
             unsafe { crate::ui::edit::handle_modern_edit_color(hwnd, wparam, lparam, false) }
-        {
-            return result;
-        }
+    {
+        return result;
     }
     if msg == WM_CTLCOLORSTATIC {
         let child = windows::Win32::Foundation::HWND(lparam.0 as *mut core::ffi::c_void);
         let id = unsafe { windows::Win32::UI::WindowsAndMessaging::GetDlgCtrlID(child) };
-        if crate::ui::edit::is_modern_edit(id as usize) {
-            if let Some(result) =
+        if crate::ui::edit::is_modern_edit(id as usize)
+            && let Some(result) =
                 unsafe { crate::ui::edit::handle_modern_edit_color(hwnd, wparam, lparam, true) }
-            {
-                return result;
-            }
+        {
+            return result;
         }
         if settings_static_text_uses_window_background(id as usize) {
             return unsafe { handle_static_text_color(wparam) };

@@ -17,10 +17,8 @@ pub enum UpdateStatus {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-pub struct GitHubRelease {
-    pub tag_name: String,
-    pub html_url: String,
-    pub name: Option<String>,
+struct GitHubRelease {
+    tag_name: String,
 }
 
 pub fn latest_release_url() -> &'static str {
@@ -71,28 +69,17 @@ pub fn update_status_message(current_version: &str, status: &UpdateStatus) -> St
 }
 
 pub async fn check_for_updates(current_version: &str) -> Result<UpdateStatus> {
-    check_for_updates_with_base_url(current_version, "https://api.github.com").await
-}
-
-pub async fn check_for_updates_with_base_url(
-    current_version: &str,
-    base_url: &str,
-) -> Result<UpdateStatus> {
     let client = reqwest::Client::builder()
         .user_agent("ait/0.1")
         .build()
         .map_err(|err| AppError::Network(err.to_string()))?;
-    let latest_release = fetch_latest_release(&client, base_url).await?;
+    let latest_release = fetch_latest_release(&client).await?;
     update_status_from_versions(current_version, &latest_release.tag_name)
 }
 
-async fn fetch_latest_release(client: &reqwest::Client, base_url: &str) -> Result<GitHubRelease> {
-    let url = format!(
-        "{}/repos/aitsuki/ait/releases/latest",
-        base_url.trim_end_matches('/')
-    );
+async fn fetch_latest_release(client: &reqwest::Client) -> Result<GitHubRelease> {
     let response = client
-        .get(url)
+        .get(GITHUB_REPO_LATEST_API_URL)
         .header(reqwest::header::ACCEPT, "application/vnd.github+json")
         .header(reqwest::header::USER_AGENT, "ait/0.1")
         .send()

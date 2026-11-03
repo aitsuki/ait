@@ -11,7 +11,6 @@ use std::time::Duration;
 
 pub struct GoogleFreeTranslator {
     client: reqwest::Client,
-    base_url: String,
 }
 
 impl Default for GoogleFreeTranslator {
@@ -22,24 +21,18 @@ impl Default for GoogleFreeTranslator {
 
 impl GoogleFreeTranslator {
     pub fn new() -> Self {
-        Self::with_base_url("https://translate.googleapis.com".to_string())
-    }
-
-    pub fn with_base_url(base_url: String) -> Self {
         Self {
             client: reqwest::Client::builder()
                 .timeout(Duration::from_secs(15))
                 .user_agent("ait/0.1")
                 .build()
                 .expect("reqwest client"),
-            base_url,
         }
     }
 
     async fn translate_inner(&self, request: TranslationRequest) -> Result<TranslationResponse> {
         let url = format!(
-            "{}/translate_a/single?client=gtx&sl={}&tl={}&dt=t&q={}",
-            self.base_url.trim_end_matches('/'),
+            "https://translate.googleapis.com/translate_a/single?client=gtx&sl={}&tl={}&dt=t&q={}",
             urlencoding::encode(&request.source_lang),
             urlencoding::encode(&request.target_lang),
             urlencoding::encode(&request.text),

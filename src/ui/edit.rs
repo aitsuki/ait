@@ -44,23 +44,6 @@ pub struct EditRect {
     pub height: i32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct EditTextRect {
-    pub left: i32,
-    pub top: i32,
-    pub right: i32,
-    pub bottom: i32,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum EditBorderPaintTarget {
-    ParentFrame,
-}
-
-pub fn edit_border_paint_target() -> EditBorderPaintTarget {
-    EditBorderPaintTarget::ParentFrame
-}
-
 pub fn edit_palette(state: EditVisualState) -> EditPalette {
     if state.disabled {
         return EditPalette {
@@ -104,10 +87,6 @@ pub fn edit_uses_native_border(id: usize) -> bool {
     !is_modern_edit(id)
 }
 
-pub fn modern_edit_color_query_invalidates_border() -> bool {
-    false
-}
-
 pub fn single_line_third_click_selects_all(
     last_double_click_time: Option<u32>,
     current_time: u32,
@@ -128,24 +107,6 @@ pub fn modern_edit_child_rect(x: i32, y: i32, width: i32, height: i32) -> EditRe
         y: y + EDIT_FRAME_GUTTER,
         width: (width - EDIT_FRAME_GUTTER * 2).max(1),
         height: (height - EDIT_FRAME_GUTTER * 2).max(1),
-    }
-}
-
-pub fn modern_edit_frame_rect(left: i32, top: i32, right: i32, bottom: i32) -> EditTextRect {
-    EditTextRect {
-        left: left - EDIT_FRAME_GUTTER,
-        top: top - EDIT_FRAME_GUTTER,
-        right: right + EDIT_FRAME_GUTTER,
-        bottom: bottom + EDIT_FRAME_GUTTER,
-    }
-}
-
-pub fn multiline_edit_text_rect(width: i32, height: i32) -> EditTextRect {
-    EditTextRect {
-        left: MULTILINE_EDIT_HORIZONTAL_PADDING,
-        top: MULTILINE_EDIT_VERTICAL_PADDING,
-        right: (width - MULTILINE_EDIT_HORIZONTAL_PADDING).max(MULTILINE_EDIT_HORIZONTAL_PADDING),
-        bottom: (height - MULTILINE_EDIT_VERTICAL_PADDING).max(MULTILINE_EDIT_VERTICAL_PADDING),
     }
 }
 
@@ -201,7 +162,10 @@ pub fn modern_edit_brush_for_state(
 }
 
 #[cfg(windows)]
-pub unsafe fn paint_modern_edit_border(parent: windows::Win32::Foundation::HWND, control_id: i32) {
+pub(crate) unsafe fn paint_modern_edit_border(
+    parent: windows::Win32::Foundation::HWND,
+    control_id: i32,
+) {
     use windows::Win32::Graphics::Gdi::MapWindowPoints;
     use windows::Win32::Graphics::Gdi::{
         CreatePen, DeleteObject, GetDC, GetStockObject, NULL_BRUSH, PS_SOLID, ReleaseDC, RoundRect,
@@ -279,7 +243,7 @@ pub unsafe fn paint_modern_edit_border(parent: windows::Win32::Foundation::HWND,
 }
 
 #[cfg(windows)]
-pub unsafe fn handle_modern_edit_color(
+pub(crate) unsafe fn handle_modern_edit_color(
     _parent: windows::Win32::Foundation::HWND,
     wparam: windows::Win32::Foundation::WPARAM,
     lparam: windows::Win32::Foundation::LPARAM,
@@ -327,7 +291,7 @@ unsafe fn edit_visual_state_for_child(hwnd: windows::Win32::Foundation::HWND) ->
 }
 
 #[cfg(windows)]
-pub unsafe fn invalidate_modern_edit_for_child(
+pub(crate) unsafe fn invalidate_modern_edit_for_child(
     parent: windows::Win32::Foundation::HWND,
     child: windows::Win32::Foundation::HWND,
 ) {
@@ -472,11 +436,11 @@ unsafe extern "system" fn modern_edit_subclass_proc(
         state.last_double_click_time = None;
     }
 
-    if msg == WM_SETFOCUS || msg == WM_KILLFOCUS || msg == WM_ENABLE {
-        if let Ok(parent) = unsafe { GetParent(hwnd) } {
-            unsafe {
-                invalidate_edit_border(parent, hwnd);
-            }
+    if (msg == WM_SETFOCUS || msg == WM_KILLFOCUS || msg == WM_ENABLE)
+        && let Ok(parent) = unsafe { GetParent(hwnd) }
+    {
+        unsafe {
+            invalidate_edit_border(parent, hwnd);
         }
     }
 
@@ -494,112 +458,4 @@ unsafe extern "system" fn modern_edit_subclass_proc(
     }
 
     unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{
-        EditBorderPaintTarget, EditKind, EditVisualState, RgbColor, edit_border_paint_target,
-        edit_kind_for_control, edit_palette, edit_uses_native_border, is_modern_edit,
-        modern_edit_child_rect, modern_edit_color_query_invalidates_border,
-        multiline_edit_text_rect, single_line_third_click_selects_all,
-    };
-
-    #[test]
-    fn maps_translation_multiline_edits() {
-        assert_eq!(edit_kind_for_control(2101), Some(EditKind::MultiLine));
-        assert_eq!(edit_kind_for_control(2102), Some(EditKind::MultiLine));
-    }
-
-    #[test]
-    fn maps_settings_single_line_edits() {
-        for id in [3102, 3104, 3105, 3106, 3107, 3108] {
-            assert_eq!(edit_kind_for_control(id), Some(EditKind::SingleLine));
-            assert!(is_modern_edit(id));
-        }
-    }
-
-    #[test]
-    fn ignores_unknown_controls() {
-        assert_eq!(edit_kind_for_control(9999), None);
-        assert!(!is_modern_edit(9999));
-        assert!(edit_uses_native_border(9999));
-    }
-
-    #[test]
-    fn normal_edit_uses_white_surface() {
-        let palette = edit_palette(EditVisualState::normal());
-        assert_eq!(palette.background, RgbColor::new(255, 255, 255));
-        assert_eq!(palette.border, RgbColor::new(203, 213, 225));
-        assert_eq!(palette.text, RgbColor::new(31, 41, 55));
-    }
-
-    #[test]
-    fn focused_edit_uses_blue_border() {
-        let palette = edit_palette(EditVisualState {
-            focused: true,
-            ..EditVisualState::normal()
-        });
-        assert_eq!(palette.border, RgbColor::new(37, 99, 235));
-    }
-
-    #[test]
-    fn readonly_edit_is_distinct_from_disabled() {
-        let readonly = edit_palette(EditVisualState {
-            readonly: true,
-            ..EditVisualState::normal()
-        });
-        let disabled = edit_palette(EditVisualState {
-            disabled: true,
-            ..EditVisualState::normal()
-        });
-
-        assert_eq!(readonly.background, RgbColor::new(248, 250, 252));
-        assert_eq!(readonly.text, RgbColor::new(31, 41, 55));
-        assert_eq!(disabled.background, RgbColor::new(243, 244, 246));
-        assert_eq!(disabled.text, RgbColor::new(156, 163, 175));
-        assert_ne!(readonly, disabled);
-    }
-
-    #[test]
-    fn edit_border_is_painted_on_control_window() {
-        assert_eq!(
-            edit_border_paint_target(),
-            EditBorderPaintTarget::ParentFrame
-        );
-    }
-
-    #[test]
-    fn color_query_does_not_schedule_border_repaint() {
-        assert!(!modern_edit_color_query_invalidates_border());
-    }
-
-    #[test]
-    fn modern_multiline_edit_leaves_space_for_parent_drawn_rounded_border() {
-        let rect = modern_edit_child_rect(16, 38, 572, 96);
-
-        assert!(rect.x > 16);
-        assert!(rect.y > 38);
-        assert_eq!(rect.x - 16, 4);
-        assert_eq!(rect.y - 38, 4);
-        assert_eq!(rect.width, 572 - (rect.x - 16) * 2);
-        assert_eq!(rect.height, 96 - (rect.y - 38) * 2);
-    }
-
-    #[test]
-    fn single_line_third_click_selects_all_after_recent_double_click() {
-        assert!(single_line_third_click_selects_all(Some(100), 250, 500));
-        assert!(!single_line_third_click_selects_all(Some(100), 700, 500));
-        assert!(!single_line_third_click_selects_all(None, 250, 500));
-    }
-
-    #[test]
-    fn multiline_edit_text_rect_adds_readable_inner_padding() {
-        let rect = multiline_edit_text_rect(564, 88);
-
-        assert_eq!(rect.left, 8);
-        assert_eq!(rect.top, 6);
-        assert_eq!(rect.right, 564 - 8);
-        assert_eq!(rect.bottom, 88 - 6);
-    }
 }

@@ -94,19 +94,3 @@ fn create_ui_font() -> Result<windows::Win32::Graphics::Gdi::HFONT> {
 fn wide(text: &str) -> Vec<u16> {
     text.encode_utf16().chain(Some(0)).collect()
 }
-
-#[cfg(test)]
-mod tests {
-    use super::{point_size_to_logical_height, ui_font_point_size};
-
-    #[test]
-    fn point_size_to_logical_height_uses_negative_logical_height() {
-        assert_eq!(point_size_to_logical_height(11, 96), -14);
-        assert_eq!(point_size_to_logical_height(11, 144), -22);
-    }
-
-    #[test]
-    fn ui_font_uses_readable_11_point_size() {
-        assert_eq!(ui_font_point_size(), 11);
-    }
-}

@@ -62,18 +62,6 @@ impl TranslationWindowState {
         self.loading = false;
         self.error = None;
     }
-
-    pub fn with_profile_switch_error(mut self, message: String) -> Self {
-        self.loading = false;
-        self.error = Some(message);
-        self
-    }
-
-    pub fn with_app_error(mut self, err: &crate::error::AppError) -> Self {
-        self.loading = false;
-        self.error = Some(err.user_summary());
-        self
-    }
 }
 
 pub fn translation_message_is_current(message_request_id: usize, active_request_id: usize) -> bool {
@@ -98,10 +86,6 @@ impl ShowMode {
 pub enum WindowZOrder {
     NotTopmost,
     TopmostNoActivate,
-}
-
-pub fn window_z_order() -> WindowZOrder {
-    WindowZOrder::NotTopmost
 }
 
 pub fn show_window_z_order(mode: ShowMode) -> WindowZOrder {
@@ -201,10 +185,6 @@ pub struct TranslationWindowLayout {
     pub translated_edit: ControlRect,
     pub status_text: ControlRect,
     pub translate_button: ControlRect,
-}
-
-pub fn translation_window_layout(client_width: i32, client_height: i32) -> TranslationWindowLayout {
-    translation_window_layout_for_dpi(client_width, client_height, crate::ui::theme::BASE_DPI)
 }
 
 #[cfg(windows)]
@@ -618,19 +598,6 @@ impl TranslationWindow {
         self.show_loading(source_text)
     }
 
-    pub fn finish_translation_result(
-        &mut self,
-        result: crate::error::Result<crate::app::TranslationWorkflowResult>,
-    ) -> Result<()> {
-        match result {
-            Ok(result) => self.show_result(&result),
-            Err(err) => {
-                tracing::warn!(error = %err, "show translation error summary");
-                self.show_error(err.user_summary())
-            }
-        }
-    }
-
     pub fn show_window(&mut self) -> Result<()> {
         show_window_at_cursor(self.hwnd, ShowMode::Result);
         tracing::info!("show translation window");
@@ -706,10 +673,10 @@ impl TranslationWindow {
             );
             move_window(
                 self.profile_combo,
-                combo_content_rect(ControlRect {
+                ControlRect {
                     height: crate::ui::theme::scale(translation_profile_combo_dropdown_height()),
                     ..layout.profile_combo
-                }),
+                },
             )?;
             move_window(self.source_label, layout.source_label)?;
             move_window(self.source_edit, edit_content_rect(layout.source_edit))?;
@@ -725,24 +692,6 @@ impl TranslationWindow {
             move_window(self.update_button, layout.update_button)?;
         }
         Ok(())
-    }
-}
-
-#[cfg(windows)]
-impl crate::app::TranslationObserver for TranslationWindow {
-    fn translation_started(&mut self) -> Result<()> {
-        self.show_starting()
-    }
-
-    fn source_captured(&mut self, source_text: &str) -> Result<()> {
-        self.show_loading(source_text.to_string())
-    }
-
-    fn translation_succeeded(
-        &mut self,
-        result: &crate::app::TranslationWorkflowResult,
-    ) -> Result<()> {
-        self.show_result(result)
     }
 }
 
@@ -909,22 +858,20 @@ unsafe extern "system" fn default_wnd_proc(
             _ => {}
         }
     }
-    if msg == WM_CTLCOLOREDIT {
-        if let Some(result) =
+    if msg == WM_CTLCOLOREDIT
+        && let Some(result) =
             unsafe { crate::ui::edit::handle_modern_edit_color(hwnd, wparam, lparam, false) }
-        {
-            return result;
-        }
+    {
+        return result;
     }
     if msg == WM_CTLCOLORSTATIC {
         let child = windows::Win32::Foundation::HWND(lparam.0 as *mut core::ffi::c_void);
         let id = unsafe { windows::Win32::UI::WindowsAndMessaging::GetDlgCtrlID(child) };
-        if crate::ui::edit::is_modern_edit(id as usize) {
-            if let Some(result) =
+        if crate::ui::edit::is_modern_edit(id as usize)
+            && let Some(result) =
                 unsafe { crate::ui::edit::handle_modern_edit_color(hwnd, wparam, lparam, true) }
-            {
-                return result;
-            }
+        {
+            return result;
         }
         if translation_static_text_uses_window_background(id as usize) {
             return unsafe { handle_static_text_color(wparam) };
@@ -1093,11 +1040,11 @@ unsafe extern "system" fn edit_subclass_proc(
 
     let state_ptr = ref_data as *mut EditSubclassState;
 
-    if msg == WM_SETFOCUS || msg == WM_KILLFOCUS {
-        if let Ok(parent) = unsafe { GetParent(hwnd) } {
-            unsafe {
-                crate::ui::edit::invalidate_modern_edit_for_child(parent, hwnd);
-            }
+    if (msg == WM_SETFOCUS || msg == WM_KILLFOCUS)
+        && let Ok(parent) = unsafe { GetParent(hwnd) }
+    {
+        unsafe {
+            crate::ui::edit::invalidate_modern_edit_for_child(parent, hwnd);
         }
     }
     if msg == WM_KEYDOWN {
@@ -1343,12 +1290,6 @@ fn create_combo(
     use windows::Win32::UI::WindowsAndMessaging::{
         CBS_DROPDOWNLIST, CBS_HASSTRINGS, CBS_OWNERDRAWFIXED, WINDOW_STYLE, WS_VSCROLL,
     };
-    let rect = combo_content_rect(ControlRect {
-        x,
-        y,
-        width,
-        height,
-    });
     let mut style_bits = CBS_DROPDOWNLIST as u32 | WS_VSCROLL.0;
     if crate::ui::combo::is_modern_combo(id as usize) {
         style_bits |= (CBS_OWNERDRAWFIXED | CBS_HASSTRINGS) as u32;
@@ -1357,10 +1298,10 @@ fn create_combo(
         parent,
         "COMBOBOX",
         "",
-        rect.x,
-        rect.y,
-        rect.width,
-        rect.height,
+        x,
+        y,
+        width,
+        height,
         id,
         WINDOW_STYLE(style_bits),
         crate::ui::combo::combo_uses_native_border(id as usize),
@@ -1492,22 +1433,6 @@ fn edit_content_rect(rect: ControlRect) -> ControlRect {
         y: rect.y + gutter,
         width: (rect.width - gutter * 2).max(1),
         height: (rect.height - gutter * 2).max(1),
-    }
-}
-
-fn combo_content_rect(rect: ControlRect) -> ControlRect {
-    let content = crate::ui::combo::modern_combo_child_rect(
-        ID_PROFILE_COMBO as usize,
-        rect.x,
-        rect.y,
-        rect.width,
-        rect.height,
-    );
-    ControlRect {
-        x: content.x,
-        y: content.y,
-        width: content.width,
-        height: content.height,
     }
 }
 
@@ -1648,10 +1573,10 @@ fn resize_translation_window(hwnd: windows::Win32::Foundation::HWND) -> Result<(
         .map_err(|err| AppError::Windows(format!("获取更新按钮失败: {err}")))?;
         move_window(
             profile_combo,
-            combo_content_rect(ControlRect {
+            ControlRect {
                 height: crate::ui::theme::scale(translation_profile_combo_dropdown_height()),
                 ..layout.profile_combo
-            }),
+            },
         )?;
         move_window(source_label, layout.source_label)?;
         move_window(source_edit, edit_content_rect(layout.source_edit))?;

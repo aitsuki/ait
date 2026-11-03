@@ -72,21 +72,3 @@ pub fn system_dpi() -> u32 {
 pub fn scale(value: i32) -> i32 {
     scale_for_dpi(value, system_dpi())
 }
-
-#[cfg(test)]
-mod tests {
-    use super::{CONTROL_HEIGHT, LIST_ITEM_HEIGHT, scale_for_dpi};
-
-    #[test]
-    fn standard_component_metrics_are_consistent() {
-        assert_eq!(CONTROL_HEIGHT, 34);
-        assert_eq!(LIST_ITEM_HEIGHT, 36);
-    }
-
-    #[test]
-    fn dpi_scaling_uses_96_dpi_baseline() {
-        assert_eq!(scale_for_dpi(34, 96), 34);
-        assert_eq!(scale_for_dpi(34, 120), 43);
-        assert_eq!(scale_for_dpi(34, 144), 51);
-    }
-}

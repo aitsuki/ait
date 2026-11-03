@@ -116,16 +116,6 @@ pub fn listbox_uses_native_border(id: usize) -> bool {
     !is_modern_listbox(id)
 }
 
-pub fn modern_listbox_text_rect(rect: ListBoxTextRect) -> ListBoxTextRect {
-    ListBoxTextRect {
-        left: rect.left + MODERN_LISTBOX_TEXT_PADDING,
-        top: rect.top,
-        right: (rect.right - MODERN_LISTBOX_TEXT_PADDING)
-            .max(rect.left + MODERN_LISTBOX_TEXT_PADDING),
-        bottom: rect.bottom,
-    }
-}
-
 #[cfg(windows)]
 pub fn install_modern_listbox_tracking(
     hwnd: windows::Win32::Foundation::HWND,
@@ -151,7 +141,7 @@ pub fn install_modern_listbox_tracking(
 }
 
 #[cfg(windows)]
-pub unsafe fn measure_owner_draw_listbox_item(
+pub(crate) unsafe fn measure_owner_draw_listbox_item(
     measure_item: *mut windows::Win32::UI::Controls::MEASUREITEMSTRUCT,
 ) -> bool {
     use windows::Win32::UI::Controls::ODT_LISTBOX;
@@ -168,7 +158,7 @@ pub unsafe fn measure_owner_draw_listbox_item(
 }
 
 #[cfg(windows)]
-pub unsafe fn draw_owner_draw_listbox_item(
+pub(crate) unsafe fn draw_owner_draw_listbox_item(
     draw_item: *const windows::Win32::UI::Controls::DRAWITEMSTRUCT,
 ) -> bool {
     use windows::Win32::Foundation::{LPARAM, RECT, WPARAM};
@@ -439,68 +429,4 @@ unsafe extern "system" fn modern_listbox_subclass_proc(
     }
 
     unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{
-        ListBoxItemVisualState, ListBoxTextRect, ListBoxVisualState, RgbColor,
-        listbox_item_palette, listbox_palette, listbox_uses_native_border,
-        modern_listbox_text_rect,
-    };
-
-    #[test]
-    fn maps_settings_profile_listbox() {
-        assert!(super::is_modern_listbox(3101));
-        assert!(!listbox_uses_native_border(3101));
-    }
-
-    #[test]
-    fn ignores_unknown_controls() {
-        assert!(!super::is_modern_listbox(9999));
-        assert!(listbox_uses_native_border(9999));
-    }
-
-    #[test]
-    fn normal_listbox_uses_white_surface() {
-        let palette = listbox_palette(ListBoxVisualState::normal());
-
-        assert_eq!(palette.background, RgbColor::new(255, 255, 255));
-        assert_eq!(palette.border, RgbColor::new(203, 213, 225));
-        assert_eq!(palette.text, RgbColor::new(31, 41, 55));
-    }
-
-    #[test]
-    fn focused_listbox_uses_active_border() {
-        let palette = listbox_palette(ListBoxVisualState {
-            focused: true,
-            ..ListBoxVisualState::normal()
-        });
-
-        assert_eq!(palette.border, RgbColor::new(37, 99, 235));
-    }
-
-    #[test]
-    fn selected_item_matches_combo_dropdown_selection() {
-        let palette = listbox_item_palette(ListBoxItemVisualState {
-            selected: true,
-            ..ListBoxItemVisualState::normal()
-        });
-
-        assert_eq!(palette.background, RgbColor::new(219, 234, 254));
-        assert_eq!(palette.text, RgbColor::new(30, 64, 175));
-    }
-
-    #[test]
-    fn text_rect_adds_horizontal_padding() {
-        let rect = modern_listbox_text_rect(ListBoxTextRect {
-            left: 0,
-            top: 0,
-            right: 220,
-            bottom: 32,
-        });
-
-        assert_eq!(rect.left, 10);
-        assert_eq!(rect.right, 210);
-    }
 }

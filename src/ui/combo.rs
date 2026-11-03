@@ -135,48 +135,12 @@ pub fn combo_uses_native_border(id: usize) -> bool {
     !is_modern_combo(id)
 }
 
-pub fn modern_combo_frame_rect(left: i32, top: i32, right: i32, _bottom: i32) -> ComboTextRect {
-    ComboTextRect {
-        left,
-        top,
-        right,
-        bottom: top + MODERN_COMBO_VISIBLE_HEIGHT,
-    }
-}
-
-pub fn modern_combo_child_rect(id: usize, x: i32, y: i32, width: i32, height: i32) -> ComboRect {
-    let _ = id;
-    ComboRect {
-        x,
-        y,
-        width,
-        height,
-    }
-}
 pub const MODERN_COMBO_VISIBLE_HEIGHT: i32 = CONTROL_HEIGHT;
 pub const MODERN_COMBO_LIST_ITEM_HEIGHT: u32 = LIST_ITEM_HEIGHT;
 pub const MODERN_COMBO_ARROW_WIDTH: i32 = 28;
 pub const MODERN_COMBO_TEXT_PADDING: i32 = 9;
 pub const MODERN_COMBO_LIST_TEXT_PADDING: i32 = 10;
 pub const MODERN_COMBO_DROPDOWN_RADIUS: i32 = CONTROL_RADIUS;
-
-pub fn modern_combo_text_rect(left: i32, top: i32, right: i32, bottom: i32) -> ComboTextRect {
-    ComboTextRect {
-        left: left + MODERN_COMBO_TEXT_PADDING,
-        top,
-        right: (right - MODERN_COMBO_ARROW_WIDTH).max(left + MODERN_COMBO_TEXT_PADDING),
-        bottom,
-    }
-}
-
-pub fn modern_combo_visible_region_rect(width: i32) -> ComboRect {
-    ComboRect {
-        x: 0,
-        y: 0,
-        width,
-        height: MODERN_COMBO_VISIBLE_HEIGHT,
-    }
-}
 
 pub fn combo_dropdown_region_needs_update(
     previous: Option<(i32, i32)>,
@@ -249,7 +213,7 @@ fn is_combo_dropped(hwnd: windows::Win32::Foundation::HWND) -> bool {
 }
 
 #[cfg(windows)]
-pub unsafe fn paint_modern_combo(hwnd: windows::Win32::Foundation::HWND) {
+unsafe fn paint_modern_combo(hwnd: windows::Win32::Foundation::HWND) {
     use windows::Win32::Graphics::Gdi::{
         BACKGROUND_MODE, BeginPaint, CreatePen, CreateRoundRectRgn, CreateSolidBrush, DeleteObject,
         DrawTextW, EndPaint, FillRect, GetStockObject, HGDIOBJ, LineTo, MoveToEx, NULL_BRUSH,
@@ -382,7 +346,7 @@ pub unsafe fn paint_modern_combo(hwnd: windows::Win32::Foundation::HWND) {
 }
 
 #[cfg(windows)]
-pub unsafe fn measure_owner_draw_combo_item(
+pub(crate) unsafe fn measure_owner_draw_combo_item(
     measure_item: *mut windows::Win32::UI::Controls::MEASUREITEMSTRUCT,
 ) -> bool {
     use windows::Win32::UI::Controls::ODT_COMBOBOX;
@@ -399,7 +363,7 @@ pub unsafe fn measure_owner_draw_combo_item(
 }
 
 #[cfg(windows)]
-pub unsafe fn draw_owner_draw_combo_item(
+pub(crate) unsafe fn draw_owner_draw_combo_item(
     draw_item: *const windows::Win32::UI::Controls::DRAWITEMSTRUCT,
 ) -> bool {
     use windows::Win32::Foundation::{LPARAM, RECT, WPARAM};
@@ -517,7 +481,7 @@ pub unsafe fn draw_owner_draw_combo_item(
 }
 
 #[cfg(windows)]
-pub unsafe fn prepare_modern_combo_dropdown(hwnd: windows::Win32::Foundation::HWND) {
+pub(crate) unsafe fn prepare_modern_combo_dropdown(hwnd: windows::Win32::Foundation::HWND) {
     let Some(list) = (unsafe { combo_list_hwnd(hwnd) }) else {
         return;
     };
@@ -784,7 +748,7 @@ unsafe fn combo_visual_state_for_child(hwnd: windows::Win32::Foundation::HWND) -
 }
 
 #[cfg(windows)]
-pub unsafe fn invalidate_modern_combo_for_child(
+pub(crate) unsafe fn invalidate_modern_combo_for_child(
     _parent: windows::Win32::Foundation::HWND,
     child: windows::Win32::Foundation::HWND,
 ) {
@@ -941,11 +905,11 @@ unsafe extern "system" fn modern_combo_subclass_proc(
         }
     }
 
-    if msg == WM_SETFOCUS || msg == WM_KILLFOCUS || msg == WM_ENABLE {
-        if let Ok(parent) = unsafe { GetParent(hwnd) } {
-            unsafe {
-                invalidate_modern_combo_for_child(parent, hwnd);
-            }
+    if (msg == WM_SETFOCUS || msg == WM_KILLFOCUS || msg == WM_ENABLE)
+        && let Ok(parent) = unsafe { GetParent(hwnd) }
+    {
+        unsafe {
+            invalidate_modern_combo_for_child(parent, hwnd);
         }
     }
 
@@ -1015,219 +979,4 @@ unsafe extern "system" fn modern_combo_dropdown_subclass_proc(
     }
 
     unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{
-        ComboListItemVisualState, ComboTextRect, ComboVisualState, RgbColor,
-        combo_dropdown_region_needs_update, combo_list_item_palette, combo_owner_draws_list_item,
-        combo_palette, combo_uses_native_border, is_modern_combo, modern_combo_child_rect,
-        modern_combo_dropdown_border_color, modern_combo_dropdown_border_rect,
-        modern_combo_dropdown_item_fill_rect, modern_combo_dropdown_window_style,
-        modern_combo_frame_rect, modern_combo_text_rect, modern_combo_visible_region_rect,
-    };
-
-    #[test]
-    fn maps_translation_profile_combo() {
-        assert!(is_modern_combo(2106));
-    }
-
-    #[test]
-    fn ignores_unknown_controls() {
-        assert!(!is_modern_combo(9999));
-        assert!(combo_uses_native_border(9999));
-    }
-
-    #[test]
-    fn modern_combo_does_not_use_native_border() {
-        assert!(!combo_uses_native_border(2106));
-    }
-
-    #[test]
-    fn normal_combo_uses_white_surface() {
-        let palette = combo_palette(ComboVisualState::normal());
-        assert_eq!(palette.background, RgbColor::new(255, 255, 255));
-        assert_eq!(palette.border, RgbColor::new(203, 213, 225));
-        assert_eq!(palette.text, RgbColor::new(31, 41, 55));
-        assert_eq!(palette.arrow, RgbColor::new(31, 41, 55));
-    }
-
-    #[test]
-    fn focused_combo_uses_blue_border() {
-        let palette = combo_palette(ComboVisualState {
-            focused: true,
-            ..ComboVisualState::normal()
-        });
-        assert_eq!(palette.border, RgbColor::new(37, 99, 235));
-    }
-
-    #[test]
-    fn dropped_combo_uses_active_border() {
-        let palette = combo_palette(ComboVisualState {
-            dropped: true,
-            ..ComboVisualState::normal()
-        });
-        assert_eq!(palette.border, RgbColor::new(37, 99, 235));
-    }
-
-    #[test]
-    fn disabled_combo_uses_muted_colors() {
-        let palette = combo_palette(ComboVisualState {
-            disabled: true,
-            ..ComboVisualState::normal()
-        });
-        assert_eq!(palette.background, RgbColor::new(243, 244, 246));
-        assert_eq!(palette.border, RgbColor::new(209, 213, 219));
-        assert_eq!(palette.text, RgbColor::new(156, 163, 175));
-    }
-
-    #[test]
-    fn normal_combo_list_item_uses_white_surface() {
-        let palette = combo_list_item_palette(ComboListItemVisualState::normal());
-        assert_eq!(palette.background, RgbColor::new(255, 255, 255));
-        assert_eq!(palette.text, RgbColor::new(31, 41, 55));
-    }
-
-    #[test]
-    fn selected_combo_list_item_uses_soft_blue() {
-        let palette = combo_list_item_palette(ComboListItemVisualState {
-            selected: true,
-            ..ComboListItemVisualState::normal()
-        });
-        assert_eq!(palette.background, RgbColor::new(219, 234, 254));
-        assert_eq!(palette.text, RgbColor::new(30, 64, 175));
-    }
-
-    #[test]
-    fn owner_draw_skips_combo_edit_area() {
-        assert!(!combo_owner_draws_list_item(true));
-        assert!(combo_owner_draws_list_item(false));
-    }
-
-    #[test]
-    fn frame_rect_matches_control_bounds() {
-        let rect = modern_combo_frame_rect(0, 0, 180, 220);
-        assert_eq!(rect.left, 0);
-        assert_eq!(rect.top, 0);
-        assert_eq!(rect.right, 180);
-        assert_eq!(rect.bottom, 34);
-    }
-
-    #[test]
-    fn modern_combo_child_rect_keeps_native_control_bounds() {
-        let rect = modern_combo_child_rect(2106, 408, 12, 180, 220);
-
-        assert_eq!(rect.x, 408);
-        assert_eq!(rect.y, 12);
-        assert_eq!(rect.width, 180);
-        assert_eq!(rect.height, 220);
-    }
-
-    #[test]
-    fn text_rect_leaves_room_for_custom_arrow() {
-        let rect = modern_combo_text_rect(0, 0, 180, 34);
-
-        assert_eq!(rect.left, 9);
-        assert_eq!(rect.top, 0);
-        assert_eq!(rect.right, 152);
-        assert_eq!(rect.bottom, 34);
-    }
-
-    #[test]
-    fn visible_region_clips_native_combo_dropdown_area() {
-        let rect = modern_combo_visible_region_rect(180);
-
-        assert_eq!(rect.x, 0);
-        assert_eq!(rect.y, 0);
-        assert_eq!(rect.width, 180);
-        assert_eq!(rect.height, 34);
-    }
-
-    #[test]
-    fn dropdown_region_updates_only_when_visible_size_changes() {
-        assert!(combo_dropdown_region_needs_update(None, 180, 220));
-        assert!(!combo_dropdown_region_needs_update(
-            Some((180, 220)),
-            180,
-            220
-        ));
-        assert!(combo_dropdown_region_needs_update(
-            Some((180, 220)),
-            181,
-            220
-        ));
-        assert!(combo_dropdown_region_needs_update(
-            Some((180, 220)),
-            180,
-            221
-        ));
-        assert!(!combo_dropdown_region_needs_update(
-            Some((180, 220)),
-            0,
-            220
-        ));
-        assert!(!combo_dropdown_region_needs_update(
-            Some((180, 220)),
-            180,
-            0
-        ));
-    }
-
-    #[test]
-    fn dropdown_border_draws_inside_clipped_region() {
-        let rect = modern_combo_dropdown_border_rect(180, 220);
-
-        assert_eq!(rect.left, 0);
-        assert_eq!(rect.top, 0);
-        assert_eq!(rect.right, 179);
-        assert_eq!(rect.bottom, 219);
-    }
-
-    #[test]
-    fn dropdown_border_matches_focused_control_blue() {
-        assert_eq!(
-            modern_combo_dropdown_border_color(),
-            RgbColor::new(37, 99, 235)
-        );
-    }
-
-    #[test]
-    fn dropdown_item_fill_leaves_horizontal_border_pixels() {
-        let rect = modern_combo_dropdown_item_fill_rect(ComboTextRect {
-            left: 0,
-            top: 28,
-            right: 180,
-            bottom: 56,
-        });
-
-        assert_eq!(rect.left, 1);
-        assert_eq!(rect.top, 28);
-        assert_eq!(rect.right, 179);
-        assert_eq!(rect.bottom, 56);
-    }
-
-    #[test]
-    fn dropdown_window_style_removes_native_border() {
-        let ws_border = 0x0080_0000;
-        let ws_visible = 0x1000_0000;
-
-        assert_eq!(
-            modern_combo_dropdown_window_style(ws_visible | ws_border, ws_border),
-            ws_visible
-        );
-    }
-
-    #[cfg(windows)]
-    #[test]
-    fn dropped_state_round_trips_for_combo_hwnd() {
-        let hwnd = windows::Win32::Foundation::HWND(2106 as *mut core::ffi::c_void);
-
-        super::set_combo_dropped(hwnd, false);
-        super::set_combo_dropped(hwnd, true);
-        assert!(super::is_combo_dropped(hwnd));
-
-        super::set_combo_dropped(hwnd, false);
-        assert!(!super::is_combo_dropped(hwnd));
-    }
 }

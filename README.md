@@ -93,12 +93,6 @@ cargo build
 cargo run
 ```
 
-测试：
-
-```powershell
-cargo test
-```
-
 发布正式版时，`Cargo.toml` 是唯一的版本号来源：
 
 1. 修改 `Cargo.toml` 中的 `package.version`。

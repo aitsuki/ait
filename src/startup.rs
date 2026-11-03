@@ -1,38 +1,6 @@
-use std::path::Path;
-
 use crate::error::Result;
 
 const AUTO_START_ENTRY_NAME: &str = "ait";
-
-pub trait AutoStartStore {
-    fn read_entry(&self, name: &str) -> Result<Option<String>>;
-    fn write_entry(&self, name: &str, value: &str) -> Result<()>;
-    fn delete_entry(&self, name: &str) -> Result<()>;
-}
-
-pub fn auto_start_entry_name() -> &'static str {
-    AUTO_START_ENTRY_NAME
-}
-
-pub fn auto_start_command_for_exe(exe_path: &Path) -> String {
-    format!("\"{}\"", exe_path.display())
-}
-
-pub fn is_auto_start_enabled_in_store(store: &impl AutoStartStore) -> Result<bool> {
-    Ok(store.read_entry(AUTO_START_ENTRY_NAME)?.is_some())
-}
-
-pub fn set_auto_start_enabled_in_store(
-    store: &impl AutoStartStore,
-    enabled: bool,
-    exe_path: &Path,
-) -> Result<()> {
-    if enabled {
-        store.write_entry(AUTO_START_ENTRY_NAME, &auto_start_command_for_exe(exe_path))
-    } else {
-        store.delete_entry(AUTO_START_ENTRY_NAME)
-    }
-}
 
 #[cfg(not(windows))]
 pub fn is_auto_start_enabled() -> Result<bool> {
@@ -59,8 +27,8 @@ pub fn registry_string_to_bytes(value: &str) -> Vec<u8> {
 #[cfg(windows)]
 pub fn registry_string_from_bytes(bytes: &[u8]) -> Result<String> {
     let mut units = Vec::with_capacity(bytes.len() / 2);
-    for chunk in bytes.chunks_exact(2) {
-        let unit = u16::from_le_bytes([chunk[0], chunk[1]]);
+    for chunk in bytes.as_chunks::<2>().0 {
+        let unit = u16::from_le_bytes(*chunk);
         if unit == 0 {
             break;
         }
@@ -147,7 +115,7 @@ impl WindowsRunRegistry {
 }
 
 #[cfg(windows)]
-impl AutoStartStore for WindowsRunRegistry {
+impl WindowsRunRegistry {
     fn read_entry(&self, name: &str) -> Result<Option<String>> {
         use windows::Win32::Foundation::{ERROR_FILE_NOT_FOUND, ERROR_SUCCESS};
         use windows::Win32::System::Registry::{REG_SZ, REG_VALUE_TYPE, RegQueryValueExW};
@@ -244,13 +212,19 @@ impl AutoStartStore for WindowsRunRegistry {
 
 #[cfg(windows)]
 pub fn is_auto_start_enabled() -> Result<bool> {
-    is_auto_start_enabled_in_store(&WindowsRunRegistry)
+    Ok(WindowsRunRegistry
+        .read_entry(AUTO_START_ENTRY_NAME)?
+        .is_some())
 }
 
 #[cfg(windows)]
 pub fn set_auto_start_enabled(enabled: bool) -> Result<()> {
-    let exe = std::env::current_exe()?;
-    set_auto_start_enabled_in_store(&WindowsRunRegistry, enabled, &exe)
+    if enabled {
+        let exe = std::env::current_exe()?;
+        WindowsRunRegistry.write_entry(AUTO_START_ENTRY_NAME, &format!("\"{}\"", exe.display()))
+    } else {
+        WindowsRunRegistry.delete_entry(AUTO_START_ENTRY_NAME)
+    }
 }
 
 #[cfg(windows)]
