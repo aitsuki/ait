@@ -64,6 +64,8 @@ pub struct AppSettings {
     pub translator_profiles: Vec<TranslatorProfile>,
     pub hotkey: String,
     pub target_language: String,
+    #[serde(default)]
+    pub dictionary_enabled: bool,
     pub clipboard_capture: ClipboardCaptureSettings,
     pub window: WindowSettings,
     pub markdown: MarkdownSettings,
@@ -76,6 +78,7 @@ impl Default for AppSettings {
             translator_profiles: builtin_translator_profiles(),
             hotkey: "Ctrl+Alt+E".to_string(),
             target_language: "zh-CN".to_string(),
+            dictionary_enabled: false,
             clipboard_capture: ClipboardCaptureSettings {
                 enabled: true,
                 open_manual_input_on_failure: true,

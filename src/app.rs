@@ -1,12 +1,12 @@
 use crate::error::{AppError, Result};
-use crate::translator::{ProviderKind, TranslationRequest, Translator};
+use crate::translator::{TranslationRequest, Translator};
 use crate::update::{UpdateStatus, check_for_updates, latest_release_url, update_status_message};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TranslationWorkflowResult {
     pub source_text: String,
     pub translated_text: String,
-    pub provider: ProviderKind,
+    pub provider: &'static str,
 }
 
 #[derive(Debug, Clone)]
@@ -541,7 +541,6 @@ fn run_translation_task(
     request: TranslationRequestKind,
     notify_hwnd: isize,
 ) -> Result<TranslationWorkflowResult> {
-    let translator = build_translator_for_profile(state.active_profile()?)?;
     let source_text = match request {
         TranslationRequestKind::Selection => {
             let captured = crate::capture::CaptureService::new(std::time::Duration::from_millis(
@@ -565,6 +564,17 @@ fn run_translation_task(
     if source_text.trim().is_empty() {
         return Err(AppError::Translate("原文为空".to_string()));
     }
+    if state.settings().dictionary_enabled
+        && let Some(translated_text) =
+            crate::dictionary::lookup(&source_text, &state.settings().target_language)
+    {
+        return Ok(TranslationWorkflowResult {
+            source_text,
+            translated_text,
+            provider: "本地词典 · ECDICT",
+        });
+    }
+    let translator = build_translator_for_profile(state.active_profile()?)?;
     let response = crate::translator::translate_blocking(
         translator.as_ref(),
         TranslationRequest {
@@ -576,7 +586,7 @@ fn run_translation_task(
     Ok(TranslationWorkflowResult {
         source_text,
         translated_text: response.translated_text,
-        provider: response.provider,
+        provider: response.provider.display_name(),
     })
 }
 

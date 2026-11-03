@@ -208,8 +208,12 @@ fn translation_window_layout_for_dpi(
     let button_width_value = scale(crate::ui::theme::BUTTON_MIN_WIDTH);
     let button_height_value = scale(crate::ui::theme::PRIMARY_BUTTON_HEIGHT);
     let update_button_width_value = scale(86);
-    let min_edit_height = scale(64);
-    let max_source_edit_height = scale(200);
+    let source_line_height = 20;
+    let source_edit_height = scale(
+        3 * source_line_height
+            + 2 * crate::ui::edit::MULTILINE_EDIT_VERTICAL_PADDING
+            + 2 * crate::ui::edit::EDIT_FRAME_GUTTER,
+    );
 
     let usable_width = client_width.max(1);
     let usable_height = client_height.max(1);
@@ -255,14 +259,7 @@ fn translation_window_layout_for_dpi(
     let source_edit_y = (source_label.y + label_height + scale(4))
         .max(top_row_bottom + scale(6))
         .min(usable_height - 1);
-    let edit_area_bottom = (bottom_y - gap).max(source_edit_y + 1);
-    let fixed_between_edits = gap + label_height + scale(4);
-    let available_edit_height = (edit_area_bottom - source_edit_y - fixed_between_edits).max(2);
-    let half_edit_height = available_edit_height / 2;
-    let source_edit_height = half_edit_height
-        .min(max_source_edit_height)
-        .max(min_edit_height.min(half_edit_height.max(1)))
-        .min(usable_height - source_edit_y);
+    let source_edit_height = source_edit_height.min(usable_height - source_edit_y);
     let translated_label_y = source_edit_y + source_edit_height + gap;
     let translated_label_y = translated_label_y.min(usable_height - 1);
     let translated_edit_y = (translated_label_y + label_height + scale(4)).min(usable_height - 1);
@@ -481,6 +478,7 @@ impl TranslationWindow {
                 return Err(AppError::Windows("注册翻译窗口类失败".to_string()));
             }
 
+            let (width, height) = translation_window_min_outer_size()?;
             let hwnd = CreateWindowExW(
                 WINDOW_EX_STYLE::default(),
                 PCWSTR(class_name.as_ptr()),
@@ -488,8 +486,8 @@ impl TranslationWindow {
                 translation_window_style(),
                 CW_USEDEFAULT,
                 CW_USEDEFAULT,
-                crate::ui::theme::scale(620),
-                crate::ui::theme::scale(420),
+                width,
+                height,
                 Some(HWND::default()),
                 None,
                 None,
@@ -568,7 +566,7 @@ impl TranslationWindow {
         self.state.apply_translation_result(result);
         set_text(self.source_edit, &self.state.source_text)?;
         set_text(self.translated_edit, &self.state.translated_text)?;
-        set_text(self.status_text, "")?;
+        set_text(self.status_text, result.provider)?;
         show_window_at_cursor(self.hwnd, ShowMode::Result);
         tracing::info!("show translation window result");
         Ok(())
@@ -760,7 +758,7 @@ unsafe extern "system" fn default_wnd_proc(
             Ok(result) => {
                 tracing::info!(
                     request_id = message.request_id,
-                    provider = result.provider.as_log_name(),
+                    provider = result.provider,
                     profile_id = message.profile_id,
                     source_len = result.source_text.chars().count(),
                     translated_len = result.translated_text.chars().count(),
@@ -1003,7 +1001,7 @@ fn show_result_for_hwnd(
 ) -> Result<()> {
     set_child_text(hwnd, ID_SOURCE_EDIT, &result.source_text)?;
     set_child_text(hwnd, ID_TRANSLATED_EDIT, &result.translated_text)?;
-    set_child_text(hwnd, ID_STATUS_TEXT, "")?;
+    set_child_text(hwnd, ID_STATUS_TEXT, result.provider)?;
     show_window_at_cursor(hwnd, ShowMode::Result);
     tracing::info!("show translation window result");
     Ok(())
@@ -1502,16 +1500,9 @@ fn translation_window_style() -> windows::Win32::UI::WindowsAndMessaging::WINDOW
 }
 
 #[cfg(windows)]
-unsafe fn apply_min_track_size(lparam: windows::Win32::Foundation::LPARAM) {
+fn translation_window_min_outer_size() -> Result<(i32, i32)> {
     use windows::Win32::Foundation::RECT;
-    use windows::Win32::UI::WindowsAndMessaging::{
-        AdjustWindowRectEx, MINMAXINFO, WINDOW_EX_STYLE,
-    };
-
-    let info = lparam.0 as *mut MINMAXINFO;
-    if info.is_null() {
-        return;
-    }
+    use windows::Win32::UI::WindowsAndMessaging::{AdjustWindowRectEx, WINDOW_EX_STYLE};
 
     let (min_width, min_height) = translation_window_min_client_size();
     let min_width = crate::ui::theme::scale(min_width);
@@ -1522,18 +1513,31 @@ unsafe fn apply_min_track_size(lparam: windows::Win32::Foundation::LPARAM) {
         right: min_width,
         bottom: min_height,
     };
-    if unsafe {
+    unsafe {
         AdjustWindowRectEx(
             &mut rect,
             translation_window_style(),
             false,
             WINDOW_EX_STYLE::default(),
         )
-        .is_ok()
-    } {
+        .map_err(|err| AppError::Windows(format!("计算翻译窗口尺寸失败: {err}")))?;
+    }
+    Ok((rect.right - rect.left, rect.bottom - rect.top))
+}
+
+#[cfg(windows)]
+unsafe fn apply_min_track_size(lparam: windows::Win32::Foundation::LPARAM) {
+    use windows::Win32::UI::WindowsAndMessaging::MINMAXINFO;
+
+    let info = lparam.0 as *mut MINMAXINFO;
+    if info.is_null() {
+        return;
+    }
+
+    if let Ok((width, height)) = translation_window_min_outer_size() {
         unsafe {
-            (*info).ptMinTrackSize.x = rect.right - rect.left;
-            (*info).ptMinTrackSize.y = rect.bottom - rect.top;
+            (*info).ptMinTrackSize.x = width;
+            (*info).ptMinTrackSize.y = height;
         }
     }
 }

@@ -55,6 +55,18 @@ ait 默认带一个免配置的 Google 翻译接口，可以直接试用。
 
 API key 会使用 Windows DPAPI 保存在本机，不会明文写进配置文件。
 
+## 本地英汉词典
+
+在设置中点击「下载词典」，然后勾选「优先使用本地英汉词典」并保存。下载过程中按钮禁用并显示进度；完成后可「重新下载」，失败后可「重试」。此功能默认关闭；关闭不会删除已下载的词典。
+
+- 词典直接从 [ECDICT 上游 GitHub](https://github.com/skywind3000/ECDICT) 下载，约 63 MiB，不包含在安装包或本仓库中；首次下载需要能访问 `raw.githubusercontent.com`。
+- 下载完成后自动校验 SHA256 并建立本地 SQLite 索引，期间可继续翻译。关闭设置窗口不会中断下载，退出应用会中断，下次可重新下载。
+- 开启后，单个英文单词优先离线查询，显示音标、中文释义（含词性）及词库提供的词形原形释义。句子、其他语言、未收录单词或词典不可用时，自动使用当前 Google / 大模型配置。
+- 只有中文目标语言使用英汉词典。本地命中不请求翻译服务，不需要 API key。
+- 文件保存在 `%LOCALAPPDATA%\aitsu\ait\data\dictionary`，建立索引时需额外磁盘空间。下载失败不会替换已有词典。
+
+固定上游版本为 [`39cfb967`](https://github.com/skywind3000/ECDICT/tree/39cfb9672c0906b63569e0453c2e6abfb9ab182a)，原始 CSV 的 SHA256 为 `d1ecbdf9ee2b920afb6f430ca6b6bb9f559588cf0dff86e04bd255f9390843cc`。上游标注 MIT，许可见 [ECDICT-LICENSE.txt](docs/ECDICT-LICENSE.txt)，下载时也会保存在本地词典目录。释义来自上游汇集数据，可能有缺漏或不准确。
+
 ## 常见问题
 
 ### Windows 提示“未知发布者”怎么办？

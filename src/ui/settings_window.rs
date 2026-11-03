@@ -47,6 +47,14 @@ const ID_TEST_STATUS: i32 = 3120;
 #[cfg(windows)]
 const ID_TEST_PROFILE: isize = 3121;
 #[cfg(windows)]
+const ID_DICTIONARY_ENABLED: i32 = 3122;
+#[cfg(windows)]
+const ID_DICTIONARY_STATUS: i32 = 3123;
+#[cfg(windows)]
+const ID_DOWNLOAD_DICTIONARY: isize = 3124;
+#[cfg(windows)]
+const DICTIONARY_STATUS_TIMER: usize = 1;
+#[cfg(windows)]
 const EM_SET_PASSWORD_CHAR: u32 = 0x00CC;
 #[cfg(windows)]
 const EM_SETREADONLY: u32 = 0x00CF;
@@ -784,6 +792,45 @@ impl SettingsWindow {
                 ID_SET_DEFAULT,
             )?;
 
+            create_checkbox(
+                hwnd,
+                "优先使用本地英汉词典",
+                layout.dictionary_switch.x,
+                layout.dictionary_switch.y,
+                layout.dictionary_switch.width,
+                layout.dictionary_switch.height,
+                ID_DICTIONARY_ENABLED,
+            )?;
+            set_checkbox_checked(hwnd, ID_DICTIONARY_ENABLED, settings.dictionary_enabled)?;
+            create_static_with_id(
+                hwnd,
+                "",
+                layout.dictionary_status.x,
+                layout.dictionary_status.y,
+                layout.dictionary_status.width,
+                layout.dictionary_status.height,
+                ID_DICTIONARY_STATUS,
+            )?;
+            create_button(
+                hwnd,
+                "下载词典",
+                layout.dictionary_download.x,
+                layout.dictionary_download.y,
+                layout.dictionary_download.width,
+                layout.dictionary_download.height,
+                ID_DOWNLOAD_DICTIONARY,
+            )?;
+            refresh_dictionary_status(hwnd)?;
+            if windows::Win32::UI::WindowsAndMessaging::SetTimer(
+                Some(hwnd),
+                DICTIONARY_STATUS_TIMER,
+                500,
+                None,
+            ) == 0
+            {
+                return Err(AppError::Windows("创建词典状态计时器失败".to_string()));
+            }
+
             let name_label_rect =
                 settings_profile_detail_control_rect(SettingsProfileDetailControl::NameLabel);
             create_static_with_id(
@@ -1031,6 +1078,9 @@ pub struct SettingsWindowLayout {
     pub delete_profile: SettingsControlRect,
     pub set_default_profile: SettingsControlRect,
     pub name: SettingsControlRect,
+    pub dictionary_switch: SettingsControlRect,
+    pub dictionary_status: SettingsControlRect,
+    pub dictionary_download: SettingsControlRect,
     pub version: SettingsControlRect,
     pub update_action: SettingsControlRect,
     pub save_action: SettingsControlRect,
@@ -1079,23 +1129,23 @@ pub fn settings_window_layout() -> SettingsWindowLayout {
             x: 18,
             y: 100,
             width: 220,
-            height: 228,
+            height: 160,
         },
         new_profile: SettingsControlRect {
             x: 18,
-            y: 342,
+            y: 272,
             width: 64,
             height: crate::ui::theme::CONTROL_HEIGHT,
         },
         delete_profile: SettingsControlRect {
             x: 90,
-            y: 342,
+            y: 272,
             width: 68,
             height: crate::ui::theme::CONTROL_HEIGHT,
         },
         set_default_profile: SettingsControlRect {
             x: 166,
-            y: 342,
+            y: 272,
             width: 72,
             height: crate::ui::theme::CONTROL_HEIGHT,
         },
@@ -1104,6 +1154,24 @@ pub fn settings_window_layout() -> SettingsWindowLayout {
             y: 100,
             width: 240,
             height: 24,
+        },
+        dictionary_switch: SettingsControlRect {
+            x: 18,
+            y: 320,
+            width: 220,
+            height: crate::ui::theme::CONTROL_HEIGHT,
+        },
+        dictionary_status: SettingsControlRect {
+            x: 18,
+            y: 366,
+            width: 124,
+            height: 24,
+        },
+        dictionary_download: SettingsControlRect {
+            x: 150,
+            y: 360,
+            width: 88,
+            height: crate::ui::theme::CONTROL_HEIGHT,
         },
         version: SettingsControlRect {
             x: 18,
@@ -1143,7 +1211,7 @@ fn scaled_settings_rect(rect: SettingsControlRect) -> SettingsControlRect {
 }
 
 pub fn settings_static_text_uses_window_background(control_id: usize) -> bool {
-    matches!(control_id, 0 | 3110..=3115 | 3118 | 3120)
+    matches!(control_id, 0 | 3110..=3115 | 3118 | 3120 | 3123)
 }
 
 #[cfg(windows)]
@@ -1191,7 +1259,9 @@ pub(crate) fn handle_dialog_message(
     msg: &mut windows::Win32::UI::WindowsAndMessaging::MSG,
 ) -> bool {
     use windows::Win32::Foundation::{LPARAM, WPARAM};
-    use windows::Win32::UI::Input::KeyboardAndMouse::{VK_ESCAPE, VK_RETURN};
+    use windows::Win32::UI::Input::KeyboardAndMouse::{
+        GetFocus, IsWindowEnabled, VK_ESCAPE, VK_RETURN,
+    };
     use windows::Win32::UI::WindowsAndMessaging::{
         IsChild, IsDialogMessageW, PostMessageW, WM_COMMAND, WM_KEYDOWN,
     };
@@ -1205,7 +1275,20 @@ pub(crate) fn handle_dialog_message(
     let belongs_to_window = msg.hwnd == hwnd || unsafe { IsChild(hwnd, msg.hwnd).as_bool() };
     if belongs_to_window && msg.message == WM_KEYDOWN {
         let command = match msg.wParam.0 as u16 {
-            key if key == VK_RETURN.0 => Some(ID_SAVE),
+            key if key == VK_RETURN.0 => {
+                let focused = unsafe { GetFocus() };
+                let id = unsafe { windows::Win32::UI::WindowsAndMessaging::GetDlgCtrlID(focused) };
+                if crate::ui::button::is_owner_draw_button(id as usize)
+                    || crate::ui::checkbox::is_modern_checkbox(id as usize)
+                {
+                    if !unsafe { IsWindowEnabled(focused).as_bool() } {
+                        return true;
+                    }
+                    Some(id as isize)
+                } else {
+                    Some(ID_SAVE)
+                }
+            }
             key if key == VK_ESCAPE.0 => Some(ID_CANCEL),
             _ => None,
         };
@@ -1243,6 +1326,14 @@ unsafe extern "system" fn default_wnd_proc(
         WM_NCDESTROY, WM_PAINT,
     };
 
+    if msg == windows::Win32::UI::WindowsAndMessaging::WM_TIMER
+        && wparam.0 == DICTIONARY_STATUS_TIMER
+    {
+        if let Err(err) = refresh_dictionary_status(hwnd) {
+            tracing::warn!(error = %err, "refresh dictionary status failed");
+        }
+        return LRESULT(0);
+    }
     if msg == WM_PROFILE_TEST_FINISHED {
         let ptr = lparam.0 as *mut ProfileTestMessage;
         if !ptr.is_null() {
@@ -1270,11 +1361,11 @@ unsafe extern "system" fn default_wnd_proc(
             }
             return LRESULT(0);
         }
-        if command == ID_AUTO_START as usize
+        if (command == ID_AUTO_START as usize || command == ID_DICTIONARY_ENABLED as usize)
             && notification == windows::Win32::UI::WindowsAndMessaging::BN_CLICKED as usize
         {
-            if let Err(err) = toggle_checkbox_checked(hwnd, ID_AUTO_START) {
-                tracing::warn!(error = %err, "toggle auto start checkbox failed");
+            if let Err(err) = toggle_checkbox_checked(hwnd, command as i32) {
+                tracing::warn!(error = %err, "toggle settings checkbox failed");
             }
             return LRESULT(0);
         }
@@ -1325,6 +1416,11 @@ unsafe extern "system" fn default_wnd_proc(
                     show_message(hwnd, "测试连接失败", &err.to_string());
                 }
             }
+            return LRESULT(0);
+        }
+        if command == ID_DOWNLOAD_DICTIONARY as usize {
+            crate::dictionary::start_download();
+            let _ = refresh_dictionary_status(hwnd);
             return LRESULT(0);
         }
         if command == ID_CHECK_UPDATE as usize {
@@ -1487,6 +1583,7 @@ unsafe fn save_settings_from_window(hwnd: windows::Win32::Foundation::HWND) -> R
             auto_start_enabled,
         },
     )?;
+    settings.dictionary_enabled = is_checkbox_checked(hwnd, ID_DICTIONARY_ENABLED)?;
     crate::startup::set_auto_start_enabled(auto_start_enabled)?;
     refresh_profile_list(hwnd, settings)?;
 
@@ -1496,6 +1593,39 @@ unsafe fn save_settings_from_window(hwnd: windows::Win32::Foundation::HWND) -> R
         default_profile_id = %settings.default_profile_id,
         "settings saved"
     );
+    Ok(())
+}
+
+#[cfg(windows)]
+fn refresh_dictionary_status(hwnd: windows::Win32::Foundation::HWND) -> Result<()> {
+    use crate::dictionary::DownloadStatus;
+    let status = crate::dictionary::download_status();
+    let (message, caption, busy) = match &status {
+        DownloadStatus::NotInstalled => ("未下载 · 63 MiB", "下载词典", false),
+        DownloadStatus::Downloading(progress) => (progress.as_str(), "下载中", true),
+        DownloadStatus::Ready => ("已就绪 · ECDICT", "重新下载", false),
+        DownloadStatus::Failed(_) => ("下载失败", "重试", false),
+    };
+    let previous_caption = read_control_text(hwnd, ID_DOWNLOAD_DICTIONARY as i32)?;
+    if read_control_text(hwnd, ID_DICTIONARY_STATUS)? != message {
+        set_control_text(hwnd, ID_DICTIONARY_STATUS, message)?;
+    }
+    if previous_caption != caption {
+        set_control_text(hwnd, ID_DOWNLOAD_DICTIONARY as i32, caption)?;
+    }
+    unsafe {
+        let button = windows::Win32::UI::WindowsAndMessaging::GetDlgItem(
+            Some(hwnd),
+            ID_DOWNLOAD_DICTIONARY as i32,
+        )
+        .map_err(|err| AppError::Windows(format!("获取词典下载按钮失败: {err}")))?;
+        let _ = windows::Win32::UI::Input::KeyboardAndMouse::EnableWindow(button, !busy);
+        if previous_caption == "下载中"
+            && let DownloadStatus::Failed(error) = status
+        {
+            show_message(hwnd, "词典下载失败", &error);
+        }
+    }
     Ok(())
 }
 

@@ -84,7 +84,7 @@ pub fn checkbox_palette(state: CheckboxVisualState) -> CheckboxPalette {
 }
 
 pub fn is_modern_checkbox(id: usize) -> bool {
-    id == 3117
+    matches!(id, 3117 | 3122)
 }
 
 pub fn checkbox_uses_native_border(id: usize) -> bool {
