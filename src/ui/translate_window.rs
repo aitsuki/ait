@@ -637,9 +637,21 @@ impl TranslationWindow {
         &self,
         msg: &mut windows::Win32::UI::WindowsAndMessaging::MSG,
     ) -> bool {
-        unsafe {
-            windows::Win32::UI::WindowsAndMessaging::IsDialogMessageW(self.hwnd, msg).as_bool()
+        use windows::Win32::Foundation::{LPARAM, WPARAM};
+        use windows::Win32::UI::Input::KeyboardAndMouse::VK_ESCAPE;
+        use windows::Win32::UI::WindowsAndMessaging::{
+            IsChild, IsDialogMessageW, PostMessageW, WM_CLOSE, WM_KEYDOWN,
+        };
+
+        let belongs_to_window =
+            msg.hwnd == self.hwnd || unsafe { IsChild(self.hwnd, msg.hwnd).as_bool() };
+        if belongs_to_window && msg.message == WM_KEYDOWN && msg.wParam.0 == VK_ESCAPE.0 as usize {
+            unsafe {
+                let _ = PostMessageW(Some(self.hwnd), WM_CLOSE, WPARAM(0), LPARAM(0));
+            }
+            return true;
         }
+        unsafe { IsDialogMessageW(self.hwnd, msg).as_bool() }
     }
 
     pub fn refresh_profiles(
@@ -1781,4 +1793,47 @@ fn is_window_visible(hwnd: windows::Win32::Foundation::HWND) -> bool {
 #[cfg(windows)]
 fn wide(text: &str) -> Vec<u16> {
     text.encode_utf16().chain(Some(0)).collect()
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn escape_closes_window_from_every_focus_target() {
+        use windows::Win32::Foundation::WPARAM;
+        use windows::Win32::UI::Input::KeyboardAndMouse::VK_ESCAPE;
+        use windows::Win32::UI::WindowsAndMessaging::{
+            DestroyWindow, MSG, PM_REMOVE, PeekMessageW, WM_CLOSE, WM_KEYDOWN,
+        };
+
+        let window = TranslationWindow::new().unwrap();
+        for hwnd in [
+            window.hwnd,
+            window.source_edit,
+            window.translated_edit,
+            window.translate_button,
+            window.profile_combo,
+            window.update_button,
+        ] {
+            let mut msg = MSG {
+                hwnd,
+                message: WM_KEYDOWN,
+                wParam: WPARAM(VK_ESCAPE.0 as usize),
+                ..Default::default()
+            };
+            assert!(window.handle_dialog_message(&mut msg));
+            let mut close = MSG::default();
+            assert!(unsafe {
+                PeekMessageW(&mut close, Some(window.hwnd), WM_CLOSE, WM_CLOSE, PM_REMOVE).as_bool()
+            });
+        }
+        let mut unrelated = MSG {
+            message: WM_KEYDOWN,
+            wParam: WPARAM(VK_ESCAPE.0 as usize),
+            ..Default::default()
+        };
+        assert!(!window.handle_dialog_message(&mut unrelated));
+        unsafe { DestroyWindow(window.hwnd).unwrap() };
+    }
 }
