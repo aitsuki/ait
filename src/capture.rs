@@ -38,38 +38,6 @@ impl CaptureService {
     }
 
     pub fn capture_selected_text(&self) -> std::result::Result<CapturedText, CaptureError> {
-        match WindowsSelectionBackend.read_selected_text() {
-            Ok(Some(text)) if !text.trim().is_empty() => {
-                let text = normalize_captured_text(&text);
-                if text.trim().is_empty() {
-                    tracing::debug!(
-                        strategy = "uia_focused_selection",
-                        "selection backend returned only ignored characters"
-                    );
-                } else {
-                    tracing::debug!(
-                        strategy = "uia_focused_selection",
-                        text_len = text.chars().count(),
-                        "captured selected text"
-                    );
-                    return Ok(CapturedText { text });
-                }
-            }
-            Ok(_) => {
-                tracing::debug!(
-                    strategy = "uia_focused_selection",
-                    "selection backend returned no text"
-                );
-            }
-            Err(err) => {
-                tracing::debug!(
-                    strategy = "uia_focused_selection",
-                    error = %err,
-                    "selection backend failed; falling back to clipboard copy"
-                );
-            }
-        }
-
         let previous = self.read_clipboard_with_retry()?;
         if previous.is_some() {
             WindowsClipboardBackend
@@ -310,60 +278,6 @@ impl WindowsCopyBackend {
                         dwExtraInfo: 0,
                     },
                 },
-            }
-        }
-    }
-}
-
-#[cfg(windows)]
-pub struct WindowsSelectionBackend;
-
-#[cfg(windows)]
-impl WindowsSelectionBackend {
-    fn read_selected_text(&self) -> Result<Option<String>> {
-        use windows::Win32::System::Com::{
-            CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, CoCreateInstance, CoInitializeEx,
-        };
-        use windows::Win32::UI::Accessibility::{
-            CUIAutomation, IUIAutomation, IUIAutomationTextPattern, UIA_TextPatternId,
-        };
-        use windows::core::Interface;
-
-        unsafe {
-            let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
-            let automation: IUIAutomation =
-                CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER).map_err(|err| {
-                    AppError::Capture(format!("初始化 UI Automation 失败: {err}"))
-                })?;
-            let element = automation
-                .GetFocusedElement()
-                .map_err(|err| AppError::Capture(format!("读取焦点控件失败: {err}")))?;
-            let pattern = element
-                .GetCurrentPattern(UIA_TextPatternId)
-                .map_err(|_| AppError::Capture("焦点控件不支持 UIA TextPattern".to_string()))?;
-            let text_pattern: IUIAutomationTextPattern = pattern
-                .cast()
-                .map_err(|err| AppError::Capture(format!("转换 UIA TextPattern 失败: {err}")))?;
-            let ranges = text_pattern
-                .GetSelection()
-                .map_err(|err| AppError::Capture(format!("读取 UIA 选区失败: {err}")))?;
-            let length = ranges
-                .Length()
-                .map_err(|err| AppError::Capture(format!("读取 UIA 选区数量失败: {err}")))?;
-            let mut collected = String::new();
-            for index in 0..length {
-                let range = ranges
-                    .GetElement(index)
-                    .map_err(|err| AppError::Capture(format!("读取 UIA 选区范围失败: {err}")))?;
-                let text = range
-                    .GetText(-1)
-                    .map_err(|err| AppError::Capture(format!("读取 UIA 选中文本失败: {err}")))?;
-                collected.push_str(&text.to_string());
-            }
-            if collected.trim().is_empty() {
-                Ok(None)
-            } else {
-                Ok(Some(collected))
             }
         }
     }
