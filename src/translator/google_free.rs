@@ -30,6 +30,31 @@ impl GoogleFreeTranslator {
         }
     }
 
+    async fn fetch(&self, url: &str) -> reqwest::Result<(StatusCode, String, String)> {
+        let mut retries = 0;
+        loop {
+            debug_assert!(retries <= 2);
+            let result: reqwest::Result<_> = async {
+                let response = self.client.get(url).send().await?.error_for_status()?;
+                let content_type = response
+                    .headers()
+                    .get(reqwest::header::CONTENT_TYPE)
+                    .and_then(|value| value.to_str().ok())
+                    .unwrap_or("unknown")
+                    .to_string();
+                Ok((response.status(), content_type, response.text().await?))
+            }
+            .await;
+            match result {
+                Err(ref err) if retries < 2 && is_retryable(err) => {
+                    tokio::time::sleep(Duration::from_millis(500 << retries)).await;
+                    retries += 1;
+                }
+                _ => return result,
+            }
+        }
+    }
+
     async fn translate_inner(&self, request: TranslationRequest) -> Result<TranslationResponse> {
         let url = format!(
             "https://translate.googleapis.com/translate_a/single?client=gtx&sl={}&tl={}&dt=t&q={}",
@@ -37,34 +62,26 @@ impl GoogleFreeTranslator {
             urlencoding::encode(&request.target_lang),
             urlencoding::encode(&request.text),
         );
-        let response = self.client.get(url).send().await.map_err(request_error)?;
-
-        let status = response.status();
-        if status == StatusCode::TOO_MANY_REQUESTS {
-            return Err(AppError::Translate(
-                TranslationErrorKind::RateLimited.user_message().to_string(),
-            ));
-        }
-        if status == StatusCode::FORBIDDEN {
-            return Err(AppError::Translate(
-                TranslationErrorKind::ProviderChanged
-                    .user_message()
-                    .to_string(),
-            ));
-        }
+        let (status, content_type, body) =
+            self.fetch(&url).await.map_err(|err| match err.status() {
+                Some(StatusCode::TOO_MANY_REQUESTS) => AppError::Translate(
+                    TranslationErrorKind::RateLimited.user_message().to_string(),
+                ),
+                Some(StatusCode::FORBIDDEN) => AppError::Translate(
+                    TranslationErrorKind::ProviderChanged
+                        .user_message()
+                        .to_string(),
+                ),
+                Some(status) => {
+                    AppError::Translate(format!("内置 Google 翻译失败，状态码: {status}"))
+                }
+                None => request_error(err),
+            })?;
         if !status.is_success() {
             return Err(AppError::Translate(format!(
                 "内置 Google 翻译失败，状态码: {status}"
             )));
         }
-
-        let content_type = response
-            .headers()
-            .get(reqwest::header::CONTENT_TYPE)
-            .and_then(|value| value.to_str().ok())
-            .unwrap_or("unknown")
-            .to_string();
-        let body = response.text().await.map_err(request_error)?;
         let json: Value = serde_json::from_str(&body).map_err(|err| {
             invalid_response_error(format!(
                 "响应不是 JSON；content-type: {content_type}；片段: {}；解析错误: {err}",
@@ -87,6 +104,15 @@ impl Translator for GoogleFreeTranslator {
     ) -> Pin<Box<dyn Future<Output = Result<TranslationResponse>> + Send + 'a>> {
         Box::pin(self.translate_inner(request))
     }
+}
+
+fn is_retryable(err: &reqwest::Error) -> bool {
+    err.is_connect()
+        || err.is_timeout()
+        || err.is_body()
+        || err.status().is_some_and(|status| {
+            status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error()
+        })
 }
 
 fn parse_google_response(json: &Value) -> Result<String> {
