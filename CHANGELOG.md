@@ -2,6 +2,19 @@
 
 本项目的重要变更记录在此文件中。版本号遵循语义化版本。
 
+## [0.4.2] - 2026-11-11
+
+### 新增
+
+- 翻译窗口支持原文固定高度和自由调整两种布局，可拖动分隔条调整原文与译文区域比例，并自动保存。
+- 设置面板输入框添加占位提示。
+
+### 改进
+
+- 优化设置面板布局与控件排版。
+- 优化自定义 OpenAI 兼容接口请求，对连接失败及部分临时错误自动重试，并将请求与重试限制在配置的总超时时间内。
+- 完善接口错误与超时提示，提供状态码、耗时及响应摘要，便于排查问题。
+
 ## [0.4.1] - 2026-11-05
 
 - 移除UIA取词
@@ -53,5 +66,8 @@
 - README 不再写死具体附件版本号。
 - Release 页面自动包含实际变更记录，而不是固定模板。
 
+[0.4.2]: https://github.com/aitsuki/ait/releases/tag/v0.4.2
+[0.4.1]: https://github.com/aitsuki/ait/releases/tag/v0.4.1
+[0.4.0]: https://github.com/aitsuki/ait/releases/tag/v0.4.0
 [0.3.1]: https://github.com/aitsuki/ait/releases/tag/v0.3.1
 [0.3.0]: https://github.com/aitsuki/ait/releases/tag/v0.3.0
