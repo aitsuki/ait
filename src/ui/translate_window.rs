@@ -5,11 +5,17 @@ const ID_SOURCE_EDIT: isize = 2101;
 #[cfg(windows)]
 const ID_TRANSLATED_EDIT: isize = 2102;
 #[cfg(windows)]
-const ID_SOURCE_LABEL: isize = 2103;
-#[cfg(windows)]
-const ID_TRANSLATED_LABEL: isize = 2104;
-#[cfg(windows)]
 const ID_STATUS_TEXT: isize = 2105;
+#[cfg(windows)]
+const ID_SPLITTER: isize = 2107;
+#[cfg(windows)]
+const LAYOUT_MODE_SLOT: windows::Win32::UI::WindowsAndMessaging::WINDOW_LONG_PTR_INDEX =
+    windows::Win32::UI::WindowsAndMessaging::WINDOW_LONG_PTR_INDEX(0);
+#[cfg(windows)]
+const SOURCE_RATIO_SLOT: windows::Win32::UI::WindowsAndMessaging::WINDOW_LONG_PTR_INDEX =
+    windows::Win32::UI::WindowsAndMessaging::WINDOW_LONG_PTR_INDEX(
+        std::mem::size_of::<isize>() as i32
+    );
 #[cfg(windows)]
 pub(crate) const ID_PROFILE_COMBO: isize = 2106;
 #[cfg(windows)]
@@ -24,6 +30,9 @@ pub const WM_TRANSLATE_WINDOW_PROFILE_CHANGED: u32 =
 #[cfg(windows)]
 pub const WM_TRANSLATE_WINDOW_UPDATE_CLICKED: u32 =
     windows::Win32::UI::WindowsAndMessaging::WM_APP + 32;
+#[cfg(windows)]
+pub const WM_TRANSLATE_WINDOW_RATIO_CHANGED: u32 =
+    windows::Win32::UI::WindowsAndMessaging::WM_APP + 33;
 #[cfg(windows)]
 const WM_TRANSLATION_TASK_FINISHED: u32 = windows::Win32::UI::WindowsAndMessaging::WM_APP + 60;
 #[cfg(windows)]
@@ -105,7 +114,7 @@ pub fn show_window_needs_topmost_raise(mode: ShowMode, action: ShowAction) -> bo
 }
 
 pub fn translation_window_min_client_size() -> (i32, i32) {
-    (420, 300)
+    (420, 276)
 }
 
 pub fn translation_profile_combo_dropdown_height() -> i32 {
@@ -113,7 +122,7 @@ pub fn translation_profile_combo_dropdown_height() -> i32 {
 }
 
 pub fn translation_static_text_uses_window_background(control_id: usize) -> bool {
-    matches!(control_id, 2103..=2105)
+    control_id == 2105
 }
 
 pub fn translation_window_update_button_visible(
@@ -179,9 +188,8 @@ pub struct ControlRect {
 pub struct TranslationWindowLayout {
     pub profile_combo: ControlRect,
     pub update_button: ControlRect,
-    pub source_label: ControlRect,
     pub source_edit: ControlRect,
-    pub translated_label: ControlRect,
+    pub splitter: ControlRect,
     pub translated_edit: ControlRect,
     pub status_text: ControlRect,
     pub translate_button: ControlRect,
@@ -191,19 +199,28 @@ pub struct TranslationWindowLayout {
 fn translation_window_layout_for_system_dpi(
     client_width: i32,
     client_height: i32,
+    mode: crate::config::TranslationWindowLayout,
+    source_ratio: u32,
 ) -> TranslationWindowLayout {
-    translation_window_layout_for_dpi(client_width, client_height, crate::ui::theme::system_dpi())
+    translation_window_layout_for_dpi(
+        client_width,
+        client_height,
+        crate::ui::theme::system_dpi(),
+        mode,
+        source_ratio,
+    )
 }
 
 fn translation_window_layout_for_dpi(
     client_width: i32,
     client_height: i32,
     dpi: u32,
+    mode: crate::config::TranslationWindowLayout,
+    source_ratio: u32,
 ) -> TranslationWindowLayout {
     let scale = |value| crate::ui::theme::scale_for_dpi(value, dpi);
     let margin = scale(16);
     let gap = scale(10);
-    let label_height_value = scale(20);
     let status_height_value = scale(22);
     let button_width_value = scale(crate::ui::theme::BUTTON_MIN_WIDTH);
     let button_height_value = scale(crate::ui::theme::PRIMARY_BUTTON_HEIGHT);
@@ -226,7 +243,6 @@ fn translation_window_layout_for_dpi(
     let button_x = (usable_width - margin - button_width).clamp(0, usable_width - button_width);
     let bottom_y = (usable_height - margin - button_height).clamp(0, usable_height - button_height);
     let status_width = (button_x - margin - gap).max(1);
-    let label_height = label_height_value.min(usable_height);
     let status_height = status_height_value.min(usable_height);
     let profile_combo = ControlRect {
         x: (usable_width - margin - combo_width).clamp(0, usable_width - combo_width),
@@ -234,17 +250,11 @@ fn translation_window_layout_for_dpi(
         width: combo_width,
         height: combo_height,
     };
-    let source_label = ControlRect {
-        x: content_x,
-        y: scale(14).min(usable_height - label_height),
-        width: scale(80).min(content_width),
-        height: label_height,
-    };
     let update_button_width = update_button_width_value
         .min((profile_combo.x - content_x - gap).max(1))
         .max(1);
     let update_button_x = (profile_combo.x - gap - update_button_width)
-        .max(content_x + source_label.width + gap)
+        .max(content_x)
         .min(usable_width - update_button_width);
     let update_button = ControlRect {
         x: update_button_x,
@@ -256,13 +266,19 @@ fn translation_window_layout_for_dpi(
         .y
         .max(update_button.y)
         .saturating_add(profile_combo.height.max(update_button.height));
-    let source_edit_y = (source_label.y + label_height + scale(4))
-        .max(top_row_bottom + scale(6))
-        .min(usable_height - 1);
+    let source_edit_y = (top_row_bottom + scale(6)).min(usable_height - 1);
+    let source_edit_height = if mode != crate::config::TranslationWindowLayout::FixedSource {
+        let available = (bottom_y - source_edit_y - 2 * gap).max(2);
+        let minimum = scale(48).min(available / 2).max(1);
+        let ratio = source_ratio.clamp(100, crate::config::PANE_RATIO_SCALE - 100);
+        let height = (i64::from(available) * i64::from(ratio)
+            / i64::from(crate::config::PANE_RATIO_SCALE)) as i32;
+        height.clamp(minimum, available - minimum)
+    } else {
+        source_edit_height
+    };
     let source_edit_height = source_edit_height.min(usable_height - source_edit_y);
-    let translated_label_y = source_edit_y + source_edit_height + gap;
-    let translated_label_y = translated_label_y.min(usable_height - 1);
-    let translated_edit_y = (translated_label_y + label_height + scale(4)).min(usable_height - 1);
+    let translated_edit_y = (source_edit_y + source_edit_height + gap).min(usable_height - 1);
     let translated_edit_height = (bottom_y - translated_edit_y - gap)
         .max(1)
         .min(usable_height - translated_edit_y);
@@ -270,18 +286,17 @@ fn translation_window_layout_for_dpi(
     TranslationWindowLayout {
         profile_combo,
         update_button,
-        source_label,
         source_edit: ControlRect {
             x: content_x,
             y: source_edit_y,
             width: content_width,
             height: source_edit_height,
         },
-        translated_label: ControlRect {
+        splitter: ControlRect {
             x: content_x,
-            y: translated_label_y,
-            width: scale(80).min(content_width),
-            height: label_height.min(usable_height - translated_label_y),
+            y: source_edit_y + source_edit_height,
+            width: content_width,
+            height: gap,
         },
         translated_edit: ControlRect {
             x: content_x,
@@ -436,11 +451,10 @@ pub fn is_third_click_after_double_click(
 #[cfg(windows)]
 pub struct TranslationWindow {
     hwnd: windows::Win32::Foundation::HWND,
-    source_label: windows::Win32::Foundation::HWND,
     source_edit: windows::Win32::Foundation::HWND,
-    translated_label: windows::Win32::Foundation::HWND,
     translated_edit: windows::Win32::Foundation::HWND,
     status_text: windows::Win32::Foundation::HWND,
+    #[cfg(test)]
     translate_button: windows::Win32::Foundation::HWND,
     profile_combo: windows::Win32::Foundation::HWND,
     update_button: windows::Win32::Foundation::HWND,
@@ -464,6 +478,7 @@ impl TranslationWindow {
         unsafe {
             let class = WNDCLASSW {
                 lpfnWndProc: Some(default_wnd_proc),
+                cbWndExtra: (2 * std::mem::size_of::<isize>()) as i32,
                 lpszClassName: PCWSTR(class_name.as_ptr()),
                 hCursor: LoadCursorW(None, IDC_ARROW).unwrap_or_default(),
                 hIcon: crate::ui::icon::load_app_icon(
@@ -478,7 +493,7 @@ impl TranslationWindow {
                 return Err(AppError::Windows("注册翻译窗口类失败".to_string()));
             }
 
-            let (width, height) = translation_window_outer_size(420, 360)?;
+            let (width, height) = translation_window_outer_size(420, 336)?;
             let hwnd = CreateWindowExW(
                 WINDOW_EX_STYLE::default(),
                 PCWSTR(class_name.as_ptr()),
@@ -495,18 +510,16 @@ impl TranslationWindow {
             )
             .map_err(|err| AppError::Windows(format!("创建翻译窗口失败: {err}")))?;
 
-            let source_label = create_static(hwnd, "原文", 16, 14, 80, 20, ID_SOURCE_LABEL)?;
             let source_edit = create_edit(hwnd, 16, 38, 572, 96, ID_SOURCE_EDIT, false)?;
-            let translated_label =
-                create_static(hwnd, "译文", 16, 146, 80, 20, ID_TRANSLATED_LABEL)?;
             let translated_edit = create_edit(hwnd, 16, 170, 572, 140, ID_TRANSLATED_EDIT, true)?;
             let status_text = create_static(hwnd, "", 16, 324, 360, 22, ID_STATUS_TEXT)?;
-            let translate_button =
+            let _translate_button =
                 create_button(hwnd, "翻译", 534, 322, 52, 28, ID_TRANSLATE as isize)?;
             let profile_combo = create_combo(hwnd, 408, 12, 180, 220, ID_PROFILE_COMBO)?;
             let update_button =
                 create_button(hwnd, "有新版本", 314, 12, 86, 26, ID_UPDATE_BUTTON as isize)?;
             hide_window(update_button);
+            crate::ui::translation_splitter::create(hwnd, ID_SPLITTER)?;
             apply_multiline_edit_padding(source_edit)?;
             apply_multiline_edit_padding(translated_edit)?;
             install_edit_subclass(source_edit)?;
@@ -514,12 +527,11 @@ impl TranslationWindow {
 
             let this = Self {
                 hwnd,
-                source_label,
                 source_edit,
-                translated_label,
                 translated_edit,
                 status_text,
-                translate_button,
+                #[cfg(test)]
+                translate_button: _translate_button,
                 profile_combo,
                 update_button,
                 profile_options: Vec::new(),
@@ -670,38 +682,25 @@ impl TranslationWindow {
         })
     }
 
-    fn apply_layout(&self) -> Result<()> {
-        use windows::Win32::Foundation::RECT;
-        use windows::Win32::UI::WindowsAndMessaging::GetClientRect;
+    pub fn source_ratio(&self) -> u32 {
+        window_source_ratio(self.hwnd)
+    }
 
+    pub fn set_layout(&self, settings: &crate::config::WindowSettings) -> Result<()> {
+        // Extra window bytes keep the layout available to WM_SIZE without using
+        // GWLP_USERDATA, which stores the active translation request ID.
         unsafe {
-            let mut rect = RECT::default();
-            let _ = GetClientRect(self.hwnd, &mut rect);
-            let layout = translation_window_layout_for_system_dpi(
-                rect.right - rect.left,
-                rect.bottom - rect.top,
+            windows::Win32::UI::WindowsAndMessaging::SetWindowLongPtrW(
+                self.hwnd,
+                LAYOUT_MODE_SLOT,
+                settings.layout.index() as isize,
             );
-            move_window(
-                self.profile_combo,
-                ControlRect {
-                    height: crate::ui::theme::scale(translation_profile_combo_dropdown_height()),
-                    ..layout.profile_combo
-                },
-            )?;
-            move_window(self.source_label, layout.source_label)?;
-            move_window(self.source_edit, edit_content_rect(layout.source_edit))?;
-            apply_multiline_edit_padding(self.source_edit)?;
-            move_window(self.translated_label, layout.translated_label)?;
-            move_window(
-                self.translated_edit,
-                edit_content_rect(layout.translated_edit),
-            )?;
-            apply_multiline_edit_padding(self.translated_edit)?;
-            move_window(self.status_text, layout.status_text)?;
-            move_window(self.translate_button, layout.translate_button)?;
-            move_window(self.update_button, layout.update_button)?;
         }
-        Ok(())
+        set_window_source_ratio(self.hwnd, settings.source_ratio)
+    }
+
+    fn apply_layout(&self) -> Result<()> {
+        resize_translation_window(self.hwnd)
     }
 }
 
@@ -782,16 +781,17 @@ unsafe extern "system" fn default_wnd_proc(
         }
         return LRESULT(0);
     }
-    if msg == WM_CLOSE {
-        unsafe {
-            let _ = ShowWindow(hwnd, SW_HIDE);
-        }
-        return LRESULT(0);
-    }
-    if msg == WM_KEYDOWN
-        && edit_shortcut_action(wparam.0 as u32, false) == EditShortcutAction::HideWindow
+    if msg == WM_CLOSE
+        || (msg == WM_KEYDOWN
+            && edit_shortcut_action(wparam.0 as u32, false) == EditShortcutAction::HideWindow)
     {
         unsafe {
+            use windows::Win32::UI::WindowsAndMessaging::{
+                GetDlgItem, SendMessageW, WM_CANCELMODE,
+            };
+            if let Ok(splitter) = GetDlgItem(Some(hwnd), ID_SPLITTER as i32) {
+                let _ = SendMessageW(splitter, WM_CANCELMODE, None, None);
+            }
             let _ = ShowWindow(hwnd, SW_HIDE);
         }
         return LRESULT(0);
@@ -1541,21 +1541,88 @@ unsafe fn apply_min_track_size(lparam: windows::Win32::Foundation::LPARAM) {
 }
 
 #[cfg(windows)]
-fn resize_translation_window(hwnd: windows::Win32::Foundation::HWND) -> Result<()> {
+fn window_layout_mode(
+    hwnd: windows::Win32::Foundation::HWND,
+) -> crate::config::TranslationWindowLayout {
+    let index = unsafe {
+        windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(hwnd, LAYOUT_MODE_SLOT)
+    };
+    crate::config::TranslationWindowLayout::from_index(index as usize)
+}
+
+#[cfg(windows)]
+fn window_source_ratio(hwnd: windows::Win32::Foundation::HWND) -> u32 {
+    let ratio = unsafe {
+        windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(hwnd, SOURCE_RATIO_SLOT)
+    } as u32;
+    if ratio == 0 {
+        crate::config::PANE_RATIO_SCALE / 2
+    } else {
+        ratio
+    }
+}
+
+#[cfg(windows)]
+pub(super) fn current_window_layout(
+    hwnd: windows::Win32::Foundation::HWND,
+) -> Result<TranslationWindowLayout> {
     use windows::Win32::Foundation::RECT;
     use windows::Win32::UI::WindowsAndMessaging::GetClientRect;
 
+    let mut rect = RECT::default();
+    unsafe { GetClientRect(hwnd, &mut rect) }
+        .map_err(|err| AppError::Windows(format!("获取翻译窗口尺寸失败: {err}")))?;
+    Ok(translation_window_layout_for_system_dpi(
+        rect.right - rect.left,
+        rect.bottom - rect.top,
+        window_layout_mode(hwnd),
+        window_source_ratio(hwnd),
+    ))
+}
+
+#[cfg(windows)]
+pub(super) fn set_window_source_ratio(
+    hwnd: windows::Win32::Foundation::HWND,
+    ratio: u32,
+) -> Result<()> {
     unsafe {
-        let mut rect = RECT::default();
-        GetClientRect(hwnd, &mut rect)
-            .map_err(|err| AppError::Windows(format!("获取翻译窗口尺寸失败: {err}")))?;
-        let layout = translation_window_layout_for_system_dpi(
-            rect.right - rect.left,
-            rect.bottom - rect.top,
+        windows::Win32::UI::WindowsAndMessaging::SetWindowLongPtrW(
+            hwnd,
+            SOURCE_RATIO_SLOT,
+            ratio.clamp(100, crate::config::PANE_RATIO_SCALE - 100) as isize,
         );
-        let source_label =
-            windows::Win32::UI::WindowsAndMessaging::GetDlgItem(Some(hwnd), ID_SOURCE_LABEL as i32)
-                .map_err(|err| AppError::Windows(format!("获取原文标签失败: {err}")))?;
+    }
+    resize_translation_window(hwnd)?;
+    unsafe {
+        let _ = windows::Win32::Graphics::Gdi::InvalidateRect(Some(hwnd), None, true);
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+pub(super) fn notify_source_ratio_changed(hwnd: windows::Win32::Foundation::HWND) {
+    unsafe {
+        let _ = windows::Win32::UI::WindowsAndMessaging::PostMessageW(
+            Some(hwnd),
+            WM_TRANSLATE_WINDOW_RATIO_CHANGED,
+            windows::Win32::Foundation::WPARAM(0),
+            windows::Win32::Foundation::LPARAM(0),
+        );
+    }
+}
+
+#[cfg(windows)]
+fn resize_translation_window(hwnd: windows::Win32::Foundation::HWND) -> Result<()> {
+    unsafe {
+        let layout = current_window_layout(hwnd)?;
+        let splitter =
+            windows::Win32::UI::WindowsAndMessaging::GetDlgItem(Some(hwnd), ID_SPLITTER as i32)
+                .map_err(|err| AppError::Windows(format!("获取分隔条失败: {err}")))?;
+        move_window(splitter, layout.splitter)?;
+        set_window_visible(
+            splitter,
+            window_layout_mode(hwnd) != crate::config::TranslationWindowLayout::FixedSource,
+        );
         let profile_combo = windows::Win32::UI::WindowsAndMessaging::GetDlgItem(
             Some(hwnd),
             ID_PROFILE_COMBO as i32,
@@ -1564,11 +1631,6 @@ fn resize_translation_window(hwnd: windows::Win32::Foundation::HWND) -> Result<(
         let source_edit =
             windows::Win32::UI::WindowsAndMessaging::GetDlgItem(Some(hwnd), ID_SOURCE_EDIT as i32)
                 .map_err(|err| AppError::Windows(format!("获取原文输入框失败: {err}")))?;
-        let translated_label = windows::Win32::UI::WindowsAndMessaging::GetDlgItem(
-            Some(hwnd),
-            ID_TRANSLATED_LABEL as i32,
-        )
-        .map_err(|err| AppError::Windows(format!("获取译文标签失败: {err}")))?;
         let translated_edit = windows::Win32::UI::WindowsAndMessaging::GetDlgItem(
             Some(hwnd),
             ID_TRANSLATED_EDIT as i32,
@@ -1592,10 +1654,10 @@ fn resize_translation_window(hwnd: windows::Win32::Foundation::HWND) -> Result<(
                 ..layout.profile_combo
             },
         )?;
-        move_window(source_label, layout.source_label)?;
         move_window(source_edit, edit_content_rect(layout.source_edit))?;
-        move_window(translated_label, layout.translated_label)?;
+        apply_multiline_edit_padding(source_edit)?;
         move_window(translated_edit, edit_content_rect(layout.translated_edit))?;
+        apply_multiline_edit_padding(translated_edit)?;
         move_window(status_text, layout.status_text)?;
         move_window(translate_button, layout.translate_button)?;
         move_window(update_button, layout.update_button)?;

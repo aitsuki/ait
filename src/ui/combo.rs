@@ -128,7 +128,7 @@ pub fn modern_combo_dropdown_item_fill_rect(rect: ComboTextRect) -> ComboTextRec
 }
 
 pub fn is_modern_combo(id: usize) -> bool {
-    id == 2106
+    matches!(id, 2106 | 3125)
 }
 
 pub fn combo_uses_native_border(id: usize) -> bool {

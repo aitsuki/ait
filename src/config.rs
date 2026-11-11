@@ -47,10 +47,67 @@ pub struct ClipboardCaptureSettings {
     pub copy_wait_ms: u64,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TranslationWindowLayout {
+    #[default]
+    FixedSource,
+    Free,
+    // Retained for loading configurations written before the draggable splitter.
+    Equal,
+    ThreeToTwo,
+    FourToThree,
+}
+
+impl TranslationWindowLayout {
+    pub const OPTIONS: [Self; 2] = [Self::FixedSource, Self::Free];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::FixedSource => "原文固定高度",
+            _ => "自由调整（拖动分隔条）",
+        }
+    }
+
+    pub fn index(self) -> usize {
+        usize::from(self != Self::FixedSource)
+    }
+
+    pub fn from_index(index: usize) -> Self {
+        Self::OPTIONS.get(index).copied().unwrap_or_default()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WindowSettings {
     pub width: i32,
     pub height: i32,
+    #[serde(default)]
+    pub layout: TranslationWindowLayout,
+    /// Original pane's share of the combined text pane height, in basis points.
+    #[serde(default = "default_source_ratio")]
+    pub source_ratio: u32,
+}
+
+pub const PANE_RATIO_SCALE: u32 = 10_000;
+
+fn default_source_ratio() -> u32 {
+    PANE_RATIO_SCALE / 2
+}
+
+impl WindowSettings {
+    fn normalize(&mut self) {
+        match self.layout {
+            TranslationWindowLayout::Equal => self.source_ratio = 5_000,
+            TranslationWindowLayout::ThreeToTwo => self.source_ratio = 6_000,
+            TranslationWindowLayout::FourToThree => self.source_ratio = 5_714,
+            _ => {}
+        }
+        if self.layout != TranslationWindowLayout::FixedSource {
+            self.layout = TranslationWindowLayout::Free;
+        }
+        self.source_ratio = self.source_ratio.clamp(100, PANE_RATIO_SCALE - 100);
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -87,6 +144,8 @@ impl Default for AppSettings {
             window: WindowSettings {
                 width: 620,
                 height: 420,
+                layout: TranslationWindowLayout::default(),
+                source_ratio: default_source_ratio(),
             },
             markdown: MarkdownSettings {
                 render_enabled: false,
@@ -127,6 +186,7 @@ impl AppSettings {
     }
 
     pub fn normalized(mut self) -> Self {
+        self.window.normalize();
         for builtin in builtin_translator_profiles() {
             if self.profile_by_id(&builtin.id).is_none() {
                 self.translator_profiles.push(builtin);

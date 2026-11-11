@@ -1,10 +1,10 @@
-use crate::config::{AppSettings, TranslatorProvider};
+use crate::config::{AppSettings, TranslationWindowLayout, TranslatorProvider};
 use crate::error::{AppError, Result};
 #[cfg(windows)]
 use std::sync::{Mutex, OnceLock};
 
 const SETTINGS_WINDOW_WIDTH: i32 = 720;
-const SETTINGS_WINDOW_HEIGHT: i32 = 480;
+const SETTINGS_WINDOW_HEIGHT: i32 = 526;
 const GOOGLE_NOTICE_TEXT: &str = "Google 使用内置免 Key 翻译，无需填写 Base URL、模型或 API Key。";
 const API_KEY_PLACEHOLDER_TEXT: &str = "********";
 
@@ -50,6 +50,8 @@ const ID_TEST_PROFILE: isize = 3121;
 const ID_DICTIONARY_ENABLED: i32 = 3122;
 #[cfg(windows)]
 const ID_DICTIONARY_STATUS: i32 = 3123;
+#[cfg(windows)]
+const ID_WINDOW_LAYOUT: i32 = 3125;
 #[cfg(windows)]
 const ID_DOWNLOAD_DICTIONARY: isize = 3124;
 #[cfg(windows)]
@@ -732,6 +734,23 @@ impl SettingsWindow {
             set_checkbox_checked(hwnd, ID_AUTO_START, view_model.auto_start_enabled)?;
             create_static(
                 hwnd,
+                "翻译窗口布局",
+                layout.window_layout_label.x,
+                layout.window_layout_label.y,
+                layout.window_layout_label.width,
+                layout.window_layout_label.height,
+            )?;
+            create_window_layout_combo(hwnd, layout.window_layout, settings.window.layout)?;
+            create_static(
+                hwnd,
+                "双击分隔条恢复 1:1",
+                layout.window_layout.x + layout.window_layout.width + 16,
+                layout.window_layout_label.y,
+                280,
+                layout.window_layout_label.height,
+            )?;
+            create_static(
+                hwnd,
                 "",
                 layout.separator.x,
                 layout.separator.y,
@@ -1070,6 +1089,8 @@ pub struct SettingsWindowLayout {
     pub hotkey_label: SettingsControlRect,
     pub hotkey: SettingsControlRect,
     pub auto_start: SettingsControlRect,
+    pub window_layout_label: SettingsControlRect,
+    pub window_layout: SettingsControlRect,
     pub separator: SettingsControlRect,
     pub profile_title: SettingsControlRect,
     pub detail_title: SettingsControlRect,
@@ -1106,6 +1127,18 @@ pub fn settings_window_layout() -> SettingsWindowLayout {
             y: 17,
             width: 120,
             height: crate::ui::theme::CONTROL_HEIGHT,
+        },
+        window_layout_label: SettingsControlRect {
+            x: 18,
+            y: 407,
+            width: 100,
+            height: 24,
+        },
+        window_layout: SettingsControlRect {
+            x: 128,
+            y: 402,
+            width: 240,
+            height: 180,
         },
         separator: SettingsControlRect {
             x: 18,
@@ -1175,25 +1208,25 @@ pub fn settings_window_layout() -> SettingsWindowLayout {
         },
         version: SettingsControlRect {
             x: 18,
-            y: 408,
+            y: 454,
             width: 160,
             height: 22,
         },
         update_action: SettingsControlRect {
             x: 180,
-            y: 402,
+            y: 448,
             width: 88,
             height: crate::ui::theme::CONTROL_HEIGHT,
         },
         save_action: SettingsControlRect {
             x: 534,
-            y: 402,
+            y: 448,
             width: 72,
             height: crate::ui::theme::CONTROL_HEIGHT,
         },
         cancel_action: SettingsControlRect {
             x: 614,
-            y: 402,
+            y: 448,
             width: 72,
             height: crate::ui::theme::CONTROL_HEIGHT,
         },
@@ -1353,6 +1386,20 @@ unsafe extern "system" fn default_wnd_proc(
     if msg == WM_COMMAND {
         let command = wparam.0 & 0xffff;
         let notification = (wparam.0 >> 16) & 0xffff;
+        if command == ID_WINDOW_LAYOUT as usize {
+            use windows::Win32::UI::WindowsAndMessaging::{CBN_CLOSEUP, CBN_DROPDOWN};
+            if notification == CBN_DROPDOWN as usize || notification == CBN_CLOSEUP as usize {
+                let combo = windows::Win32::Foundation::HWND(lparam.0 as _);
+                crate::ui::combo::set_combo_dropped(combo, notification == CBN_DROPDOWN as usize);
+                unsafe {
+                    if notification == CBN_DROPDOWN as usize {
+                        crate::ui::combo::prepare_modern_combo_dropdown(combo);
+                    }
+                    crate::ui::combo::invalidate_modern_combo_for_child(hwnd, combo);
+                }
+            }
+            return LRESULT(0);
+        }
         if command == ID_PROFILE_LIST as usize
             && notification == windows::Win32::UI::WindowsAndMessaging::LBN_SELCHANGE as usize
         {
@@ -1584,11 +1631,25 @@ unsafe fn save_settings_from_window(hwnd: windows::Win32::Foundation::HWND) -> R
         },
     )?;
     settings.dictionary_enabled = is_checkbox_checked(hwnd, ID_DICTIONARY_ENABLED)?;
+    let layout_combo = control(hwnd, ID_WINDOW_LAYOUT)?;
+    let selected_layout = unsafe {
+        windows::Win32::UI::WindowsAndMessaging::SendMessageW(
+            layout_combo,
+            windows::Win32::UI::WindowsAndMessaging::CB_GETCURSEL,
+            None,
+            None,
+        )
+        .0
+    };
+    settings.window.layout = TranslationWindowLayout::from_index(selected_layout as usize);
     crate::startup::set_auto_start_enabled(auto_start_enabled)?;
     refresh_profile_list(hwnd, settings)?;
 
     let dir = crate::config::SettingsStore::default_dir()?;
-    crate::config::SettingsStore::new(dir).save(settings)?;
+    let store = crate::config::SettingsStore::new(dir);
+    // The splitter may have moved while this settings window was open.
+    settings.window.source_ratio = store.load()?.window.source_ratio;
+    store.save(settings)?;
     tracing::info!(
         default_profile_id = %settings.default_profile_id,
         "settings saved"
@@ -2382,6 +2443,53 @@ fn create_static_with_id(
         Default::default(),
         false,
     )
+}
+
+#[cfg(windows)]
+fn create_window_layout_combo(
+    parent: windows::Win32::Foundation::HWND,
+    rect: SettingsControlRect,
+    selected: TranslationWindowLayout,
+) -> Result<()> {
+    use windows::Win32::Foundation::{LPARAM, WPARAM};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        CB_ADDSTRING, CB_SETCURSEL, CBS_DROPDOWNLIST, CBS_HASSTRINGS, CBS_OWNERDRAWFIXED,
+        SendMessageW, WINDOW_STYLE, WS_VSCROLL,
+    };
+
+    let combo = create_control(
+        parent,
+        "COMBOBOX",
+        "",
+        rect.x,
+        rect.y,
+        rect.width,
+        rect.height,
+        ID_WINDOW_LAYOUT as isize,
+        WINDOW_STYLE(
+            (CBS_DROPDOWNLIST | CBS_HASSTRINGS | CBS_OWNERDRAWFIXED) as u32 | WS_VSCROLL.0,
+        ),
+        false,
+    )?;
+    crate::ui::combo::install_modern_combo_tracking(combo)?;
+    for option in TranslationWindowLayout::OPTIONS {
+        let text = wide(option.label());
+        let result = unsafe {
+            SendMessageW(
+                combo,
+                CB_ADDSTRING,
+                None,
+                Some(LPARAM(text.as_ptr() as isize)),
+            )
+        };
+        if result.0 < 0 {
+            return Err(AppError::Windows("添加翻译窗口布局选项失败".to_string()));
+        }
+    }
+    unsafe {
+        let _ = SendMessageW(combo, CB_SETCURSEL, Some(WPARAM(selected.index())), None);
+    }
+    Ok(())
 }
 
 #[cfg(windows)]

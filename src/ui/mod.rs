@@ -15,4 +15,6 @@ pub mod listbox;
 pub mod settings_window;
 pub mod theme;
 pub mod translate_window;
+#[cfg(windows)]
+mod translation_splitter;
 pub mod tray;

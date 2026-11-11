@@ -194,6 +194,7 @@ fn run_platform() -> Result<()> {
         }
     };
     let mut next_translation_request_id = 1_usize;
+    translation_window.set_layout(&runtime_state.settings().window)?;
     translation_window
         .refresh_profiles(runtime_state.settings(), runtime_state.active_profile_id())?;
 
@@ -440,12 +441,25 @@ fn run_platform() -> Result<()> {
                         } else {
                             runtime_state.replace_settings(settings);
                         }
+                        if let Err(err) =
+                            translation_window.set_layout(&runtime_state.settings().window)
+                        {
+                            tracing::warn!(error = %err, "update translation window layout failed");
+                        }
                         let _ = translation_window.refresh_profiles(
                             runtime_state.settings(),
                             runtime_state.active_profile_id(),
                         );
                     }
                     Err(err) => tracing::warn!(error = %err, "reload settings failed"),
+                }
+            } else if msg.message == crate::ui::translate_window::WM_TRANSLATE_WINDOW_RATIO_CHANGED
+            {
+                runtime_state.settings.window.source_ratio = translation_window.source_ratio();
+                if let Err(err) = crate::config::SettingsStore::new(settings_dir.clone())
+                    .save(runtime_state.settings())
+                {
+                    tracing::warn!(error = %err, "save translation pane ratio failed");
                 }
             } else if msg.message
                 == crate::ui::translate_window::WM_TRANSLATE_WINDOW_PROFILE_CHANGED
