@@ -13,10 +13,28 @@ pub fn point_size_to_logical_height(point_size: i32, dpi: i32) -> i32 {
 
 #[cfg(windows)]
 pub fn apply_ui_font(hwnd: windows::Win32::Foundation::HWND) -> Result<()> {
+    set_font(hwnd, ui_font()?)
+}
+
+#[cfg(windows)]
+pub fn apply_secondary_font(hwnd: windows::Win32::Foundation::HWND) -> Result<()> {
+    static FONT: std::sync::OnceLock<isize> = std::sync::OnceLock::new();
+    set_font(hwnd, cached_font(&FONT, 10, 400)?)
+}
+
+#[cfg(windows)]
+pub fn apply_heading_font(hwnd: windows::Win32::Foundation::HWND) -> Result<()> {
+    static FONT: std::sync::OnceLock<isize> = std::sync::OnceLock::new();
+    set_font(hwnd, cached_font(&FONT, UI_FONT_POINT_SIZE, 600)?)
+}
+
+#[cfg(windows)]
+fn set_font(
+    hwnd: windows::Win32::Foundation::HWND,
+    font: windows::Win32::Graphics::Gdi::HFONT,
+) -> Result<()> {
     use windows::Win32::Foundation::{LPARAM, WPARAM};
     use windows::Win32::UI::WindowsAndMessaging::{SendMessageW, WM_SETFONT};
-
-    let font = ui_font()?;
     unsafe {
         let _ = SendMessageW(
             hwnd,
@@ -30,23 +48,32 @@ pub fn apply_ui_font(hwnd: windows::Win32::Foundation::HWND) -> Result<()> {
 
 #[cfg(windows)]
 fn ui_font() -> Result<windows::Win32::Graphics::Gdi::HFONT> {
-    use std::sync::OnceLock;
-    use windows::Win32::Graphics::Gdi::HFONT;
-
-    static FONT: OnceLock<isize> = OnceLock::new();
-    if let Some(font) = FONT.get() {
-        return Ok(HFONT(*font as *mut core::ffi::c_void));
-    }
-
-    let font = create_ui_font()?;
-    let _ = FONT.set(font.0 as isize);
-    Ok(HFONT(
-        *FONT.get().unwrap_or(&(font.0 as isize)) as *mut core::ffi::c_void
-    ))
+    static FONT: std::sync::OnceLock<isize> = std::sync::OnceLock::new();
+    cached_font(&FONT, UI_FONT_POINT_SIZE, 400)
 }
 
 #[cfg(windows)]
-fn create_ui_font() -> Result<windows::Win32::Graphics::Gdi::HFONT> {
+fn cached_font(
+    cache: &std::sync::OnceLock<isize>,
+    point_size: i32,
+    weight: i32,
+) -> Result<windows::Win32::Graphics::Gdi::HFONT> {
+    use windows::Win32::Graphics::Gdi::{DeleteObject, HFONT};
+
+    if let Some(&font) = cache.get() {
+        return Ok(HFONT(font as *mut core::ffi::c_void));
+    }
+    let font = create_ui_font(point_size, weight)?;
+    if cache.set(font.0 as isize).is_err() {
+        unsafe {
+            let _ = DeleteObject(font.into());
+        }
+    }
+    Ok(HFONT(*cache.get().unwrap() as *mut core::ffi::c_void))
+}
+
+#[cfg(windows)]
+fn create_ui_font(point_size: i32, weight: i32) -> Result<windows::Win32::Graphics::Gdi::HFONT> {
     use windows::Win32::Graphics::Gdi::{
         CLIP_DEFAULT_PRECIS, CreateFontW, DEFAULT_CHARSET, DEFAULT_PITCH, FF_DONTCARE, GetDC,
         GetDeviceCaps, HDC, LOGPIXELSY, OUT_DEFAULT_PRECIS, PROOF_QUALITY, ReleaseDC,
@@ -66,11 +93,11 @@ fn create_ui_font() -> Result<windows::Win32::Graphics::Gdi::HFONT> {
     let face = wide("Microsoft YaHei UI");
     let font = unsafe {
         CreateFontW(
-            point_size_to_logical_height(ui_font_point_size(), dpi),
+            point_size_to_logical_height(point_size, dpi),
             0,
             0,
             0,
-            400,
+            weight,
             0,
             0,
             0,

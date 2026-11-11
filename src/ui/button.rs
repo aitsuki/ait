@@ -12,6 +12,7 @@ pub enum ButtonRole {
     Secondary,
     Danger,
     Ghost,
+    SelectedTab,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -97,6 +98,12 @@ pub fn button_palette(role: ButtonRole, state: ButtonVisualState) -> ButtonPalet
             text: COLOR_DANGER,
             focus: COLOR_DANGER,
         },
+        ButtonRole::SelectedTab => ButtonPalette {
+            background: COLOR_FOCUS_SOFT,
+            border: COLOR_FOCUS_SOFT,
+            text: COLOR_PRIMARY,
+            focus: COLOR_PRIMARY,
+        },
         ButtonRole::Ghost => ButtonPalette {
             background: if state.pressed {
                 COLOR_SURFACE_PRESSED
@@ -131,8 +138,8 @@ pub fn button_draws_inner_focus_ring(state: ButtonVisualState) -> bool {
 pub fn button_role_for_control(id: usize) -> Option<ButtonRole> {
     match id {
         2001 | 3004 => Some(ButtonRole::Primary),
-        3002 => Some(ButtonRole::Danger),
-        2002 | 3001 | 3003 | 3005 | 3116 | 3119 | 3121 | 3124 => Some(ButtonRole::Secondary),
+        2002 | 3001 | 3002 | 3003 | 3005 | 3116 | 3119 | 3121 | 3124 => Some(ButtonRole::Secondary),
+        3126 | 3135 => Some(ButtonRole::Ghost),
         _ => None,
     }
 }
@@ -331,6 +338,14 @@ pub fn install_owner_draw_button_hover(
                 "安装按钮悬停处理失败".to_string(),
             ))
         }
+    }
+}
+
+#[cfg(windows)]
+pub fn set_button_role(hwnd: windows::Win32::Foundation::HWND, role: ButtonRole) {
+    button_roles().lock().unwrap().insert(hwnd.0 as isize, role);
+    unsafe {
+        let _ = windows::Win32::Graphics::Gdi::InvalidateRect(Some(hwnd), None, true);
     }
 }
 
