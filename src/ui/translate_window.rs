@@ -799,6 +799,17 @@ unsafe extern "system" fn default_wnd_proc(
     if msg == WM_COMMAND {
         let command = wparam.0 & 0xffff;
         let notification = (wparam.0 >> 16) & 0xffff;
+        if command == ID_SOURCE_EDIT as usize
+            && notification == windows::Win32::UI::WindowsAndMessaging::EN_CHANGE as usize
+        {
+            // Native EDIT can draw changes without WM_PAINT; repaint the whole
+            // source pane so the placeholder appears and disappears reliably.
+            unsafe {
+                let source = windows::Win32::Foundation::HWND(lparam.0 as _);
+                let _ = InvalidateRect(Some(source), None, true);
+            }
+            return LRESULT(0);
+        }
         match command {
             ID_TRANSLATE => unsafe {
                 let _ = PostMessageW(Some(hwnd), WM_TRANSLATE_WINDOW_SOURCE, WPARAM(0), LPARAM(0));
@@ -1044,11 +1055,34 @@ unsafe extern "system" fn edit_subclass_proc(
     };
     use windows::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass};
     use windows::Win32::UI::WindowsAndMessaging::{
-        GetMessageTime, GetParent, PostMessageW, SendMessageW, WM_CHAR, WM_CLOSE, WM_KEYDOWN,
-        WM_KILLFOCUS, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_NCDESTROY, WM_SETFOCUS,
+        GetDlgCtrlID, GetMessageTime, GetParent, PostMessageW, SendMessageW, WM_CHAR, WM_CLOSE,
+        WM_KEYDOWN, WM_KILLFOCUS, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_NCDESTROY, WM_PAINT,
+        WM_SETFOCUS, WM_SETTEXT,
     };
 
     let state_ptr = ref_data as *mut EditSubclassState;
+    let is_source = unsafe { GetDlgCtrlID(hwnd) } == ID_SOURCE_EDIT as i32;
+
+    if msg == WM_PAINT && is_source {
+        let result = unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) };
+        unsafe {
+            paint_source_placeholder(hwnd);
+        }
+        return result;
+    }
+    if msg == WM_SETTEXT && is_source {
+        // Multiline EDIT does not send EN_CHANGE for WM_SETTEXT.
+        let result = unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) };
+        unsafe {
+            let _ = windows::Win32::Graphics::Gdi::InvalidateRect(Some(hwnd), None, true);
+        }
+        return result;
+    }
+    if is_source && (msg == WM_SETFOCUS || msg == WM_KILLFOCUS) {
+        unsafe {
+            let _ = windows::Win32::Graphics::Gdi::InvalidateRect(Some(hwnd), None, true);
+        }
+    }
 
     if (msg == WM_SETFOCUS || msg == WM_KILLFOCUS)
         && let Ok(parent) = unsafe { GetParent(hwnd) }
@@ -1123,6 +1157,61 @@ unsafe extern "system" fn edit_subclass_proc(
     }
 
     unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) }
+}
+
+#[cfg(windows)]
+unsafe fn paint_source_placeholder(hwnd: windows::Win32::Foundation::HWND) {
+    use windows::Win32::Foundation::{LPARAM, RECT};
+    use windows::Win32::Graphics::Gdi::{
+        DT_END_ELLIPSIS, DT_LEFT, DT_NOPREFIX, DT_SINGLELINE, DT_TOP, DrawTextW, GetDC, HGDIOBJ,
+        ReleaseDC, RestoreDC, SaveDC, SelectObject, SetBkMode, SetTextColor, TRANSPARENT,
+    };
+    use windows::Win32::UI::Controls::EM_GETRECT;
+    use windows::Win32::UI::Input::KeyboardAndMouse::GetFocus;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetWindowTextLengthW, HideCaret, SendMessageW, ShowCaret, WM_GETFONT,
+    };
+
+    unsafe {
+        if GetWindowTextLengthW(hwnd) != 0 {
+            return;
+        }
+        let hdc = GetDC(Some(hwnd));
+        if hdc.is_invalid() {
+            return;
+        }
+        let saved = SaveDC(hdc);
+        if saved == 0 {
+            let _ = ReleaseDC(Some(hwnd), hdc);
+            return;
+        }
+        let caret_hidden = GetFocus() == hwnd && HideCaret(Some(hwnd)).is_ok();
+        let mut rect = RECT::default();
+        let _ = SendMessageW(
+            hwnd,
+            EM_GETRECT,
+            None,
+            Some(LPARAM(&mut rect as *mut _ as isize)),
+        );
+        let font = SendMessageW(hwnd, WM_GETFONT, None, None);
+        if font.0 != 0 {
+            SelectObject(hdc, HGDIOBJ(font.0 as _));
+        }
+        SetBkMode(hdc, TRANSPARENT);
+        SetTextColor(hdc, crate::ui::theme::COLOR_PLACEHOLDER.colorref());
+        let mut text = wide("输入待翻译文本");
+        DrawTextW(
+            hdc,
+            &mut text,
+            &mut rect,
+            DT_LEFT | DT_TOP | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS,
+        );
+        let _ = RestoreDC(hdc, saved);
+        let _ = ReleaseDC(Some(hwnd), hdc);
+        if caret_hidden {
+            let _ = ShowCaret(Some(hwnd));
+        }
+    }
 }
 
 #[cfg(windows)]

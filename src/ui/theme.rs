@@ -28,6 +28,7 @@ pub const COLOR_DANGER_SOFT: RgbColor = RgbColor::new(254, 242, 242);
 pub const COLOR_FOCUS_SOFT: RgbColor = RgbColor::new(219, 234, 254);
 pub const COLOR_FOCUS_TEXT: RgbColor = RgbColor::new(30, 64, 175);
 pub const COLOR_TEXT: RgbColor = RgbColor::new(31, 41, 55);
+pub const COLOR_PLACEHOLDER: RgbColor = RgbColor::new(209, 213, 219);
 pub const COLOR_SURFACE: RgbColor = RgbColor::new(255, 255, 255);
 pub const COLOR_SURFACE_SUBTLE: RgbColor = RgbColor::new(248, 250, 252);
 pub const COLOR_SURFACE_HOVER: RgbColor = RgbColor::new(241, 245, 249);
