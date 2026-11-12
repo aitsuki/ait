@@ -74,7 +74,7 @@ impl OpenAiCompatibleTranslator {
                     content: format!("请将以下内容翻译成中文，只输出译文：\n\n{}", request.text),
                 },
             ],
-            temperature: 0.0,
+            temperature: 1.3,
             thinking: ThinkingConfig { kind: "disabled" },
         };
 
