@@ -143,6 +143,11 @@ struct UpdateCheckMessage {
 }
 
 pub fn run() -> Result<()> {
+    #[cfg(windows)]
+    let Some(_instance) = crate::single_instance::SingleInstance::acquire()? else {
+        return Ok(());
+    };
+
     crate::logging::init_logging()?;
     run_platform()
 }
