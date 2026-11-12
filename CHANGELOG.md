@@ -2,6 +2,12 @@
 
 本项目的重要变更记录在此文件中。版本号遵循语义化版本。
 
+## [0.4.4] - 2026-11-13
+
+### 改进
+
+- 将自定义 OpenAI 兼容接口的翻译请求温度从 `0.0` 调整为 `1.3`，改善部分模型遇到语法不自然的原文时仅纠正英文、不输出中文译文的表现。
+
 ## [0.4.3] - 2026-11-13
 
 ### 修复
@@ -77,6 +83,7 @@
 - README 不再写死具体附件版本号。
 - Release 页面自动包含实际变更记录，而不是固定模板。
 
+[0.4.4]: https://github.com/aitsuki/ait/releases/tag/v0.4.4
 [0.4.3]: https://github.com/aitsuki/ait/releases/tag/v0.4.3
 [0.4.2]: https://github.com/aitsuki/ait/releases/tag/v0.4.2
 [0.4.1]: https://github.com/aitsuki/ait/releases/tag/v0.4.1
