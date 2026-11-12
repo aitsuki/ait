@@ -2,6 +2,17 @@
 
 本项目的重要变更记录在此文件中。版本号遵循语义化版本。
 
+## [0.4.3] - 2026-11-13
+
+### 修复
+
+- 阻止程序重复启动，避免同时运行多个实例。
+
+### 改进
+
+- 优化大模型翻译提示词，明确原文中的指令和问题仅需翻译，不应执行或回答。
+- 完善原文存在语法错误或缺少上下文时的翻译要求，强调术语一致性及代码、URL、变量名、占位符和专有标识保留原样。
+
 ## [0.4.2] - 2026-11-11
 
 ### 新增
@@ -66,6 +77,7 @@
 - README 不再写死具体附件版本号。
 - Release 页面自动包含实际变更记录，而不是固定模板。
 
+[0.4.3]: https://github.com/aitsuki/ait/releases/tag/v0.4.3
 [0.4.2]: https://github.com/aitsuki/ait/releases/tag/v0.4.2
 [0.4.1]: https://github.com/aitsuki/ait/releases/tag/v0.4.1
 [0.4.0]: https://github.com/aitsuki/ait/releases/tag/v0.4.0
