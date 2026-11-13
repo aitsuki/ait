@@ -165,7 +165,8 @@ fn run_platform() -> Result<()> {
     use crate::ui::translate_window::TranslationWindow;
     use crate::ui::tray::TrayIcon;
     use windows::Win32::UI::WindowsAndMessaging::{
-        DispatchMessageW, GetMessageW, MSG, PostQuitMessage, TranslateMessage, WM_HOTKEY,
+        DispatchMessageW, GetMessageW, KillTimer, MSG, PostQuitMessage, SetTimer, TranslateMessage,
+        WM_HOTKEY, WM_TIMER,
     };
 
     let settings_dir = SettingsStore::default_dir()?;
@@ -217,6 +218,11 @@ fn run_platform() -> Result<()> {
             tracing::warn!(error = %err, "open settings after hotkey registration failure failed");
         }
     }
+    // A thread-message timer reuses the UI loop without a waiting worker thread.
+    let update_timer = unsafe { SetTimer(None, 0, 6 * 60 * 60 * 1000, None) };
+    if update_timer == 0 {
+        tracing::warn!("could not start periodic update timer");
+    }
     spawn_update_check_task(
         translation_window.hwnd(),
         env!("CARGO_PKG_VERSION").to_string(),
@@ -230,6 +236,18 @@ fn run_platform() -> Result<()> {
     unsafe {
         let mut msg = MSG::default();
         while GetMessageW(&mut msg, None, 0, 0).into() {
+            if msg.message == WM_TIMER
+                && msg.hwnd.is_invalid()
+                && update_timer != 0
+                && msg.wParam.0 == update_timer
+            {
+                spawn_update_check_task(
+                    translation_window.hwnd(),
+                    env!("CARGO_PKG_VERSION").to_string(),
+                    UpdateCheckDisplayMode::SilentWhenUpToDate,
+                );
+                continue;
+            }
             if msg.message == WM_HOTKEY {
                 match hotkey_action(translation_window.is_foreground()) {
                     HotkeyAction::Ignore => {
@@ -527,6 +545,9 @@ fn run_platform() -> Result<()> {
             let _ = TranslateMessage(&msg);
             DispatchMessageW(&msg);
         }
+        if update_timer != 0 {
+            let _ = KillTimer(None, update_timer);
+        }
     }
     Ok(())
 }
@@ -655,29 +676,53 @@ pub fn spawn_update_check_task(
     current_version: String,
     display_mode: UpdateCheckDisplayMode,
 ) {
-    let notify_hwnd = notify_hwnd.0 as isize;
-    std::thread::spawn(move || {
-        let result = tokio::runtime::Runtime::new()
-            .map_err(|err| AppError::Translate(format!("启动更新检查运行时失败: {err}")))
-            .and_then(|runtime| runtime.block_on(check_for_updates(&current_version)));
-        let message = Box::into_raw(Box::new(UpdateCheckMessage {
-            result,
-            current_version,
-            display_mode,
-        }));
-        let notify_hwnd = windows::Win32::Foundation::HWND(notify_hwnd as *mut core::ffi::c_void);
-        unsafe {
-            let posted = windows::Win32::UI::WindowsAndMessaging::PostMessageW(
-                Some(notify_hwnd),
-                WM_UPDATE_CHECK_FINISHED,
-                windows::Win32::Foundation::WPARAM(0),
-                windows::Win32::Foundation::LPARAM(message as isize),
-            );
-            if posted.is_err() {
-                drop(Box::from_raw(message));
-            }
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    static CHECK_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
+
+    struct CheckGuard;
+    impl Drop for CheckGuard {
+        fn drop(&mut self) {
+            CHECK_IN_PROGRESS.store(false, Ordering::Release);
         }
-    });
+    }
+
+    if CHECK_IN_PROGRESS.swap(true, Ordering::AcqRel) {
+        return;
+    }
+    let guard = CheckGuard;
+    let notify_hwnd = notify_hwnd.0 as isize;
+    let spawned = std::thread::Builder::new()
+        .name("update-check".to_string())
+        .spawn(move || {
+            let _guard = guard;
+            let result = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .map_err(|err| AppError::Translate(format!("启动更新检查运行时失败: {err}")))
+                .and_then(|runtime| runtime.block_on(check_for_updates(&current_version)));
+            let message = Box::into_raw(Box::new(UpdateCheckMessage {
+                result,
+                current_version,
+                display_mode,
+            }));
+            let notify_hwnd =
+                windows::Win32::Foundation::HWND(notify_hwnd as *mut core::ffi::c_void);
+            unsafe {
+                let posted = windows::Win32::UI::WindowsAndMessaging::PostMessageW(
+                    Some(notify_hwnd),
+                    WM_UPDATE_CHECK_FINISHED,
+                    windows::Win32::Foundation::WPARAM(0),
+                    windows::Win32::Foundation::LPARAM(message as isize),
+                );
+                if posted.is_err() {
+                    drop(Box::from_raw(message));
+                }
+            }
+        });
+    if let Err(err) = spawned {
+        tracing::warn!(error = %err, "could not spawn update check thread");
+    }
 }
 
 #[cfg(windows)]

@@ -2,6 +2,12 @@
 
 本项目的重要变更记录在此文件中。版本号遵循语义化版本。
 
+## [0.4.5] - 2026-11-13
+
+### 新增
+
+- 自动检查新版本（复用 Windows 消息循环，不增加常驻线程或运行时）
+
 ## [0.4.4] - 2026-11-13
 
 ### 改进
@@ -83,6 +89,7 @@
 - README 不再写死具体附件版本号。
 - Release 页面自动包含实际变更记录，而不是固定模板。
 
+[0.4.5]: https://github.com/aitsuki/ait/releases/tag/v0.4.5
 [0.4.4]: https://github.com/aitsuki/ait/releases/tag/v0.4.4
 [0.4.3]: https://github.com/aitsuki/ait/releases/tag/v0.4.3
 [0.4.2]: https://github.com/aitsuki/ait/releases/tag/v0.4.2

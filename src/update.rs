@@ -71,6 +71,7 @@ pub fn update_status_message(current_version: &str, status: &UpdateStatus) -> St
 pub async fn check_for_updates(current_version: &str) -> Result<UpdateStatus> {
     let client = reqwest::Client::builder()
         .user_agent("ait/0.1")
+        .timeout(std::time::Duration::from_secs(30))
         .build()
         .map_err(|err| AppError::Network(err.to_string()))?;
     let latest_release = fetch_latest_release(&client).await?;
