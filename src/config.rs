@@ -36,8 +36,46 @@ pub struct TranslatorProfile {
     pub provider: TranslatorProvider,
     pub base_url: String,
     pub model: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api_key: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub encrypted_api_key: Option<String>,
     pub timeout_secs: u64,
+}
+
+impl TranslatorProfile {
+    pub fn has_api_key(&self) -> bool {
+        self.api_key.is_some() || self.encrypted_api_key.is_some()
+    }
+
+    pub fn read_api_key(&self) -> Result<Option<String>> {
+        if let Some(key) = &self.api_key {
+            return Ok(Some(key.clone()));
+        }
+        self.encrypted_api_key
+            .as_deref()
+            .map(|key| self.secret_store().unprotect(key))
+            .transpose()
+    }
+
+    pub fn set_api_key(&mut self, key: Option<&str>) -> Result<()> {
+        let key = key.filter(|key| !key.trim().is_empty());
+        if crate::paths::is_portable() {
+            self.api_key = key.map(str::to_string);
+            self.encrypted_api_key = None;
+        } else {
+            let encrypted = key
+                .map(|key| self.secret_store().protect(key))
+                .transpose()?;
+            self.encrypted_api_key = encrypted;
+            self.api_key = None;
+        }
+        Ok(())
+    }
+
+    fn secret_store(&self) -> crate::secret::SecretStore {
+        crate::secret::SecretStore::new(format!("ait-translator-profile-{}", self.id))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -196,6 +234,7 @@ pub fn builtin_translator_profiles() -> Vec<TranslatorProfile> {
         provider: TranslatorProvider::Google,
         base_url: String::new(),
         model: String::new(),
+        api_key: None,
         encrypted_api_key: None,
         timeout_secs: 0,
     }]
@@ -245,6 +284,7 @@ impl AppSettings {
             provider: TranslatorProvider::Custom,
             base_url: String::new(),
             model: String::new(),
+            api_key: None,
             encrypted_api_key: None,
             timeout_secs: 30,
         };
@@ -304,9 +344,7 @@ impl SettingsStore {
     }
 
     pub fn default_dir() -> Result<PathBuf> {
-        let project_dirs = directories::ProjectDirs::from("dev", "aitsu", "ait")
-            .ok_or_else(|| AppError::Config("无法定位配置目录".to_string()))?;
-        Ok(project_dirs.config_dir().to_path_buf())
+        crate::paths::config_dir()
     }
 
     pub fn path(&self) -> PathBuf {
@@ -328,9 +366,26 @@ impl SettingsStore {
     }
 
     pub fn save(&self, settings: &AppSettings) -> Result<()> {
+        let mut settings = settings.clone();
+        for profile in &mut settings.translator_profiles {
+            // Convert only when moving between encrypted and portable storage.
+            if (crate::paths::is_portable() && profile.encrypted_api_key.is_some())
+                || (!crate::paths::is_portable() && profile.api_key.is_some())
+            {
+                let key = profile.read_api_key()?;
+                profile.set_api_key(key.as_deref())?;
+            }
+        }
+        let raw = serde_json::to_string_pretty(&settings)?;
+        let path = self.path();
+        match fs::read(&path) {
+            Ok(existing) if existing == raw.as_bytes() => return Ok(()),
+            Ok(_) => {}
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+            Err(err) => return Err(err.into()),
+        }
         fs::create_dir_all(&self.dir)?;
-        let raw = serde_json::to_string_pretty(settings)?;
-        fs::write(self.path(), raw)?;
+        fs::write(path, raw)?;
         Ok(())
     }
 

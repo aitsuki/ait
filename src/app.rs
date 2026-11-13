@@ -107,6 +107,7 @@ pub fn hotkey_action(is_translation_window_foreground: bool) -> HotkeyAction {
 pub enum TrayAction {
     ShowTranslationWindow,
     OpenSettings,
+    #[cfg(not(feature = "portable"))]
     OpenLogDirectory,
     OpenLatestRelease,
     Exit,
@@ -118,6 +119,7 @@ pub fn tray_action_from_menu_id(menu_id: usize) -> TrayAction {
     match menu_id {
         crate::ui::tray::MENU_SHOW_TRANSLATION_WINDOW => TrayAction::ShowTranslationWindow,
         crate::ui::tray::MENU_SETTINGS => TrayAction::OpenSettings,
+        #[cfg(not(feature = "portable"))]
         crate::ui::tray::MENU_OPEN_LOG_DIRECTORY => TrayAction::OpenLogDirectory,
         crate::ui::tray::MENU_OPEN_LATEST_RELEASE => TrayAction::OpenLatestRelease,
         crate::ui::tray::MENU_EXIT => TrayAction::Exit,
@@ -148,6 +150,7 @@ pub fn run() -> Result<()> {
         return Ok(());
     };
 
+    #[cfg(not(feature = "portable"))]
     crate::logging::init_logging()?;
     run_platform()
 }
@@ -278,6 +281,7 @@ fn run_platform() -> Result<()> {
                             translation_window.hwnd(),
                         );
                     }
+                    #[cfg(not(feature = "portable"))]
                     TrayAction::OpenLogDirectory => {
                         match crate::logging::log_dir().and_then(|dir| {
                             std::fs::create_dir_all(&dir)?;
@@ -779,7 +783,7 @@ fn show_update_available_message(
     }
 }
 
-#[cfg(windows)]
+#[cfg(all(windows, not(feature = "portable")))]
 fn open_directory(path: &std::path::Path) -> Result<()> {
     use windows::Win32::UI::Shell::ShellExecuteW;
     use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
@@ -843,13 +847,9 @@ fn build_translator_for_profile(
             crate::translator::google_free::GoogleFreeTranslator::new(),
         )),
         crate::config::TranslatorProvider::Custom => {
-            let encrypted = profile
-                .encrypted_api_key
-                .as_ref()
+            let api_key = profile
+                .read_api_key()?
                 .ok_or_else(|| crate::error::AppError::Translate("API Key 缺失".to_string()))?;
-            let api_key =
-                crate::secret::SecretStore::new(format!("ait-translator-profile-{}", profile.id))
-                    .unprotect(encrypted)?;
             let translator = crate::translator::openai_compatible::OpenAiCompatibleTranslator::new(
                 crate::translator::openai_compatible::OpenAiCompatibleConfig {
                     provider: profile.provider,

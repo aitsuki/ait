@@ -530,21 +530,15 @@ pub fn apply_settings_detail_update(
     if profile.provider == TranslatorProvider::Google {
         profile.base_url.clear();
         profile.model.clear();
-        profile.encrypted_api_key = None;
+        profile.set_api_key(None)?;
         profile.timeout_secs = 0;
     } else {
         profile.base_url = update.base_url;
         profile.model = update.model;
         match update.api_key {
             SettingsApiKeyUpdate::Preserve => {}
-            SettingsApiKeyUpdate::Clear => profile.encrypted_api_key = None,
-            SettingsApiKeyUpdate::Replace(api_key) => {
-                if api_key.trim().is_empty() {
-                    profile.encrypted_api_key = None;
-                } else {
-                    profile.encrypted_api_key = Some(api_key);
-                }
-            }
+            SettingsApiKeyUpdate::Clear => profile.set_api_key(None)?,
+            SettingsApiKeyUpdate::Replace(api_key) => profile.set_api_key(Some(&api_key))?,
         }
         profile.timeout_secs = update.timeout_secs.max(1);
     }
@@ -569,7 +563,7 @@ impl SettingsViewModel {
             (
                 selected.base_url.clone(),
                 selected.model.clone(),
-                selected.encrypted_api_key.is_some(),
+                selected.has_api_key(),
                 selected.timeout_secs,
             )
         };
@@ -724,7 +718,14 @@ impl SettingsWindow {
             let hwnd = CreateWindowExW(
                 WINDOW_EX_STYLE::default(),
                 PCWSTR(class_name.as_ptr()),
-                PCWSTR(wide("ait 设置").as_ptr()),
+                PCWSTR(
+                    wide(if crate::paths::is_portable() {
+                        "ait 设置（便携模式：API Key 明文保存）"
+                    } else {
+                        "ait 设置"
+                    })
+                    .as_ptr(),
+                ),
                 style,
                 x,
                 y,
@@ -1838,18 +1839,14 @@ unsafe fn save_settings_from_window(hwnd: windows::Win32::Foundation::HWND) -> R
         .profile_by_id(&profile_id)
         .map(|profile| profile.provider)
         .ok_or_else(|| AppError::Config("翻译配置不存在".to_string()))?;
-    let existing_encrypted_api_key = settings
-        .profile_by_id(&profile_id)
-        .and_then(|profile| profile.encrypted_api_key.clone());
+    let existing_encrypted_api_key = settings.profile_by_id(&profile_id).and_then(|profile| {
+        profile
+            .api_key
+            .clone()
+            .or_else(|| profile.encrypted_api_key.clone())
+    });
     let api_key = read_control_text(hwnd, ID_API_KEY)?;
-    let api_key_update =
-        match settings_api_key_update_from_input(existing_encrypted_api_key, &api_key) {
-            SettingsApiKeyUpdate::Replace(api_key) => SettingsApiKeyUpdate::Replace(
-                crate::secret::SecretStore::new(format!("ait-translator-profile-{profile_id}"))
-                    .protect(&api_key)?,
-            ),
-            update => update,
-        };
+    let api_key_update = settings_api_key_update_from_input(existing_encrypted_api_key, &api_key);
     let auto_start_enabled = is_checkbox_checked(hwnd, ID_AUTO_START)?;
     apply_settings_detail_update(
         settings,
@@ -2015,14 +2012,7 @@ unsafe fn profile_test_config_from_window(
 
     let api_key_input = read_control_text(hwnd, ID_API_KEY)?;
     let saved_api_key = if api_key_input == API_KEY_PLACEHOLDER_TEXT {
-        profile
-            .encrypted_api_key
-            .as_ref()
-            .map(|encrypted| {
-                crate::secret::SecretStore::new(format!("ait-translator-profile-{profile_id}"))
-                    .unprotect(encrypted)
-            })
-            .transpose()?
+        profile.read_api_key()?
     } else {
         None
     };
@@ -2203,12 +2193,11 @@ unsafe fn toggle_api_key_visibility(hwnd: windows::Win32::Foundation::HWND) -> R
     }
     let settings = unsafe { &*(ptr as *const AppSettings) };
     let profile_id = selected_profile_id(hwnd)?;
-    let encrypted = settings
+    let api_key = settings
         .profile_by_id(&profile_id)
-        .and_then(|profile| profile.encrypted_api_key.as_ref())
+        .ok_or_else(|| AppError::Config("翻译配置不存在".to_string()))?
+        .read_api_key()?
         .ok_or_else(|| AppError::Secret("API Key 未保存".to_string()))?;
-    let api_key = crate::secret::SecretStore::new(format!("ait-translator-profile-{profile_id}"))
-        .unprotect(encrypted)?;
 
     set_api_key_password_mode(hwnd, false)?;
     set_control_text(hwnd, ID_API_KEY, &api_key)?;

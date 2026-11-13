@@ -53,18 +53,21 @@ jobs:
 
           "version=$version" >> $env:GITHUB_OUTPUT
           "plain_version=$plainVersion" >> $env:GITHUB_OUTPUT
-          "portable_name=ait-$version-windows.exe" >> $env:GITHUB_OUTPUT
+          "portable_name=ait-$version-portable.exe" >> $env:GITHUB_OUTPUT
           "setup_name=ait-$version-setup.exe" >> $env:GITHUB_OUTPUT
           "checksums_name=SHA256SUMS.txt" >> $env:GITHUB_OUTPUT
 
       - name: Build release executable
         run: cargo build --release --locked
 
+      - name: Build portable executable
+        run: cargo build --release --locked --features portable --target-dir target/portable
+
       - name: Prepare portable executable
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
-          Copy-Item target\release\ait.exe "dist\${{ steps.version.outputs.portable_name }}"
+          Copy-Item target\portable\release\ait.exe "dist\${{ steps.version.outputs.portable_name }}"
 
       - name: Install Inno Setup
         shell: pwsh
@@ -123,7 +126,7 @@ jobs:
           ## 下载
 
           - ${{ steps.version.outputs.setup_name }}：推荐安装包。
-          - ${{ steps.version.outputs.portable_name }}：便携单文件版本。
+          - ${{ steps.version.outputs.portable_name }}：便携版，无需安装直接运行。配置和离线词典保存在 EXE 旁边的 `data/` 目录，可将整个文件夹放进同步盘，不记录日志。
           - ${{ steps.version.outputs.checksums_name }}：SHA256 校验值。
 
           $releaseChanges

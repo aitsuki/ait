@@ -10,7 +10,7 @@ pub const TRAY_WINDOW_CLASS_NAME: &str = "ait_tray_window";
 pub const MENU_SHOW_TRANSLATION_WINDOW: usize = 1001;
 #[cfg(windows)]
 pub const MENU_SETTINGS: usize = 1002;
-#[cfg(windows)]
+#[cfg(all(windows, not(feature = "portable")))]
 pub const MENU_OPEN_LOG_DIRECTORY: usize = 1005;
 #[cfg(windows)]
 pub const MENU_OPEN_LATEST_RELEASE: usize = 1006;
@@ -154,6 +154,7 @@ unsafe extern "system" fn tray_wnd_proc(
                 MENU_SETTINGS,
                 PCWSTR(wide("设置").as_ptr()),
             );
+            #[cfg(not(feature = "portable"))]
             let _ = AppendMenuW(
                 menu,
                 MF_STRING,

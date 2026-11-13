@@ -2,6 +2,22 @@
 
 本项目的重要变更记录在此文件中。版本号遵循语义化版本。
 
+## [0.4.7] - 2026-11-13
+
+### 新增
+
+- 独立编译的便携版 EXE，无需安装或标记文件，配置和离线词典保存在程序旁的 `data/` 目录，方便通过同步盘跨电脑使用。
+- 便携版 API Key 明文保存，并在设置窗口提示；安装版继续使用 Windows DPAPI 加密。
+
+### 改进
+
+- 便携版不记录日志，并移除“打开日志目录”菜单，避免频繁触发网盘同步。
+- 配置内容未变化时跳过写入，减少不必要的磁盘写入和同步。
+
+### 发布流程
+
+- 仅发布安装包和便携版 EXE，不再单独发布普通免安装版。
+
 ## [0.4.6] - 2026-11-13
 
 ### 新增
@@ -95,6 +111,8 @@
 - README 不再写死具体附件版本号。
 - Release 页面自动包含实际变更记录，而不是固定模板。
 
+[0.4.7]: https://github.com/aitsuki/ait/releases/tag/v0.4.7
+[0.4.6]: https://github.com/aitsuki/ait/releases/tag/v0.4.6
 [0.4.5]: https://github.com/aitsuki/ait/releases/tag/v0.4.5
 [0.4.4]: https://github.com/aitsuki/ait/releases/tag/v0.4.4
 [0.4.3]: https://github.com/aitsuki/ait/releases/tag/v0.4.3

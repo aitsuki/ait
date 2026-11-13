@@ -6,7 +6,9 @@ pub mod config;
 pub mod dictionary;
 pub mod error;
 pub mod hotkey;
+#[cfg(not(feature = "portable"))]
 pub mod logging;
+pub mod paths;
 pub mod secret;
 #[cfg(windows)]
 mod single_instance;

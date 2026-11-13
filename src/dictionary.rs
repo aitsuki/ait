@@ -27,9 +27,7 @@ fn download_state() -> &'static Mutex<Option<DownloadStatus>> {
 }
 
 fn dictionary_path() -> Result<PathBuf> {
-    let dirs = directories::ProjectDirs::from("dev", "aitsu", "ait").ok_or("无法定位词典目录")?;
-    Ok(dirs
-        .data_local_dir()
+    Ok(crate::paths::data_dir()?
         .join("dictionary")
         .join("ecdict-v1.sqlite3"))
 }
