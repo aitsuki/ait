@@ -18,27 +18,96 @@ impl RgbColor {
     }
 }
 
-pub const COLOR_PRIMARY: RgbColor = RgbColor::new(37, 99, 235);
-pub const COLOR_PRIMARY_HOVER: RgbColor = RgbColor::new(30, 90, 224);
-pub const COLOR_PRIMARY_PRESSED: RgbColor = RgbColor::new(29, 78, 216);
-pub const COLOR_PRIMARY_TEXT: RgbColor = RgbColor::new(255, 255, 255);
-pub const COLOR_DANGER: RgbColor = RgbColor::new(220, 38, 38);
-pub const COLOR_DANGER_HOVER: RgbColor = RgbColor::new(185, 28, 28);
-pub const COLOR_DANGER_SOFT: RgbColor = RgbColor::new(254, 242, 242);
-pub const COLOR_FOCUS_SOFT: RgbColor = RgbColor::new(219, 234, 254);
-pub const COLOR_FOCUS_TEXT: RgbColor = RgbColor::new(30, 64, 175);
-pub const COLOR_TEXT: RgbColor = RgbColor::new(31, 41, 55);
-pub const COLOR_TEXT_SECONDARY: RgbColor = RgbColor::new(107, 114, 128);
-pub const COLOR_PLACEHOLDER: RgbColor = RgbColor::new(209, 213, 219);
-pub const COLOR_SURFACE: RgbColor = RgbColor::new(255, 255, 255);
-pub const COLOR_SURFACE_SUBTLE: RgbColor = RgbColor::new(248, 250, 252);
-pub const COLOR_SURFACE_HOVER: RgbColor = RgbColor::new(241, 245, 249);
-pub const COLOR_SURFACE_PRESSED: RgbColor = RgbColor::new(226, 232, 240);
-pub const COLOR_BORDER: RgbColor = RgbColor::new(203, 213, 225);
-pub const COLOR_BORDER_STRONG: RgbColor = RgbColor::new(148, 163, 184);
-pub const COLOR_DISABLED_SURFACE: RgbColor = RgbColor::new(243, 244, 246);
-pub const COLOR_DISABLED_BORDER: RgbColor = RgbColor::new(209, 213, 219);
-pub const COLOR_DISABLED_TEXT: RgbColor = RgbColor::new(156, 163, 175);
+#[derive(Debug, Clone, Copy)]
+pub struct ThemePalette {
+    pub primary: RgbColor,
+    pub primary_hover: RgbColor,
+    pub primary_pressed: RgbColor,
+    pub primary_text: RgbColor,
+    pub danger: RgbColor,
+    pub danger_hover: RgbColor,
+    pub danger_soft: RgbColor,
+    pub focus_soft: RgbColor,
+    pub focus_text: RgbColor,
+    pub text: RgbColor,
+    pub text_secondary: RgbColor,
+    pub placeholder: RgbColor,
+    pub surface: RgbColor,
+    pub surface_subtle: RgbColor,
+    pub surface_hover: RgbColor,
+    pub surface_pressed: RgbColor,
+    pub border: RgbColor,
+    pub border_strong: RgbColor,
+    pub disabled_surface: RgbColor,
+    pub disabled_border: RgbColor,
+    pub disabled_text: RgbColor,
+}
+
+const LIGHT: ThemePalette = ThemePalette {
+    primary: RgbColor::new(37, 99, 235),
+    primary_hover: RgbColor::new(30, 90, 224),
+    primary_pressed: RgbColor::new(29, 78, 216),
+    primary_text: RgbColor::new(255, 255, 255),
+    danger: RgbColor::new(220, 38, 38),
+    danger_hover: RgbColor::new(185, 28, 28),
+    danger_soft: RgbColor::new(254, 242, 242),
+    focus_soft: RgbColor::new(219, 234, 254),
+    focus_text: RgbColor::new(30, 64, 175),
+    text: RgbColor::new(31, 41, 55),
+    text_secondary: RgbColor::new(107, 114, 128),
+    placeholder: RgbColor::new(148, 163, 184),
+    surface: RgbColor::new(255, 255, 255),
+    surface_subtle: RgbColor::new(248, 250, 252),
+    surface_hover: RgbColor::new(241, 245, 249),
+    surface_pressed: RgbColor::new(226, 232, 240),
+    border: RgbColor::new(203, 213, 225),
+    border_strong: RgbColor::new(148, 163, 184),
+    disabled_surface: RgbColor::new(243, 244, 246),
+    disabled_border: RgbColor::new(209, 213, 219),
+    disabled_text: RgbColor::new(156, 163, 175),
+};
+
+const DARK: ThemePalette = ThemePalette {
+    // Muted steel blue keeps dark-mode accents distinct without a neon effect.
+    primary: RgbColor::new(78, 104, 140),
+    primary_hover: RgbColor::new(86, 114, 149),
+    primary_pressed: RgbColor::new(65, 88, 120),
+    primary_text: RgbColor::new(255, 255, 255),
+    danger: RgbColor::new(248, 113, 113),
+    danger_hover: RgbColor::new(252, 165, 165),
+    danger_soft: RgbColor::new(69, 30, 36),
+    focus_soft: RgbColor::new(43, 55, 73),
+    focus_text: RgbColor::new(205, 215, 229),
+    text: RgbColor::new(229, 231, 235),
+    text_secondary: RgbColor::new(156, 163, 175),
+    placeholder: RgbColor::new(107, 114, 128),
+    surface: RgbColor::new(24, 28, 36),
+    surface_subtle: RgbColor::new(30, 35, 44),
+    surface_hover: RgbColor::new(39, 46, 58),
+    surface_pressed: RgbColor::new(51, 61, 76),
+    border: RgbColor::new(65, 75, 91),
+    border_strong: RgbColor::new(107, 114, 128),
+    disabled_surface: RgbColor::new(32, 36, 44),
+    disabled_border: RgbColor::new(48, 55, 66),
+    disabled_text: RgbColor::new(107, 114, 128),
+};
+
+pub(super) static DARK_ACTIVE: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+pub fn is_dark() -> bool {
+    DARK_ACTIVE.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+pub fn colors() -> &'static ThemePalette {
+    if is_dark() { &DARK } else { &LIGHT }
+}
+
+#[cfg(windows)]
+pub use super::theme_windows::{
+    background_brush, control_background, handle_message, initialize_window, set_mode,
+    surface_brush,
+};
 
 pub const CONTROL_HEIGHT: i32 = 34;
 pub const PRIMARY_BUTTON_HEIGHT: i32 = 36;

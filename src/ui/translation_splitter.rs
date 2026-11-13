@@ -1,8 +1,7 @@
 use crate::error::{AppError, Result};
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
-    BeginPaint, COLOR_WINDOW, CreateSolidBrush, DeleteObject, EndPaint, FillRect, GetSysColorBrush,
-    InvalidateRect, PAINTSTRUCT,
+    BeginPaint, CreateSolidBrush, DeleteObject, EndPaint, FillRect, InvalidateRect, PAINTSTRUCT,
 };
 use windows::Win32::UI::Controls::WM_MOUSELEAVE;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
@@ -198,7 +197,7 @@ unsafe fn paint(hwnd: HWND, active: bool) {
         let hdc = BeginPaint(hwnd, &mut ps);
         let mut rect = RECT::default();
         let _ = GetClientRect(hwnd, &mut rect);
-        FillRect(hdc, &rect, GetSysColorBrush(COLOR_WINDOW));
+        FillRect(hdc, &rect, super::theme::surface_brush());
         let width = super::theme::scale(64).min(rect.right).max(1);
         let height = super::theme::scale(2).min(rect.bottom).max(1);
         let left = (rect.right - width) / 2;
@@ -210,9 +209,9 @@ unsafe fn paint(hwnd: HWND, active: bool) {
             bottom: top + height,
         };
         let color = if active {
-            super::theme::COLOR_PRIMARY
+            super::theme::colors().primary
         } else {
-            super::theme::COLOR_BORDER
+            super::theme::colors().border
         };
         let brush = CreateSolidBrush(color.colorref());
         FillRect(hdc, &grip, brush);

@@ -1,9 +1,5 @@
 pub use crate::ui::theme::RgbColor;
-use crate::ui::theme::{
-    COLOR_BORDER, COLOR_DISABLED_BORDER, COLOR_DISABLED_SURFACE, COLOR_DISABLED_TEXT,
-    COLOR_FOCUS_SOFT, COLOR_FOCUS_TEXT, COLOR_PRIMARY, COLOR_SURFACE, COLOR_SURFACE_HOVER,
-    COLOR_TEXT, CONTROL_RADIUS, LIST_ITEM_HEIGHT,
-};
+use crate::ui::theme::{CONTROL_RADIUS, LIST_ITEM_HEIGHT, colors};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ListBoxVisualState {
@@ -63,47 +59,45 @@ pub const MODERN_LISTBOX_TEXT_PADDING: i32 = 10;
 pub const MODERN_LISTBOX_RADIUS: i32 = CONTROL_RADIUS;
 
 pub fn listbox_palette(state: ListBoxVisualState) -> ListBoxPalette {
+    let c = colors();
     if state.disabled {
         return ListBoxPalette {
-            background: COLOR_DISABLED_SURFACE,
-            border: COLOR_DISABLED_BORDER,
-            text: COLOR_DISABLED_TEXT,
+            background: c.disabled_surface,
+            border: c.disabled_border,
+            text: c.disabled_text,
         };
     }
 
     ListBoxPalette {
-        background: COLOR_SURFACE,
-        border: if state.focused {
-            COLOR_PRIMARY
-        } else {
-            COLOR_BORDER
-        },
-        text: COLOR_TEXT,
+        background: c.surface,
+        border: if state.focused { c.primary } else { c.border },
+        text: c.text,
     }
 }
 
 pub fn listbox_item_palette(state: ListBoxItemVisualState) -> ListBoxItemPalette {
+    let c = colors();
     if state.disabled {
         return ListBoxItemPalette {
-            background: COLOR_DISABLED_SURFACE,
-            text: COLOR_DISABLED_TEXT,
+            background: c.disabled_surface,
+            text: c.disabled_text,
         };
     }
 
     if state.selected {
         ListBoxItemPalette {
-            background: COLOR_FOCUS_SOFT,
-            text: COLOR_FOCUS_TEXT,
+            background: c.focus_soft,
+            text: c.focus_text,
         }
     } else if state.hot {
         ListBoxItemPalette {
-            background: COLOR_SURFACE_HOVER,
-            text: COLOR_TEXT,
+            background: c.surface_hover,
+            text: c.text,
         }
     } else {
         ListBoxItemPalette {
-            background: COLOR_SURFACE,
-            text: COLOR_TEXT,
+            background: c.surface,
+            text: c.text,
         }
     }
 }

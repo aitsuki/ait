@@ -467,7 +467,6 @@ pub struct TranslationWindow {
 impl TranslationWindow {
     pub fn new() -> Result<Self> {
         use windows::Win32::Foundation::HWND;
-        use windows::Win32::Graphics::Gdi::{COLOR_WINDOW, GetSysColorBrush};
         use windows::Win32::UI::WindowsAndMessaging::{
             CW_USEDEFAULT, CreateWindowExW, GetSystemMetrics, IDC_ARROW, LoadCursorW,
             RegisterClassW, SM_CXICON, SM_CYICON, WINDOW_EX_STYLE, WNDCLASSW,
@@ -485,7 +484,7 @@ impl TranslationWindow {
                     GetSystemMetrics(SM_CXICON),
                     GetSystemMetrics(SM_CYICON),
                 ),
-                hbrBackground: GetSysColorBrush(COLOR_WINDOW),
+                hbrBackground: Default::default(),
                 ..Default::default()
             };
             let atom = RegisterClassW(&class);
@@ -544,6 +543,7 @@ impl TranslationWindow {
                 update_status: None,
             };
             this.apply_layout()?;
+            crate::ui::theme::initialize_window(hwnd);
 
             Ok(this)
         }
@@ -719,6 +719,9 @@ unsafe extern "system" fn default_wnd_proc(
         WM_SIZE,
     };
 
+    if let Some(result) = crate::ui::theme::handle_message(hwnd, msg, wparam) {
+        return result;
+    }
     if msg == WM_TRANSLATION_SOURCE_CAPTURED {
         if lparam.0 == 0 {
             tracing::warn!("translation source message had no payload");
@@ -886,6 +889,9 @@ unsafe extern "system" fn default_wnd_proc(
         return result;
     }
     if msg == WM_CTLCOLORSTATIC {
+        if let Some(result) = crate::ui::combo::handle_modern_combo_color(wparam, lparam) {
+            return result;
+        }
         let child = windows::Win32::Foundation::HWND(lparam.0 as *mut core::ffi::c_void);
         let id = unsafe { windows::Win32::UI::WindowsAndMessaging::GetDlgCtrlID(child) };
         if crate::ui::edit::is_modern_edit(id as usize)
@@ -1198,7 +1204,7 @@ unsafe fn paint_source_placeholder(hwnd: windows::Win32::Foundation::HWND) {
             SelectObject(hdc, HGDIOBJ(font.0 as _));
         }
         SetBkMode(hdc, TRANSPARENT);
-        SetTextColor(hdc, crate::ui::theme::COLOR_PLACEHOLDER.colorref());
+        SetTextColor(hdc, crate::ui::theme::colors().placeholder.colorref());
         let mut text = wide("输入待翻译文本");
         DrawTextW(
             hdc,
@@ -1289,15 +1295,14 @@ fn create_static(
 unsafe fn handle_static_text_color(
     wparam: windows::Win32::Foundation::WPARAM,
 ) -> windows::Win32::Foundation::LRESULT {
-    use windows::Win32::Graphics::Gdi::{
-        COLOR_WINDOW, GetSysColorBrush, HDC, SetBkMode, TRANSPARENT,
-    };
+    use windows::Win32::Graphics::Gdi::{HDC, SetBkMode, SetTextColor, TRANSPARENT};
 
     let hdc = HDC(wparam.0 as *mut core::ffi::c_void);
     unsafe {
         let _ = SetBkMode(hdc, TRANSPARENT);
+        let _ = SetTextColor(hdc, crate::ui::theme::colors().text_secondary.colorref());
     }
-    windows::Win32::Foundation::LRESULT(unsafe { GetSysColorBrush(COLOR_WINDOW) }.0 as isize)
+    windows::Win32::Foundation::LRESULT(crate::ui::theme::surface_brush().0 as isize)
 }
 
 #[cfg(windows)]

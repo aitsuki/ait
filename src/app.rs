@@ -172,6 +172,7 @@ fn run_platform() -> Result<()> {
     let settings_dir = SettingsStore::default_dir()?;
     let store = SettingsStore::new(settings_dir.clone());
     let settings = store.load().unwrap_or_else(|_| AppSettings::default());
+    crate::ui::theme::set_mode(settings.theme);
     let configured_hotkey_text = settings.hotkey.clone();
     let mut runtime_state = AppRuntimeState::new(settings);
     let _tray = TrayIcon::create()?;
@@ -464,6 +465,7 @@ fn run_platform() -> Result<()> {
                         } else {
                             runtime_state.replace_settings(settings);
                         }
+                        crate::ui::theme::set_mode(runtime_state.settings().theme);
                         if let Err(err) =
                             translation_window.set_layout(&runtime_state.settings().window)
                         {

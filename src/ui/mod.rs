@@ -14,6 +14,8 @@ pub(crate) mod icon;
 pub mod listbox;
 pub mod settings_window;
 pub mod theme;
+#[cfg(windows)]
+mod theme_windows;
 pub mod translate_window;
 #[cfg(windows)]
 mod translation_splitter;

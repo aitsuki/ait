@@ -1,10 +1,5 @@
 pub use crate::ui::theme::RgbColor;
-use crate::ui::theme::{
-    COLOR_BORDER, COLOR_BORDER_STRONG, COLOR_DANGER, COLOR_DANGER_HOVER, COLOR_DANGER_SOFT,
-    COLOR_DISABLED_BORDER, COLOR_DISABLED_SURFACE, COLOR_DISABLED_TEXT, COLOR_FOCUS_SOFT,
-    COLOR_PRIMARY, COLOR_PRIMARY_HOVER, COLOR_PRIMARY_PRESSED, COLOR_PRIMARY_TEXT, COLOR_SURFACE,
-    COLOR_SURFACE_HOVER, COLOR_SURFACE_PRESSED, COLOR_TEXT, CONTROL_RADIUS, FOCUS_RING_INSET,
-};
+use crate::ui::theme::{CONTROL_RADIUS, FOCUS_RING_INSET, colors};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ButtonRole {
@@ -43,82 +38,74 @@ pub struct ButtonPalette {
 }
 
 pub fn button_palette(role: ButtonRole, state: ButtonVisualState) -> ButtonPalette {
+    let c = colors();
     if state.disabled {
         return ButtonPalette {
-            background: COLOR_DISABLED_SURFACE,
-            border: COLOR_DISABLED_BORDER,
-            text: COLOR_DISABLED_TEXT,
-            focus: COLOR_PRIMARY,
+            background: c.disabled_surface,
+            border: c.disabled_border,
+            text: c.disabled_text,
+            focus: c.primary,
         };
     }
 
+    let surface = if state.pressed {
+        c.surface_pressed
+    } else if state.hot {
+        c.surface_hover
+    } else {
+        c.surface
+    };
     match role {
         ButtonRole::Primary => {
             let background = if state.pressed {
-                COLOR_PRIMARY_PRESSED
+                c.primary_pressed
             } else if state.hot {
-                COLOR_PRIMARY_HOVER
+                c.primary_hover
             } else {
-                COLOR_PRIMARY
+                c.primary
             };
             ButtonPalette {
                 background,
                 border: background,
-                text: COLOR_PRIMARY_TEXT,
-                focus: COLOR_FOCUS_SOFT,
+                text: c.primary_text,
+                focus: c.focus_soft,
             }
         }
         ButtonRole::Secondary => ButtonPalette {
-            background: if state.pressed {
-                COLOR_SURFACE_PRESSED
-            } else if state.hot {
-                COLOR_SURFACE_HOVER
-            } else {
-                COLOR_SURFACE
-            },
+            background: surface,
             border: if state.hot || state.pressed {
-                COLOR_BORDER_STRONG
+                c.border_strong
             } else {
-                COLOR_BORDER
+                c.border
             },
-            text: COLOR_TEXT,
-            focus: COLOR_PRIMARY,
+            text: c.text,
+            focus: c.primary,
         },
         ButtonRole::Danger => ButtonPalette {
             background: if state.pressed || state.hot {
-                COLOR_DANGER_SOFT
+                c.danger_soft
             } else {
-                COLOR_SURFACE
+                c.surface
             },
             border: if state.hot || state.pressed {
-                COLOR_DANGER_HOVER
+                c.danger_hover
             } else {
-                COLOR_BORDER
+                c.border
             },
-            text: COLOR_DANGER,
-            focus: COLOR_DANGER,
+            text: c.danger,
+            focus: c.danger,
         },
         ButtonRole::SelectedTab => ButtonPalette {
-            background: COLOR_FOCUS_SOFT,
-            border: COLOR_FOCUS_SOFT,
-            text: COLOR_PRIMARY,
-            focus: COLOR_PRIMARY,
+            background: c.focus_soft,
+            border: c.focus_soft,
+            text: c.focus_text,
+            focus: c.primary,
         },
         ButtonRole::Ghost => ButtonPalette {
-            background: if state.pressed {
-                COLOR_SURFACE_PRESSED
-            } else if state.hot {
-                COLOR_SURFACE_HOVER
-            } else {
-                COLOR_SURFACE
-            },
-            border: if state.focused {
-                COLOR_PRIMARY
-            } else {
-                COLOR_SURFACE
-            },
-            text: COLOR_TEXT,
-            focus: COLOR_PRIMARY,
+            background: surface,
+            border: if state.focused { c.primary } else { c.surface },
+            text: c.text,
+            focus: c.primary,
         },
     }
 }
@@ -149,10 +136,9 @@ pub(crate) unsafe fn draw_owner_draw_button(
     draw_item: *const windows::Win32::UI::Controls::DRAWITEMSTRUCT,
 ) -> bool {
     use windows::Win32::Graphics::Gdi::{
-        BACKGROUND_MODE, CreatePen, CreateRoundRectRgn, CreateSolidBrush, DT_CENTER, DT_SINGLELINE,
-        DT_VCENTER, DeleteObject, DrawTextW, FillRect, GetBkMode, GetStockObject, GetTextColor,
-        HGDIOBJ, NULL_BRUSH, PS_SOLID, RoundRect, SelectClipRgn, SelectObject, SetBkMode,
-        SetTextColor, TRANSPARENT,
+        BACKGROUND_MODE, CreatePen, CreateSolidBrush, DT_CENTER, DT_SINGLELINE, DT_VCENTER,
+        DeleteObject, DrawTextW, FillRect, GetBkMode, GetStockObject, GetTextColor, HGDIOBJ,
+        NULL_BRUSH, PS_SOLID, RoundRect, SelectObject, SetBkMode, SetTextColor, TRANSPARENT,
     };
     use windows::Win32::UI::Controls::{ODS_DISABLED, ODS_FOCUS, ODS_HOTLIGHT, ODS_SELECTED};
 
@@ -177,43 +163,12 @@ pub(crate) unsafe fn draw_owner_draw_button(
     let hdc = draw_item.hDC;
     let rect = draw_item.rcItem;
 
+    // Owner-drawn buttons can retain native pixels outside the rounded shape.
+    // Clear all four corners on every repaint, including after a theme change.
+    unsafe {
+        let _ = FillRect(hdc, &rect, crate::ui::theme::surface_brush());
+    }
     let background = unsafe { CreateSolidBrush(palette.background.colorref()) };
-    let clip_region = unsafe {
-        CreateRoundRectRgn(
-            rect.left,
-            rect.top,
-            rect.right + 1,
-            rect.bottom + 1,
-            radius,
-            radius,
-        )
-    };
-    if !clip_region.is_invalid() {
-        unsafe {
-            let _ = SelectClipRgn(hdc, Some(clip_region));
-        }
-    }
-    if background.is_invalid() {
-        unsafe {
-            let _ = FillRect(
-                hdc,
-                &rect,
-                windows::Win32::Graphics::Gdi::HBRUSH(
-                    GetStockObject(windows::Win32::Graphics::Gdi::WHITE_BRUSH).0,
-                ),
-            );
-        }
-    } else {
-        unsafe {
-            let _ = FillRect(hdc, &rect, background);
-        }
-    }
-    if !clip_region.is_invalid() {
-        unsafe {
-            let _ = SelectClipRgn(hdc, None);
-            let _ = DeleteObject(clip_region.into());
-        }
-    }
 
     let pen = unsafe { CreatePen(PS_SOLID, 1, palette.border.colorref()) };
     let old_pen = if pen.is_invalid() {
@@ -221,7 +176,12 @@ pub(crate) unsafe fn draw_owner_draw_button(
     } else {
         unsafe { SelectObject(hdc, pen.into()) }
     };
-    let old_brush = unsafe { SelectObject(hdc, GetStockObject(NULL_BRUSH)) };
+    let fill_brush = if background.is_invalid() {
+        crate::ui::theme::surface_brush()
+    } else {
+        background
+    };
+    let old_brush = unsafe { SelectObject(hdc, fill_brush.into()) };
     unsafe {
         let _ = RoundRect(
             hdc,

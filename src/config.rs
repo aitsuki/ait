@@ -115,8 +115,42 @@ pub struct MarkdownSettings {
     pub render_enabled: bool,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ThemeMode {
+    #[default]
+    System,
+    Light,
+    Dark,
+}
+
+impl ThemeMode {
+    pub const OPTIONS: [Self; 3] = [Self::System, Self::Light, Self::Dark];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::System => "跟随系统",
+            Self::Light => "浅色",
+            Self::Dark => "深色",
+        }
+    }
+
+    pub fn index(self) -> usize {
+        Self::OPTIONS
+            .iter()
+            .position(|&mode| mode == self)
+            .unwrap_or(0)
+    }
+
+    pub fn from_index(index: usize) -> Self {
+        Self::OPTIONS.get(index).copied().unwrap_or_default()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AppSettings {
+    #[serde(default)]
+    pub theme: ThemeMode,
     pub default_profile_id: String,
     pub translator_profiles: Vec<TranslatorProfile>,
     pub hotkey: String,
@@ -131,6 +165,7 @@ pub struct AppSettings {
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
+            theme: ThemeMode::default(),
             default_profile_id: "google".to_string(),
             translator_profiles: builtin_translator_profiles(),
             hotkey: "Ctrl+Alt+E".to_string(),

@@ -1,9 +1,5 @@
 pub use crate::ui::theme::RgbColor;
-use crate::ui::theme::{
-    COLOR_BORDER, COLOR_DISABLED_BORDER, COLOR_DISABLED_SURFACE, COLOR_DISABLED_TEXT,
-    COLOR_PRIMARY, COLOR_PRIMARY_HOVER, COLOR_PRIMARY_TEXT, COLOR_SURFACE, COLOR_SURFACE_SUBTLE,
-    COLOR_TEXT, FOCUS_RING_INSET,
-};
+use crate::ui::theme::{FOCUS_RING_INSET, colors};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CheckboxVisualState {
@@ -44,42 +40,43 @@ pub const CHECKBOX_BOX_SIZE: i32 = 18;
 pub const CHECKBOX_TEXT_GAP: i32 = 8;
 
 pub fn checkbox_palette(state: CheckboxVisualState) -> CheckboxPalette {
+    let c = colors();
     if state.disabled {
         return CheckboxPalette {
-            box_background: COLOR_DISABLED_SURFACE,
-            box_border: COLOR_DISABLED_BORDER,
-            check: COLOR_DISABLED_TEXT,
-            text: COLOR_DISABLED_TEXT,
+            box_background: c.disabled_surface,
+            box_border: c.disabled_border,
+            check: c.disabled_text,
+            text: c.disabled_text,
         };
     }
 
     if state.checked {
         let box_background = if state.hot {
-            COLOR_PRIMARY_HOVER
+            c.primary_hover
         } else {
-            COLOR_PRIMARY
+            c.primary
         };
         return CheckboxPalette {
             box_background,
             box_border: box_background,
-            check: COLOR_PRIMARY_TEXT,
-            text: COLOR_TEXT,
+            check: c.primary_text,
+            text: c.text,
         };
     }
 
     CheckboxPalette {
         box_background: if state.hot || state.focused {
-            COLOR_SURFACE_SUBTLE
+            c.surface_subtle
         } else {
-            COLOR_SURFACE
+            c.surface
         },
         box_border: if state.hot || state.focused {
-            COLOR_PRIMARY
+            c.primary
         } else {
-            COLOR_BORDER
+            c.border
         },
-        check: COLOR_PRIMARY_TEXT,
-        text: COLOR_TEXT,
+        check: c.primary_text,
+        text: c.text,
     }
 }
 
@@ -161,11 +158,7 @@ pub(crate) unsafe fn draw_owner_draw_checkbox(
     let hdc = draw_item.hDC;
     let rect = draw_item.rcItem;
 
-    let background = unsafe {
-        windows::Win32::Graphics::Gdi::HBRUSH(
-            GetStockObject(windows::Win32::Graphics::Gdi::WHITE_BRUSH).0,
-        )
-    };
+    let background = crate::ui::theme::surface_brush();
     unsafe {
         let _ = FillRect(hdc, &rect, background);
     }
@@ -299,7 +292,7 @@ pub(crate) unsafe fn draw_owner_draw_checkbox(
     }
 
     if state.focused && !state.disabled {
-        let focus_pen = unsafe { CreatePen(PS_SOLID, 1, COLOR_PRIMARY.colorref()) };
+        let focus_pen = unsafe { CreatePen(PS_SOLID, 1, colors().primary.colorref()) };
         if !focus_pen.is_invalid() {
             let old_pen = unsafe { SelectObject(hdc, focus_pen.into()) };
             let old_brush = unsafe { SelectObject(hdc, GetStockObject(NULL_BRUSH)) };

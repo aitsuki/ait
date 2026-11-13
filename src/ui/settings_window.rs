@@ -1,10 +1,10 @@
-use crate::config::{AppSettings, TranslationWindowLayout, TranslatorProvider};
+use crate::config::{AppSettings, ThemeMode, TranslationWindowLayout, TranslatorProvider};
 use crate::error::{AppError, Result};
 #[cfg(windows)]
 use std::sync::{Mutex, OnceLock};
 
 const SETTINGS_CLIENT_WIDTH: i32 = 704;
-const SETTINGS_CLIENT_HEIGHT: i32 = 456;
+const SETTINGS_CLIENT_HEIGHT: i32 = 506;
 const SETTINGS_MARGIN: i32 = 18;
 const SETTINGS_FOOTER_BUTTON_Y: i32 =
     SETTINGS_CLIENT_HEIGHT - SETTINGS_MARGIN - crate::ui::theme::CONTROL_HEIGHT;
@@ -61,6 +61,10 @@ const ID_DOWNLOAD_DICTIONARY: isize = 3124;
 const ID_GENERAL_TAB: i32 = 3126;
 #[cfg(windows)]
 const ID_SERVICE_TAB: i32 = 3135;
+#[cfg(windows)]
+const ID_THEME: i32 = 3136;
+#[cfg(windows)]
+const ID_THEME_LABEL: i32 = 3137;
 #[cfg(windows)]
 const SETTINGS_PAGE_SLOT: windows::Win32::UI::WindowsAndMessaging::WINDOW_LONG_PTR_INDEX =
     windows::Win32::UI::WindowsAndMessaging::WINDOW_LONG_PTR_INDEX(0);
@@ -632,8 +636,7 @@ impl SettingsWindow {
     ) -> Result<()> {
         use windows::Win32::Foundation::GetLastError;
         use windows::Win32::Graphics::Gdi::{
-            COLOR_WINDOW, GetMonitorInfoW, GetSysColorBrush, MONITOR_DEFAULTTONEAREST, MONITORINFO,
-            MonitorFromPoint,
+            GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromPoint,
         };
         use windows::Win32::UI::WindowsAndMessaging::{
             CreateWindowExW, GWLP_USERDATA, GetCursorPos, GetSystemMetrics, IDC_ARROW, IsWindow,
@@ -679,7 +682,7 @@ impl SettingsWindow {
                     GetSystemMetrics(SM_CXICON),
                     GetSystemMetrics(SM_CYICON),
                 ),
-                hbrBackground: GetSysColorBrush(COLOR_WINDOW),
+                hbrBackground: Default::default(),
                 ..Default::default()
             };
             let atom = RegisterClassW(&class);
@@ -748,7 +751,7 @@ impl SettingsWindow {
             create_settings_tabs(hwnd)?;
             create_section_title(hwnd, "启动与快捷键", 18, 74, 240, ID_STARTUP_TITLE)?;
             create_section_title(hwnd, "翻译窗口", 18, 154, 240, ID_WINDOW_TITLE)?;
-            create_section_title(hwnd, "本地词典", 18, 270, 240, ID_DICTIONARY_TITLE)?;
+            create_section_title(hwnd, "本地词典", 18, 320, 240, ID_DICTIONARY_TITLE)?;
             create_static_with_id(
                 hwnd,
                 "快捷键",
@@ -799,6 +802,19 @@ impl SettingsWindow {
                 ID_WINDOW_LAYOUT_HINT,
             )?;
             crate::ui::font::apply_secondary_font(layout_hint)?;
+            create_static_with_id(hwnd, "外观主题", 18, 270, 90, 24, ID_THEME_LABEL)?;
+            create_choice_combo(
+                hwnd,
+                SettingsControlRect {
+                    x: 128,
+                    y: 264,
+                    width: 300,
+                    height: 180,
+                },
+                ID_THEME,
+                ThemeMode::OPTIONS.iter().map(|mode| mode.label()),
+                settings.theme.index(),
+            )?;
 
             create_section_title(
                 hwnd,
@@ -1102,6 +1118,7 @@ impl SettingsWindow {
                 registry.set(hwnd.0 as isize);
             }
             std::mem::forget(init_guard);
+            crate::ui::theme::initialize_window(hwnd);
             let _ = ShowWindow(hwnd, SW_SHOW);
         }
 
@@ -1235,19 +1252,19 @@ pub fn settings_window_layout() -> SettingsWindowLayout {
         },
         dictionary_switch: SettingsControlRect {
             x: 128,
-            y: 300,
+            y: 350,
             width: 280,
             height: crate::ui::theme::CONTROL_HEIGHT,
         },
         dictionary_status: SettingsControlRect {
             x: 128,
-            y: 343,
+            y: 393,
             width: 160,
             height: 24,
         },
         dictionary_download: SettingsControlRect {
             x: 304,
-            y: 338,
+            y: 388,
             width: 112,
             height: crate::ui::theme::CONTROL_HEIGHT,
         },
@@ -1332,6 +1349,8 @@ fn refresh_settings_page(hwnd: windows::Win32::Foundation::HWND) -> Result<()> {
         ID_WINDOW_LAYOUT_LABEL,
         ID_WINDOW_LAYOUT,
         ID_WINDOW_LAYOUT_HINT,
+        ID_THEME,
+        ID_THEME_LABEL,
         ID_DICTIONARY_TITLE,
         ID_DICTIONARY_ENABLED,
         ID_DICTIONARY_STATUS,
@@ -1390,7 +1409,7 @@ fn scaled_settings_rect(rect: SettingsControlRect) -> SettingsControlRect {
 }
 
 pub fn settings_static_text_uses_window_background(control_id: usize) -> bool {
-    matches!(control_id, 0 | 3110..=3115 | 3118 | 3120 | 3123 | 3127..=3134)
+    matches!(control_id, 0 | 3110..=3115 | 3118 | 3120 | 3123 | 3127..=3134 | 3137)
 }
 
 #[cfg(windows)]
@@ -1525,6 +1544,9 @@ unsafe extern "system" fn default_wnd_proc(
         WM_NCDESTROY, WM_PAINT,
     };
 
+    if let Some(result) = crate::ui::theme::handle_message(hwnd, msg, wparam) {
+        return result;
+    }
     if msg == windows::Win32::UI::WindowsAndMessaging::WM_TIMER
         && wparam.0 == DICTIONARY_STATUS_TIMER
     {
@@ -1567,7 +1589,7 @@ unsafe extern "system" fn default_wnd_proc(
             }
             return LRESULT(0);
         }
-        if command == ID_WINDOW_LAYOUT as usize {
+        if matches!(command as i32, ID_WINDOW_LAYOUT | ID_THEME) {
             use windows::Win32::UI::WindowsAndMessaging::{CBN_CLOSEUP, CBN_DROPDOWN};
             if notification == CBN_DROPDOWN as usize || notification == CBN_CLOSEUP as usize {
                 let combo = windows::Win32::Foundation::HWND(lparam.0 as _);
@@ -1695,6 +1717,9 @@ unsafe extern "system" fn default_wnd_proc(
         return result;
     }
     if msg == WM_CTLCOLORSTATIC {
+        if let Some(result) = crate::ui::combo::handle_modern_combo_color(wparam, lparam) {
+            return result;
+        }
         let child = windows::Win32::Foundation::HWND(lparam.0 as *mut core::ffi::c_void);
         let id = unsafe { windows::Win32::UI::WindowsAndMessaging::GetDlgCtrlID(child) };
         if crate::ui::edit::is_modern_edit(id as usize)
@@ -1792,7 +1817,7 @@ unsafe fn paint_settings_footer_separator(hwnd: windows::Win32::Foundation::HWND
             right: line.x + line.width,
             bottom: line.y + line.height,
         };
-        let brush = CreateSolidBrush(crate::ui::theme::COLOR_BORDER.colorref());
+        let brush = CreateSolidBrush(crate::ui::theme::colors().border.colorref());
         FillRect(hdc, &rect, brush);
         let _ = DeleteObject(brush.into());
         let _ = ReleaseDC(Some(hwnd), hdc);
@@ -1855,6 +1880,16 @@ unsafe fn save_settings_from_window(hwnd: windows::Win32::Foundation::HWND) -> R
         .0
     };
     settings.window.layout = TranslationWindowLayout::from_index(selected_layout as usize);
+    let selected_theme = unsafe {
+        windows::Win32::UI::WindowsAndMessaging::SendMessageW(
+            control(hwnd, ID_THEME)?,
+            windows::Win32::UI::WindowsAndMessaging::CB_GETCURSEL,
+            None,
+            None,
+        )
+        .0
+    };
+    settings.theme = ThemeMode::from_index(selected_theme as usize);
     crate::startup::set_auto_start_enabled(auto_start_enabled)?;
     refresh_profile_list(hwnd, settings)?;
 
@@ -2604,9 +2639,7 @@ unsafe fn handle_static_text_color(
     wparam: windows::Win32::Foundation::WPARAM,
     control_id: i32,
 ) -> windows::Win32::Foundation::LRESULT {
-    use windows::Win32::Graphics::Gdi::{
-        COLOR_WINDOW, GetSysColorBrush, HDC, SetBkMode, SetTextColor, TRANSPARENT,
-    };
+    use windows::Win32::Graphics::Gdi::{HDC, SetBkMode, SetTextColor, TRANSPARENT};
 
     let hdc = HDC(wparam.0 as *mut core::ffi::c_void);
     unsafe {
@@ -2616,13 +2649,13 @@ unsafe fn handle_static_text_color(
             ID_VERSION_LABEL | ID_DICTIONARY_STATUS | ID_WINDOW_LAYOUT_HINT | ID_GOOGLE_NOTICE
         );
         let color = if secondary {
-            crate::ui::theme::COLOR_TEXT_SECONDARY
+            crate::ui::theme::colors().text_secondary
         } else {
-            crate::ui::theme::COLOR_TEXT
+            crate::ui::theme::colors().text
         };
         let _ = SetTextColor(hdc, color.colorref());
     }
-    windows::Win32::Foundation::LRESULT(unsafe { GetSysColorBrush(COLOR_WINDOW) }.0 as isize)
+    windows::Win32::Foundation::LRESULT(crate::ui::theme::surface_brush().0 as isize)
 }
 
 #[cfg(windows)]
@@ -2661,6 +2694,25 @@ fn create_window_layout_combo(
     rect: SettingsControlRect,
     selected: TranslationWindowLayout,
 ) -> Result<()> {
+    create_choice_combo(
+        parent,
+        rect,
+        ID_WINDOW_LAYOUT,
+        TranslationWindowLayout::OPTIONS
+            .iter()
+            .map(|option| option.label()),
+        selected.index(),
+    )
+}
+
+#[cfg(windows)]
+fn create_choice_combo(
+    parent: windows::Win32::Foundation::HWND,
+    rect: SettingsControlRect,
+    id: i32,
+    labels: impl IntoIterator<Item = &'static str>,
+    selected: usize,
+) -> Result<()> {
     use windows::Win32::Foundation::{LPARAM, WPARAM};
     use windows::Win32::UI::WindowsAndMessaging::{
         CB_ADDSTRING, CB_SETCURSEL, CBS_DROPDOWNLIST, CBS_HASSTRINGS, CBS_OWNERDRAWFIXED,
@@ -2675,15 +2727,15 @@ fn create_window_layout_combo(
         rect.y,
         rect.width,
         rect.height,
-        ID_WINDOW_LAYOUT as isize,
+        id as isize,
         WINDOW_STYLE(
             (CBS_DROPDOWNLIST | CBS_HASSTRINGS | CBS_OWNERDRAWFIXED) as u32 | WS_VSCROLL.0,
         ),
         false,
     )?;
     crate::ui::combo::install_modern_combo_tracking(combo)?;
-    for option in TranslationWindowLayout::OPTIONS {
-        let text = wide(option.label());
+    for label in labels {
+        let text = wide(label);
         let result = unsafe {
             SendMessageW(
                 combo,
@@ -2693,11 +2745,11 @@ fn create_window_layout_combo(
             )
         };
         if result.0 < 0 {
-            return Err(AppError::Windows("添加翻译窗口布局选项失败".to_string()));
+            return Err(AppError::Windows("添加设置选项失败".to_string()));
         }
     }
     unsafe {
-        let _ = SendMessageW(combo, CB_SETCURSEL, Some(WPARAM(selected.index())), None);
+        let _ = SendMessageW(combo, CB_SETCURSEL, Some(WPARAM(selected)), None);
     }
     Ok(())
 }

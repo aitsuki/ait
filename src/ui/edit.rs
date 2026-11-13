@@ -1,8 +1,5 @@
 pub use crate::ui::theme::RgbColor;
-use crate::ui::theme::{
-    COLOR_BORDER, COLOR_DISABLED_BORDER, COLOR_DISABLED_SURFACE, COLOR_DISABLED_TEXT,
-    COLOR_PRIMARY, COLOR_SURFACE, COLOR_SURFACE_SUBTLE, COLOR_TEXT, CONTROL_RADIUS,
-};
+use crate::ui::theme::{CONTROL_RADIUS, colors};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EditKind {
@@ -45,29 +42,29 @@ pub struct EditRect {
 }
 
 pub fn edit_palette(state: EditVisualState) -> EditPalette {
+    let c = colors();
     if state.disabled {
         return EditPalette {
-            background: COLOR_DISABLED_SURFACE,
-            border: COLOR_DISABLED_BORDER,
-            text: COLOR_DISABLED_TEXT,
+            background: c.disabled_surface,
+            border: c.disabled_border,
+            text: c.disabled_text,
         };
     }
 
-    let background = if state.readonly {
-        COLOR_SURFACE_SUBTLE
-    } else {
-        COLOR_SURFACE
-    };
     EditPalette {
-        background,
-        border: if state.focused {
-            COLOR_PRIMARY
-        } else if state.hot {
-            crate::ui::theme::COLOR_BORDER_STRONG
+        background: if state.readonly {
+            c.surface_subtle
         } else {
-            COLOR_BORDER
+            c.surface
         },
-        text: COLOR_TEXT,
+        border: if state.focused {
+            c.primary
+        } else if state.hot {
+            c.border_strong
+        } else {
+            c.border
+        },
+        text: c.text,
     }
 }
 
@@ -140,25 +137,7 @@ pub fn install_modern_edit_focus_tracking(
 pub fn modern_edit_brush_for_state(
     state: EditVisualState,
 ) -> windows::Win32::Graphics::Gdi::HBRUSH {
-    use std::sync::OnceLock;
-    use windows::Win32::Graphics::Gdi::{CreateSolidBrush, HBRUSH};
-
-    static NORMAL_BRUSH: OnceLock<isize> = OnceLock::new();
-    static READONLY_BRUSH: OnceLock<isize> = OnceLock::new();
-    static DISABLED_BRUSH: OnceLock<isize> = OnceLock::new();
-
-    let slot = if state.disabled {
-        &DISABLED_BRUSH
-    } else if state.readonly {
-        &READONLY_BRUSH
-    } else {
-        &NORMAL_BRUSH
-    };
-    let palette = edit_palette(state);
-    HBRUSH(
-        *slot.get_or_init(|| unsafe { CreateSolidBrush(palette.background.colorref()).0 as isize })
-            as *mut core::ffi::c_void,
-    )
+    crate::ui::theme::background_brush(state.readonly, state.disabled)
 }
 
 #[cfg(windows)]

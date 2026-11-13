@@ -1,9 +1,5 @@
 pub use crate::ui::theme::RgbColor;
-use crate::ui::theme::{
-    COLOR_BORDER, COLOR_BORDER_STRONG, COLOR_DISABLED_BORDER, COLOR_DISABLED_SURFACE,
-    COLOR_DISABLED_TEXT, COLOR_FOCUS_SOFT, COLOR_FOCUS_TEXT, COLOR_PRIMARY, COLOR_SURFACE,
-    COLOR_TEXT, CONTROL_HEIGHT, CONTROL_RADIUS, LIST_ITEM_HEIGHT,
-};
+use crate::ui::theme::{CONTROL_HEIGHT, CONTROL_RADIUS, LIST_ITEM_HEIGHT, colors};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ComboVisualState {
@@ -70,46 +66,48 @@ pub struct ComboRect {
 }
 
 pub fn combo_palette(state: ComboVisualState) -> ComboPalette {
+    let c = colors();
     if state.disabled {
         return ComboPalette {
-            background: COLOR_DISABLED_SURFACE,
-            border: COLOR_DISABLED_BORDER,
-            text: COLOR_DISABLED_TEXT,
-            arrow: COLOR_DISABLED_TEXT,
+            background: c.disabled_surface,
+            border: c.disabled_border,
+            text: c.disabled_text,
+            arrow: c.disabled_text,
         };
     }
 
     ComboPalette {
-        background: COLOR_SURFACE,
+        background: c.surface,
         border: if state.focused || state.dropped {
-            COLOR_PRIMARY
+            c.primary
         } else if state.hot {
-            COLOR_BORDER_STRONG
+            c.border_strong
         } else {
-            COLOR_BORDER
+            c.border
         },
-        text: COLOR_TEXT,
-        arrow: COLOR_TEXT,
+        text: c.text,
+        arrow: c.text,
     }
 }
 
 pub fn combo_list_item_palette(state: ComboListItemVisualState) -> ComboListItemPalette {
+    let c = colors();
     if state.disabled {
         return ComboListItemPalette {
-            background: COLOR_DISABLED_SURFACE,
-            text: COLOR_DISABLED_TEXT,
+            background: c.disabled_surface,
+            text: c.disabled_text,
         };
     }
 
     if state.selected {
         ComboListItemPalette {
-            background: COLOR_FOCUS_SOFT,
-            text: COLOR_FOCUS_TEXT,
+            background: c.focus_soft,
+            text: c.focus_text,
         }
     } else {
         ComboListItemPalette {
-            background: COLOR_SURFACE,
-            text: COLOR_TEXT,
+            background: c.surface,
+            text: c.text,
         }
     }
 }
@@ -128,7 +126,7 @@ pub fn modern_combo_dropdown_item_fill_rect(rect: ComboTextRect) -> ComboTextRec
 }
 
 pub fn is_modern_combo(id: usize) -> bool {
-    matches!(id, 2106 | 3125)
+    matches!(id, 2106 | 3125 | 3136)
 }
 
 pub fn combo_uses_native_border(id: usize) -> bool {
@@ -164,7 +162,7 @@ pub fn modern_combo_dropdown_window_style(style: u32, native_border_style: u32) 
 }
 
 pub fn modern_combo_dropdown_border_color() -> RgbColor {
-    COLOR_PRIMARY
+    colors().primary
 }
 
 #[cfg(windows)]
@@ -214,10 +212,24 @@ fn is_combo_dropped(hwnd: windows::Win32::Foundation::HWND) -> bool {
 
 #[cfg(windows)]
 unsafe fn paint_modern_combo(hwnd: windows::Win32::Foundation::HWND) {
+    use windows::Win32::Graphics::Gdi::{BeginPaint, EndPaint, PAINTSTRUCT};
+    let mut paint = PAINTSTRUCT::default();
+    let hdc = unsafe { BeginPaint(hwnd, &mut paint) };
+    unsafe {
+        draw_modern_combo(hwnd, hdc);
+        let _ = EndPaint(hwnd, &paint);
+    }
+}
+
+#[cfg(windows)]
+unsafe fn draw_modern_combo(
+    hwnd: windows::Win32::Foundation::HWND,
+    hdc: windows::Win32::Graphics::Gdi::HDC,
+) {
     use windows::Win32::Graphics::Gdi::{
-        BACKGROUND_MODE, BeginPaint, CreatePen, CreateRoundRectRgn, CreateSolidBrush, DeleteObject,
-        DrawTextW, EndPaint, FillRect, GetStockObject, HGDIOBJ, LineTo, MoveToEx, NULL_BRUSH,
-        PS_SOLID, RoundRect, SelectClipRgn, SelectObject, SetBkMode, SetTextColor, TRANSPARENT,
+        BACKGROUND_MODE, CreatePen, CreateSolidBrush, DeleteObject, DrawTextW, FillRect,
+        GetStockObject, HGDIOBJ, LineTo, MoveToEx, NULL_BRUSH, PS_SOLID, RestoreDC, RoundRect,
+        SaveDC, SelectObject, SetBkMode, SetTextColor, TRANSPARENT,
     };
     use windows::Win32::UI::WindowsAndMessaging::{GetClientRect, SendMessageW, WM_GETFONT};
 
@@ -227,14 +239,20 @@ unsafe fn paint_modern_combo(hwnd: windows::Win32::Foundation::HWND) {
     if unsafe { GetClientRect(hwnd, &mut rect).is_err() } {
         return;
     }
+    let saved = unsafe { SaveDC(hdc) };
+    if saved == 0 {
+        return;
+    }
+    // Also clear any native selection-area pixels below the custom frame.
+    unsafe {
+        FillRect(hdc, &rect, crate::ui::theme::surface_brush());
+    }
     let frame = runtime_combo_frame_rect(rect.left, rect.top, rect.right);
     rect.left = frame.left;
     rect.top = frame.top;
     rect.right = frame.right;
     rect.bottom = frame.bottom;
 
-    let mut paint = windows::Win32::Graphics::Gdi::PAINTSTRUCT::default();
-    let hdc = unsafe { BeginPaint(hwnd, &mut paint) };
     let font = unsafe { SendMessageW(hwnd, WM_GETFONT, None, None) }.0;
     let old_font = if font == 0 {
         HGDIOBJ::default()
@@ -242,24 +260,28 @@ unsafe fn paint_modern_combo(hwnd: windows::Win32::Foundation::HWND) {
         unsafe { SelectObject(hdc, HGDIOBJ(font as *mut core::ffi::c_void)) }
     };
 
+    let radius = crate::ui::theme::scale(CONTROL_RADIUS);
     let background = unsafe { CreateSolidBrush(palette.background.colorref()) };
-    let clip_region =
-        unsafe { CreateRoundRectRgn(rect.left, rect.top, rect.right + 1, rect.bottom + 1, 7, 7) };
-    if !clip_region.is_invalid() {
-        unsafe {
-            let _ = SelectClipRgn(hdc, Some(clip_region));
-        }
-    }
-    if !background.is_invalid() {
-        unsafe {
-            let _ = FillRect(hdc, &rect, background);
-        }
-    }
-    if !clip_region.is_invalid() {
-        unsafe {
-            let _ = SelectClipRgn(hdc, None);
-            let _ = DeleteObject(clip_region.into());
-        }
+    let fill_brush = if background.is_invalid() {
+        crate::ui::theme::surface_brush()
+    } else {
+        background
+    };
+    let old_brush = unsafe { SelectObject(hdc, fill_brush.into()) };
+    let old_pen =
+        unsafe { SelectObject(hdc, GetStockObject(windows::Win32::Graphics::Gdi::NULL_PEN)) };
+    unsafe {
+        let _ = RoundRect(
+            hdc,
+            rect.left,
+            rect.top,
+            rect.right,
+            rect.bottom,
+            radius,
+            radius,
+        );
+        let _ = SelectObject(hdc, old_brush);
+        let _ = SelectObject(hdc, old_pen);
     }
 
     let mut text = combo_text(hwnd);
@@ -313,7 +335,15 @@ unsafe fn paint_modern_combo(hwnd: windows::Win32::Foundation::HWND) {
         let old_pen = unsafe { SelectObject(hdc, pen.into()) };
         let old_brush = unsafe { SelectObject(hdc, GetStockObject(NULL_BRUSH)) };
         unsafe {
-            let _ = RoundRect(hdc, rect.left, rect.top, rect.right, rect.bottom, 7, 7);
+            let _ = RoundRect(
+                hdc,
+                rect.left,
+                rect.top,
+                rect.right,
+                rect.bottom,
+                radius,
+                radius,
+            );
         }
         if !old_brush.is_invalid() {
             unsafe {
@@ -341,7 +371,7 @@ unsafe fn paint_modern_combo(hwnd: windows::Win32::Foundation::HWND) {
         }
     }
     unsafe {
-        let _ = EndPaint(hwnd, &paint);
+        let _ = RestoreDC(hdc, saved);
     }
 }
 
@@ -369,8 +399,8 @@ pub(crate) unsafe fn draw_owner_draw_combo_item(
     use windows::Win32::Foundation::{LPARAM, RECT, WPARAM};
     use windows::Win32::Graphics::Gdi::{
         BACKGROUND_MODE, CreateSolidBrush, DT_END_ELLIPSIS, DT_SINGLELINE, DT_VCENTER,
-        DeleteObject, DrawTextW, FillRect, GetBkMode, GetStockObject, GetTextColor, SetBkMode,
-        SetTextColor, TRANSPARENT, WHITE_BRUSH,
+        DeleteObject, DrawTextW, FillRect, GetBkMode, GetTextColor, SetBkMode, SetTextColor,
+        TRANSPARENT,
     };
     use windows::Win32::UI::Controls::{
         ODS_COMBOBOXEDIT, ODS_DISABLED, ODS_SELECTED, ODT_COMBOBOX,
@@ -386,6 +416,11 @@ pub(crate) unsafe fn draw_owner_draw_combo_item(
         return false;
     }
     if !combo_owner_draws_list_item((draw_item.itemState.0 & ODS_COMBOBOXEDIT.0) != 0) {
+        // Native input handling can draw the closed selection directly, without
+        // sending WM_PAINT. Use the same renderer for that path as well.
+        unsafe {
+            draw_modern_combo(draw_item.hwndItem, draw_item.hDC);
+        }
         return true;
     }
 
@@ -410,11 +445,7 @@ pub(crate) unsafe fn draw_owner_draw_combo_item(
     let background = unsafe { CreateSolidBrush(palette.background.colorref()) };
     if background.is_invalid() {
         unsafe {
-            let _ = FillRect(
-                hdc,
-                &fill_rect,
-                windows::Win32::Graphics::Gdi::HBRUSH(GetStockObject(WHITE_BRUSH).0),
-            );
+            let _ = FillRect(hdc, &fill_rect, crate::ui::theme::surface_brush());
         }
     } else {
         unsafe {
@@ -722,6 +753,19 @@ unsafe fn paint_modern_combo_dropdown_border(hwnd: windows::Win32::Foundation::H
 }
 
 #[cfg(windows)]
+pub(crate) fn handle_modern_combo_color(
+    wparam: windows::Win32::Foundation::WPARAM,
+    lparam: windows::Win32::Foundation::LPARAM,
+) -> Option<windows::Win32::Foundation::LRESULT> {
+    let child = windows::Win32::Foundation::HWND(lparam.0 as _);
+    let id = unsafe { windows::Win32::UI::WindowsAndMessaging::GetDlgCtrlID(child) };
+    if !is_modern_combo(id as usize) {
+        return None;
+    }
+    Some(crate::ui::theme::control_background(wparam))
+}
+
+#[cfg(windows)]
 fn combo_text(hwnd: windows::Win32::Foundation::HWND) -> Vec<u16> {
     let len = unsafe { windows::Win32::UI::WindowsAndMessaging::GetWindowTextLengthW(hwnd) };
     let mut text = vec![0u16; len as usize + 1];
@@ -873,6 +917,13 @@ unsafe extern "system" fn modern_combo_subclass_proc(
         WM_SETFOCUS, WM_SIZE,
     };
 
+    if matches!(
+        msg,
+        windows::Win32::UI::WindowsAndMessaging::WM_CTLCOLORLISTBOX
+            | windows::Win32::UI::WindowsAndMessaging::WM_CTLCOLORSTATIC
+    ) {
+        return crate::ui::theme::control_background(wparam);
+    }
     if msg == WM_PAINT {
         unsafe {
             paint_modern_combo(hwnd);
@@ -928,7 +979,35 @@ unsafe extern "system" fn modern_combo_subclass_proc(
         }
     }
 
-    unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) }
+    let result = unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) };
+    use windows::Win32::UI::WindowsAndMessaging::{
+        CB_SETCURSEL, CB_SHOWDROPDOWN, WM_KEYDOWN, WM_KEYUP, WM_LBUTTONDOWN, WM_LBUTTONUP,
+    };
+    if matches!(
+        msg,
+        CB_SETCURSEL
+            | CB_SHOWDROPDOWN
+            | WM_KEYDOWN
+            | WM_KEYUP
+            | WM_LBUTTONDOWN
+            | WM_LBUTTONUP
+            | WM_SETFOCUS
+            | WM_KILLFOCUS
+            | WM_ENABLE
+    ) {
+        // Native selection/focus handling may paint synchronously. Restore the
+        // custom face before returning rather than waiting for another paint.
+        unsafe {
+            let _ = windows::Win32::Graphics::Gdi::RedrawWindow(
+                Some(hwnd),
+                None,
+                None,
+                windows::Win32::Graphics::Gdi::RDW_INVALIDATE
+                    | windows::Win32::Graphics::Gdi::RDW_UPDATENOW,
+            );
+        }
+    }
+    result
 }
 
 #[cfg(windows)]
@@ -945,6 +1024,10 @@ unsafe extern "system" fn modern_combo_dropdown_subclass_proc(
         WM_NCDESTROY, WM_NCPAINT, WM_PAINT, WM_SHOWWINDOW, WM_WINDOWPOSCHANGED,
     };
 
+    if msg == windows::Win32::UI::WindowsAndMessaging::WM_ERASEBKGND {
+        return crate::ui::theme::handle_message(hwnd, msg, wparam)
+            .unwrap_or(windows::Win32::Foundation::LRESULT(1));
+    }
     if msg == WM_SHOWWINDOW || msg == WM_WINDOWPOSCHANGED {
         let result = unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) };
         unsafe {
